@@ -1,0 +1,24 @@
+﻿@page
+@model FutaMeetWeb.Pages.LoginModel
+
+<h2>Login to FutaMeet</h2>
+
+<!-- Debug: Confirm page loads -->
+<p>Login page loaded</p>
+
+<form method="post">
+    <div>
+        <label>Select User:</label>
+        <select asp-for="MatricNo" required>
+            <option value="">-- Pick a user --</option>
+            <option value="Lec001">Lec001 (Lecturer)</option>
+            <option value="123456">123456 (Student)</option>
+        </select>
+    </div>
+    <button type="submit">Login</button>
+</form>
+
+@if (!string.IsNullOrEmpty(Model.Message))
+{
+    <p>@Model.Message</p>
+}

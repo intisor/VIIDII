@@ -1,0 +1,40 @@
+﻿@page
+@model FutaMeetWeb.Pages.CreateSessionModel
+
+<h2>Create a Session</h2>
+
+<form method="post">
+    <div>
+        <label asp-for="Title">Session Title</label>
+        <input asp-for="Title" required />
+    </div>
+    <button type="submit">Create Session</button>
+</form>
+
+@if (!string.IsNullOrEmpty(Model.Message) && Model.Message.StartsWith("Created session"))
+{
+    <div class="row">
+        <div class="col-md-8">
+            <video id="localVideo" autoplay muted></video>
+            <div id="remoteVideos"></div>
+            <button id="startSession" onclick="startSession('@Model.ExistingSessionId', '@HttpContext.Session.GetString("MatricNo")')">Start Session</button>
+            <button id="toggleAudio" onclick="toggleAudio()">Mute</button>
+        </div>
+        <div class="col-md-4">
+            <h4>Chat</h4>
+            <div id="chatMessages" style="height: 200px; overflow-y: scroll; border: 1px solid #ccc;"></div>
+            <textarea id="chatInput" rows="2" class="form-control"></textarea>
+            <button onclick="sendMessage()">Send</button>
+        </div>
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(Model.Message))
+{
+    <p>@Model.Message</p>
+}
+
+@section Scripts {
+    <script src="~/lib/signalr/signalr.js"></script>
+    <script src="~/js/session.js" asp-append-version="true"></script>
+}

@@ -1,0 +1,28 @@
+﻿@model FutaMeetWeb.ViewComponents.NavBarViewModel
+
+<ul class="navbar-nav">
+    @if (string.IsNullOrEmpty(Model.MatricNo))
+    {
+        <li class="nav-item">
+            <a class="nav-link text-dark" asp-page="/Login">Login</a>
+        </li>
+    }
+    else
+    {
+        <li class="nav-item">
+            <span class="nav-link text-dark">Logged in as: @Model.MatricNo</span>
+        </li>
+        @if (Model.IsLecturer)
+        {
+            <li class="nav-item">
+                <a class="nav-link text-dark" asp-page="/CreateSession">Create Session</a>
+            </li>
+        }
+        <li class="nav-item">
+            <a class="nav-link text-dark" asp-page="/JoinSession">Join Session</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link text-dark" asp-page="/Login" asp-page-handler="Logout">Logout</a>
+        </li>
+    }
+</ul>

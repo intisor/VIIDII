@@ -1,0 +1,42 @@
+﻿@page
+@model FutaMeetWeb.Pages.JoinSessionModel
+
+<h2>Join a Session</h2>
+
+<form method="post">
+    <div>
+        <label asp-for="SessionId">Available Sessions</label>
+        <select asp-for="SessionId" asp-items="Model.AvailableSessions" required>
+            <option value="">-- Select a session --</option>
+        </select>
+    </div>
+    <button type="submit" disabled="@(!Model.AvailableSessions.Any(s => !s.Disabled))">Join Session</button>
+</form>
+
+@if (!string.IsNullOrEmpty(Model.Message) && Model.Message.StartsWith("Joined session"))
+{
+    <div class="row">
+        <div class="col-md-8">
+            <video id="lecturerVideo" autoplay></video>
+            <video id="localVideo" autoplay muted></video>
+            <button id="joinSession" onclick="joinSession('@Model.SessionId', '@HttpContext.Session.GetString("MatricNo")')">Join Session</button>
+            <button id="toggleAudio" onclick="toggleAudio()">Mute</button>
+        </div>
+        <div class="col-md-4">
+            <h4>Chat</h4>
+            <div id="chatMessages" style="height: 200px; overflow-y: scroll; border: 1px solid #ccc;"></div>
+            <textarea id="chatInput" rows="2" class="form-control"></textarea>
+            <button onclick="sendMessage()">Send</button>
+        </div>
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(Model.Message))
+{
+    <p>@Model.Message</p>
+}
+
+@section Scripts {
+    <script src="~/lib/signalr/signalr.js"></script>
+    <script src="~/js/session.js" asp-append-version="true"></script>
+}
