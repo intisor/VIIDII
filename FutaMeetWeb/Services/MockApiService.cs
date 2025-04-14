@@ -10,7 +10,8 @@ namespace FutaMeetWeb.Services
                 new() { Name = "Victor", MatricNo = "789012", Role = Role.Student, Department = "Software Engineering" },
                 new() { Name = "Umar", MatricNo = "383012", Role = Role.Student, Department = "Mining Engineering" },
                 new() { Name = "Festus", MatricNo = "Lec001", Role = Role.Lecturer, Department = null },
-                new() { Name = "Dr. Brown", MatricNo = "Lec002", Role = Role.Lecturer, Department = null }
+                new() { Name = "Dr. Brown", MatricNo = "Lec002", Role = Role.Lecturer, Department = null },
+                new() { Name = "Admin", MatricNo = "Admin", Role = Role.Admin, Department = null }
             ];
         public static List<User> GetUsers() => _users;
         public static List<User> GetStudents() => [.. _users.Where(user => user.Role == Role.Student)];

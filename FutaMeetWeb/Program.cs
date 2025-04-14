@@ -6,9 +6,11 @@ var builder = WebApplication.CreateBuilder(args);
     builder.Services.AddSingleton<MockApiService>();
     builder.Services.AddSingleton<SessionService>();
     builder.Services.AddDistributedMemoryCache();
+	builder.Services.AddSignalR();
     builder.Services.AddSession(options =>
     {
-    	options.IdleTimeout = TimeSpan.FromMinutes(4);
+		options.Cookie.Name = ".FutaMeet.Session";
+		options.IdleTimeout = TimeSpan.FromMinutes(20);
     	options.Cookie.HttpOnly = true;
     	options.Cookie.IsEssential = true;
     });

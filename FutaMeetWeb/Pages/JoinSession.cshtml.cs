@@ -1,4 +1,5 @@
 using FutaMeetWeb.Services;
+using FutaMeetWeb.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.Mvc.Rendering;
@@ -17,7 +18,7 @@ public class JoinSessionModel : PageModel
     [BindProperty]
     public string SessionId { get; set; } = string.Empty;
 
-    public string? Message { get; set; }
+    public string Message { get; set; }
 
     public List<SelectListItem> AvailableSessions { get; set; } = [];
 
@@ -52,7 +53,7 @@ public class JoinSessionModel : PageModel
 
     private void LoadAvailableSessions()
     {
-        AvailableSessions = _sessionService.GetActiveSessions()
+        AvailableSessions = _sessionService.GetSessionsBy(true, s => s.Status == SessionStatus.Active)
             .Select(s => new SelectListItem
             {
                 Value = s.SessionId,
@@ -65,7 +66,7 @@ public class JoinSessionModel : PageModel
             AvailableSessions.Add(new SelectListItem
             {
                 Value = "",
-                Text = "No sessions available",
+                Text = "No active sessions available",
                 Disabled = true
             });
         }

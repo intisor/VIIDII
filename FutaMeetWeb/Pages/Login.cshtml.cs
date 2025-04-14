@@ -8,14 +8,14 @@ public class LoginModel : PageModel
     [BindProperty]
     public string MatricNo { get; set; } = string.Empty;
 
-    public string? Message { get; set; }
+    public string Message { get; set; }
 
     public IActionResult OnGet()
     {
         return Page(); // Explicit render
     }
 
-    public IActionResult OnPost()
+    public IActionResult OnPost(string matricNo)
     {
         if (string.IsNullOrEmpty(MatricNo))
         {
@@ -23,7 +23,7 @@ public class LoginModel : PageModel
             return Page();
         }
 
-        HttpContext.Session.SetString("MatricNo", MatricNo);
+        HttpContext.Session.SetString("MatricNo", matricNo);
         Message = $"Logged in as {MatricNo}";
         return Page();
     }

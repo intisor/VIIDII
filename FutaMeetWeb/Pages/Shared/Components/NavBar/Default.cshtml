@@ -18,6 +18,13 @@
                 <a class="nav-link text-dark" asp-page="/CreateSession">Create Session</a>
             </li>
         }
+        @if (Model.IsAdmin)
+        {
+            <li class="nav-item">
+                <a class="nav-link text-dark" asp-page="/Admin">Admin</a>
+            </li>
+        }
+
         <li class="nav-item">
             <a class="nav-link text-dark" asp-page="/JoinSession">Join Session</a>
         </li>

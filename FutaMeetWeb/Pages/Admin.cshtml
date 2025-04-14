@@ -1,0 +1,40 @@
+﻿@page
+@model FutaMeetWeb.Pages.AdminModel
+
+<h2>Users in Active Sessions</h2>
+
+<div>Active Sessions
+    <div class="alert alert-info">
+        <p>Active sessions are those that are currently ongoing. Users in these sessions are actively participating in discussions or meetings.</p>
+        Count: @Model.ActiveSessions.Count()
+    </div>
+</div>
+
+@if (Model.UsersInActiveSessions.Any())
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Matric No</th>
+                <th>Role</th>
+                <th>Department</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var user in Model.UsersInActiveSessions)
+            {
+                <tr>
+                    <td>@user.Name</td>
+                    <td>@user.MatricNo</td>
+                    <td>@user.Role</td>
+                    <td>@user.Department</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+else
+{
+    <p>No users are currently in active sessions.</p>
+}

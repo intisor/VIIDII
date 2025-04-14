@@ -28,7 +28,7 @@ public class SessionService
         return session;
     }
 
-    public Session? LeaveSession(string sessionId, string participantId)
+    public Session LeaveSession(string sessionId, string participantId)
     {
         if (!_sessions.TryGetValue(sessionId, out var session) || session.Status != SessionStatus.Active)
             return null;
@@ -38,28 +38,19 @@ public class SessionService
         return session;
     }
 
-    public (Session? Session, string? Error) JoinSession(string sessionId, string participantId)
+    public (Session Session, string Error) JoinSession(string sessionId, string participantId)
     {
         if (!_sessions.TryGetValue(sessionId, out var session) || session.Status != SessionStatus.Active)
             return (null, "Session not found or inactive.");
-
-        // Allow lecturers/students (navbar has "Join Session" for all logged-in)
         if (!MockApiService.GetUsers().Any(u => u.MatricNo == participantId))
             return (null, "Invalid user.");
-
-        // One-session rule
-        if (_sessions.Values.Any(s => s.Status == SessionStatus.Active && s.ParticipantIds.Contains(participantId)))
-            return (null, "You are already in a session.");
-
-        // Prevent lecturer joining own session
-        if (session.LecturerId == participantId)
-            return (null, "You cannot join your own session.");
-
+        if (_sessions.Values.Any(s => s.Status == SessionStatus.Active && s.ParticipantIds.Contains(participantId) && s.SessionId != sessionId))
+            return (null, "You are already in a different session.");
         session.ParticipantIds.Add(participantId);
         return (session, null);
     }
 
-    public Session? EndSession(string sessionId, string lecturerId)
+    public Session EndSession(string sessionId, string lecturerId)
     {
         if (!_sessions.TryGetValue(sessionId, out var session))
             return null;
@@ -70,7 +61,7 @@ public class SessionService
         return session;
     }
 
-    public Session? GetSessionById(string sessionId) =>
+    public Session GetSessionById(string sessionId) =>
         _sessions.TryGetValue(sessionId, out var session) ? session : null;
 
     public List<Session> GetSessionsByLecturer(string lecturerId) =>

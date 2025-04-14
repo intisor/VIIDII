@@ -7,12 +7,12 @@
         public Role Role { get; set; }
         public string Department { get; set; }
     }
-    public enum Role { Student, Lecturer }
+    public enum Role { Student, Lecturer, Admin }
     public class Session(string lecturerId, string title)
     {
         public string SessionId { get; } = GenerateSessionCode();
         public string LecturerId { get; } = lecturerId;
-        public DateTime StartTime { get; } = DateTime.UtcNow;
+        public DateTime StartTime { get; } = DateTime.UtcNow.AddHours(1);
         public DateTime? EndTime { get; set; } = null;
         public string Title { get; set; } = title;
         public SessionStatus Status { get; set; } = SessionStatus.Active;
