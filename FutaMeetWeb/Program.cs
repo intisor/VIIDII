@@ -6,7 +6,6 @@ var builder = WebApplication.CreateBuilder(args);
     builder.Services.AddSingleton<MockApiService>();
     builder.Services.AddSingleton<SessionService>();
     builder.Services.AddDistributedMemoryCache();
-	builder.Services.AddSignalR();
     builder.Services.AddSession(options =>
     {
 		options.Cookie.Name = ".FutaMeet.Session";

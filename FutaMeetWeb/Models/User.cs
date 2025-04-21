@@ -12,13 +12,14 @@
     {
         public string SessionId { get; } = GenerateSessionCode();
         public string LecturerId { get; } = lecturerId;
-        public DateTime StartTime { get; } = DateTime.UtcNow.AddHours(1);
+        public DateTime StartTime { get; set;} = DateTime.UtcNow.AddHours(1);
         public DateTime? EndTime { get; set; } = null;
         public string Title { get; set; } = title;
         public SessionStatus Status { get; set; } = SessionStatus.Active;
+        public bool IsSessionStarted { get; set; } = false;
         public HashSet<string> ParticipantIds { get; } = [];
 
         private static string GenerateSessionCode() => $"{DateTime.UtcNow.AddHours(1):yyyyMMdd}-{string.Concat(Enumerable.Range(0, 6).Select(_ => (char)('A' + Random.Shared.Next(26))))}";
     }
-    public enum SessionStatus { Active, Ended, Cancelled}
+    public enum SessionStatus { Active, Started, Ended, Cancelled }
 }

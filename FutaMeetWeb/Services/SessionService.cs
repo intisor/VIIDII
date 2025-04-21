@@ -24,6 +24,7 @@ public class SessionService
         }
 
         var session = new Session(lecturerId, title);
+        session.Status = SessionStatus.Active;
         _sessions.TryAdd(session.SessionId, session);
         return session;
     }
@@ -40,7 +41,7 @@ public class SessionService
 
     public (Session Session, string Error) JoinSession(string sessionId, string participantId)
     {
-        if (!_sessions.TryGetValue(sessionId, out var session) || session.Status != SessionStatus.Active)
+        if (!_sessions.TryGetValue(sessionId, out var session) || session.Status == SessionStatus.Ended)
             return (null, "Session not found or inactive.");
         if (!MockApiService.GetUsers().Any(u => u.MatricNo == participantId))
             return (null, "Invalid user.");
@@ -54,10 +55,23 @@ public class SessionService
     {
         if (!_sessions.TryGetValue(sessionId, out var session))
             return null;
-        if (session.LecturerId != lecturerId || session.Status != SessionStatus.Active)
+        if (session.LecturerId != lecturerId || session.Status != SessionStatus.Started)
             return null;
         session.Status = SessionStatus.Ended;
         session.EndTime = DateTime.UtcNow.AddHours(1);
+        session.ParticipantIds.Clear();
+        session.IsSessionStarted = false;
+        return session;
+    }
+    public Session StartSession(string sessionId)
+    {
+        var session = GetSessionById(sessionId);
+        if (session != null)
+        {
+            session.IsSessionStarted = true;
+            session.Status = SessionStatus.Started;
+            session.StartTime = DateTime.UtcNow.AddHours(1);
+        }
         return session;
     }
 
@@ -66,7 +80,7 @@ public class SessionService
 
     public List<Session> GetSessionsByLecturer(string lecturerId) =>
         _sessions.Values
-            .Where(s => s.LecturerId == lecturerId && s.Status == SessionStatus.Active)
+            .Where(s => s.LecturerId == lecturerId && (s.Status == SessionStatus.Active || s.Status == SessionStatus.Started))
             .ToList();
 
     public List<Session> GetSessionsByParticipant(string participantId) =>

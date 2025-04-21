@@ -1,7 +1,9 @@
 ﻿@page
+@using FutaMeetWeb.Models
 @model FutaMeetWeb.Pages.CreateSessionModel
 @{
     ViewData["Title"] = "Create Session - FutaMeet";
+    var isLecturer = Model.IsSessionLecturer; // New property to indicate if current user is session lecturer
 }
 
 <div class="container mt-4">
@@ -24,32 +26,57 @@
 
     <!-- Main Content -->
     <div id="main-content">
-        <!-- Form to Create Session -->
-        <form method="post" onsubmit="showLoadingSkeleton()" class="modern-form p-4 mb-4">
-            <div class="mb-3">
-                <label asp-for="Title" class="form-label modern-label">Session Title</label>
-                <input asp-for="Title" class="form-control modern-input" required />
-            </div>
-            <button type="submit" class="btn btn-skeuo w-100">
-                <i class="fas fa-plus-circle"></i> Create Session
-            </button>
-        </form>
+        @if (string.IsNullOrEmpty(Model.CurrentSessionId))
+        {
+            <!-- Form to Create Session -->
+            <form method="post" onsubmit="showLoadingSkeleton()" class="modern-form p-4 mb-4">
+                <div class="mb-3">
+                    <label asp-for="Title" class="form-label modern-label">Session Title</label>
+                    <input asp-for="Title" class="form-control modern-input" required />
+                </div>
+                <button type="submit" class="btn btn-skeuo w-100">
+                    <i class="fas fa-plus-circle"></i> Create Session
+                </button>
+            </form>
+        }
 
         <!-- Session UI (after creation) -->
-        @if (!string.IsNullOrEmpty(Model.Message) && Model.Message.StartsWith("Created session"))
+        @if (!string.IsNullOrEmpty(Model.Message) && (Model.CurrentSessionId != null) && Model.Session?.Status != SessionStatus.Ended)
         {
             <div class="row mt-4">
                 <!-- Media (audio/video) -->
                 <div class="col-md-8">
-                    <video id="localVideo" autoplay muted class="modern-video"></video>
-                    <div id="remoteAudios" class="mt-2"></div>
+                    @if (isLecturer)
+                    {
+                        <video id="localVideo" autoplay class="modern-video"></video>
+                    }
+                    else
+                    {
+                        <video id="lecturerVideo" autoplay class="modern-video"></video>
+                        <div id="lecturerStatus" class="mt-2"></div>
+                    }
                     <div class="d-flex gap-2 mt-2">
-                        <button id="startSession" class="btn btn-skeuo flex-fill" onclick="this.disabled = true; initSession('@Model.CurrentSessionId', '@HttpContext.Session.GetString("MatricNo")', true)">
-                            <i class="fas fa-play"></i> Start Session
-                        </button>
-                        <button id="toggleAudio" class="btn btn-skeuo flex-fill" onclick="toggleAudio()">
-                            <i class="fas fa-microphone-slash"></i> Mute
-                        </button>
+                        @if (!Model.IsSessionStarted)
+                        {
+                            <form method="post" asp-page-handler="StartSession" class="w-100">
+                                <input type="hidden" name="sessionId" value="@Model.CurrentSessionId" />
+                                <button class="btn btn-skeuo flex-fill" type="submit">
+                                    <i class="fas fa-play"> Start Session</i>
+                                </button>
+                            </form>
+                        }
+                        else
+                        {
+                            <form method="post" asp-page-handler="EndSession" class="d-flex gap-2 mt-2">
+                                <input type="hidden" name="sessionId" value="@Model.CurrentSessionId" />
+                                <button type="submit" class="btn btn-skeuo flex-fill">
+                                    <i class="fas fa-stop"> End Session</i>
+                                </button>
+                                <button id="toggleAudio" class="btn btn-skeuo flex-fill" type="button" onclick="toggleAudio()">
+                                    <i class="fas fa-microphone-slash"></i> Mute
+                                </button>
+                            </form>
+                        }
                     </div>
                 </div>
                 <!-- Chat -->
@@ -57,8 +84,10 @@
                     <h4 class="modern-heading">Chat</h4>
                     <div id="chatMessages" class="border rounded p-2"></div>
                     <div class="input-group mt-2">
-                        <textarea id="chatInput" rows="2" class="form-control modern-input" placeholder="Type a message..."></textarea>
-                        <button class="btn btn-skeuo" onclick="sendMessage()">
+                        <textarea id="chatInput" rows="2" class="form-control modern-input"
+                            placeholder="Type a message..."></textarea>
+                        <button class="btn btn-skeuo"
+                            onclick="sendMessage('@Model.CurrentSessionId', '@HttpContext.Session.GetString("MatricNo")')">
                             <i class="fas fa-paper-plane"></i> Send
                         </button>
                     </div>
@@ -78,14 +107,21 @@
 <link href="~/css/site.css" rel="stylesheet" />
 <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
 @section Scripts {
-    <!-- Loading Skeleton -->
+<!-- Loading Skeleton -->
     <script>
         function showLoadingSkeleton() {
             document.getElementById("loading-skeleton").style.display = "block";
             document.getElementById("main-content").style.display = "none";
         }
+
+        document.addEventListener("DOMContentLoaded", async function () {
+            @if (Model.IsSessionStarted)
+            {
+                @:await initSession('@Model.CurrentSessionId', '@HttpContext.Session.GetString("MatricNo")', @(isLecturer.ToString().ToLower()));
+            }
+        });
     </script>
-    <!-- SignalR and session.js -->
+<!-- SignalR and session.js -->
     <script src="~/js/signalr.min.js"></script>
     <script src="~/js/session.js" asp-append-version="true"></script>
 }

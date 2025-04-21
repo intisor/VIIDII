@@ -1,4 +1,5 @@
 ﻿@page
+@using FutaMeetWeb.Models
 @model FutaMeetWeb.Pages.JoinSessionModel
 @{
     ViewData["Title"] = "Join Session - FutaMeet";
@@ -24,43 +25,50 @@
 
     <!-- Main Content -->
     <div id="content">
-        <!-- Form to Join Session -->
-        <form method="post" class="modern-form p-4 mb-4">
-            <div class="mb-3">
-                <label asp-for="SessionId" class="form-label modern-label">Available Sessions</label>
-                <select asp-for="SessionId" asp-items="Model.AvailableSessions" class="form-select modern-input" required>
-                    <option value="">-- Select a session --</option>
-                </select>
-            </div>
-            <button type="submit" class="btn btn-skeuo w-100" disabled="@(!Model.AvailableSessions.Any(s => !s.Disabled))">
-                <i class="fas fa-sign-in-alt"></i> Join Session
-            </button>
-        </form>
-
+        @if (string.IsNullOrEmpty(Model.SessionId))
+        {
+            <!-- Form to Join Session -->
+            <form method="post" class="modern-form p-4 mb-4">
+                <div class="mb-3">
+                    <label asp-for="SessionId" class="form-label modern-label">Available Sessions</label>
+                    <select asp-for="SessionId" asp-items="Model.AvailableSessions" class="form-select modern-input"
+                        required>
+                        <option value="">-- Select a session --</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-skeuo w-100"
+                    disabled="@(!Model.AvailableSessions.Any(s => !s.Disabled))">
+                    <i class="fas fa-sign-in-alt"></i> Join Session
+                </button>
+            </form>
+        }
         <!-- Session UI (after joining) -->
-        @if (!string.IsNullOrEmpty(Model.Message) && Model.Message.StartsWith("Joined session"))
+        @if (!string.IsNullOrEmpty(Model.Message) && (Model.SessionId != null) && Model.Session.Status !=
+                SessionStatus.Ended)
         {
             <div class="row mt-4">
                 <!-- Media (audio/video) -->
                 <div class="col-md-8">
-                    <video id="lecturerVideo" autoplay class="modern-video"></video>
-                    <div id="remoteAudios" class="mt-2"></div>
-                    <div class="d-flex gap-2 mt-2">
-                        <button id="joinSession" class="btn btn-skeuo flex-fill" onclick="this.disabled = true; initSession('@Model.SessionId', '@HttpContext.Session.GetString("MatricNo")', false)">
+                    <video id="lecturerVideo" autoplay playsinline class="modern-video"></video>
+                    <p id="lecturerStatus" class="mt-2 modern-status">Lecturer: Connecting...</p>
+                    @* <div class="d-flex gap-2 mt-2">
+                        <button id="joinSession" class="btn btn-skeuo flex-fill"
+                            onclick="this.disabled = true; initSession('@Model.SessionId', '@HttpContext.Session.GetString("MatricNo")', false)">
                             <i class="fas fa-sign-in-alt"></i> Join Session
                         </button>
                         <button id="toggleAudio" class="btn btn-skeuo flex-fill" onclick="toggleAudio()">
                             <i class="fas fa-microphone-slash"></i> Mute
                         </button>
-                    </div>
+                    </div> *@
                 </div>
                 <!-- Chat -->
-                <div class="col-md-4">
+                 <div class="col-md-4">
                     <h4 class="modern-heading">Chat</h4>
                     <div id="chatMessages" class="border rounded p-2"></div>
                     <div class="input-group mt-2">
-                        <textarea id="chatInput" rows="2" class="form-control modern-input" placeholder="Type a message..."></textarea>
-                        <button class="btn btn-skeuo" onclick="sendMessage()">
+                        <textarea id="chatInput" rows="2" class="form-control modern-input"
+                            placeholder="Type a message..."></textarea>
+                        <button class="btn btn-skeuo" onclick="sendMessage('@Model.SessionId', '@HttpContext.Session.GetString("MatricNo")')">
                             <i class="fas fa-paper-plane"></i> Send
                         </button>
                     </div>
@@ -94,4 +102,9 @@
     </script>
     <script src="~/js/signalr.min.js"></script>
     <script src="~/js/session.js" asp-append-version="true"></script>
+    <script>
+            document.addEventListener("DOMContentLoaded", function () {
+                initSession('@Model.SessionId', '@HttpContext.Session.GetString("MatricNo")');
+            });
+        </script>
 }

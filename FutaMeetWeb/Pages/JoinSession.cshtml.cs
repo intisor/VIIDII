@@ -12,12 +12,12 @@ public class JoinSessionModel : PageModel
 
     public JoinSessionModel(SessionService sessionService)
     {
-        _sessionService = sessionService ?? throw new ArgumentNullException(nameof(sessionService));
+        _sessionService = sessionService;
     }
 
     [BindProperty]
-    public string SessionId { get; set; } = string.Empty;
-
+    public string SessionId { get; set; }
+    public Session Session { get; set; }
     public string Message { get; set; }
 
     public List<SelectListItem> AvailableSessions { get; set; } = [];
@@ -48,12 +48,13 @@ public class JoinSessionModel : PageModel
 
         Message = $"Joined session: {session.Title} ({session.SessionId})";
         LoadAvailableSessions();
+        Session = _sessionService.GetSessionById(SessionId);
         return Page();
     }
 
     private void LoadAvailableSessions()
     {
-        AvailableSessions = _sessionService.GetSessionsBy(true, s => s.Status == SessionStatus.Active)
+        AvailableSessions = _sessionService.GetSessionsBy(true, s => s.Status == SessionStatus.Active || s.Status == SessionStatus.Started)
             .Select(s => new SelectListItem
             {
                 Value = s.SessionId,

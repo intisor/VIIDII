@@ -1,192 +1,213 @@
 ﻿// SignalR connection
-let connection = new signalR.HubConnectionBuilder()
+const connection = new signalR.HubConnectionBuilder()
     .withUrl("/sessionHub")
     .build();
 let pcs = {};
 let localStream = null;
-let sessionId, userId;
-let displayedMessages = new Set(); // Track displayed messages to prevent duplicates
+let sessionLecturerConnectionId = null; // Track the actual lecturer's connectionId
+let myConnectionId = null; // Track this client's connectionId
 
-// Register ReceiveMessage handler once
-function registerMessageHandler() {
-    connection.off("ReceiveMessage");
-    connection.on("ReceiveMessage", (senderId, message) => {
-        try {
-            console.log(`[DEBUG] ${userId}: ReceiveMessage: senderId=${senderId}, message=${message}`);
-            if (!senderId || !message) {
-                console.error(`[ERROR] ${userId}: Invalid ReceiveMessage args`);
+// Refactored initSession to accept isLecturer and handle logic accordingly
+async function initSession(sId, uId, isLecturer) {
+    console.log(`[DEBUG] initSession: sId=${sId}, uId=${uId}, isLecturer=${isLecturer}`);
+    if (!sId || !uId) {
+        console.error(`[ERROR] Invalid sId or uId: sId=${sId}, uId=${uId}`);
+        return;
+    }
+    try {
+        if (connection.state !== signalR.HubConnectionState.Connected) {
+            await connection.start();
+            // Get this client's connectionId
+            myConnectionId = connection.connectionId;
+            console.log(`[DEBUG] SignalR connection started, myConnectionId=${myConnectionId}`);
+        }
+        if (isLecturer) {
+            // Lecturer starts the session first, then joins
+            console.log(`[DEBUG] ${uId}: Invoking StartSession for sId=${sId}`);
+            await connection.invoke("StartSession", sId);
+            console.log(`[DEBUG] ${uId}: Invoking JoinSession for sId=${sId}`);
+            await connection.invoke("JoinSession", sId, uId, true);
+        } else {
+            // Non-lecturer checks if session is started
+            console.log(`[DEBUG] ${uId}: Checking session status for sId=${sId}`);
+            const [isStarted, isMuted, lecturerConnectionId] = await connection.invoke("GetSessionStatusFull", sId);
+            if (!isStarted) {
+                console.error(`[ERROR] ${uId}: Session ${sId} not started`);
                 return;
             }
+            sessionLecturerConnectionId = lecturerConnectionId;
+            console.log(`[DEBUG] ${uId}: Got lecturerConnectionId=${lecturerConnectionId}`);
+            await connection.invoke("JoinSession", sId, uId, false);
+        }
+        // Set up handlers
+        connection.on("ReceiveMessage", (senderId, message, timestamp) => {
             let chat = document.getElementById("chatMessages");
-            if (!chat) {
-                console.error(`[ERROR] ${userId}: chatMessages element not found`);
-                return;
-            }
-            // Create a unique key for the message to prevent duplicates
-            const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            const messageKey = `${senderId}:${message}:${timestamp}`;
-            if (displayedMessages.has(messageKey)) {
-                console.log(`[DEBUG] ${userId}: Duplicate message detected, skipping: ${messageKey}`);
-                return;
-            }
-            displayedMessages.add(messageKey);
-
-            const userClass = senderId === userId ? 'sender' : 'receiver'; // Sender or receiver
+            if (!chat) return;
             chat.innerHTML += `
-                <div class="${userClass}">
+                <div class="${senderId === uId ? 'sender' : 'receiver'}">
                     <p><strong>${senderId}:</strong> ${message}</p>
-                    <span class="timestamp">${timestamp}</span>
+                    <span class="timestamp"><i class="fas fa-clock"></i> ${timestamp}</span>
                 </div>`;
             chat.scrollTop = chat.scrollHeight;
-            console.log(`[DEBUG] ${userId}: chatMessages updated`);
-        } catch (e) {
-            console.error(`[ERROR] ${userId}: ReceiveMessage failed:`, e);
-        }
-    });
-}
-
-// Initialize session (moved to top)
-async function initSession(sId, uId, isLecturer) {
-    sessionId = sId;
-    userId = uId;
-    console.log(`[DEBUG] initSession: sId=${sId}, uId=${uId}`);
-    if (!sessionId || !userId) {
-        console.error(`[ERROR] ${userId || 'unknown'}: Missing sessionId=${sessionId}, userId=${userId}`);
-        return;
-    }
-    try {
-        if (!connection) {
-            console.error(`[ERROR] ${userId}: SignalR connection not initialized`);
-            return;
-        }
-        console.log(`[DEBUG] ${userId}: SignalR state: ${connection.state}`);
-        if (connection.state === signalR.HubConnectionState.Disconnected) {
-            console.log(`[DEBUG] ${userId}: Connecting to SignalR...`);
-            await connection.start();
-            console.log(`[DEBUG] ${userId}: SignalR connected`);
-            registerMessageHandler(); // Register chat handler after connection starts
-        }
-
-        // Audio/Video
-        console.log(`[DEBUG] ${userId}: Requesting media (audio: true, video: ${isLecturer})`);
-        localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: isLecturer });
-        let videoElement = document.getElementById(isLecturer ? "localVideo" : "lecturerVideo");
-        if (videoElement && isLecturer) {
-            videoElement.srcObject = localStream;
-            console.log(`[DEBUG] ${userId}: Set localVideo stream`);
-        }
-
-        console.log(`[DEBUG] ${userId}: Joining session ${sessionId}`);
-        await connection.invoke("JoinSession", sessionId, userId);
-        console.log(`[DEBUG] ${userId}: Joined session ${sessionId}`);
-    } catch (e) {
-        console.error(`[ERROR] ${userId}: Session init failed:`, e);
-    }
-}
-
-// SignalR reconnect handlers (consolidated)
-connection.onreconnecting(() => {
-    console.log(`[DEBUG] ${userId}: SignalR reconnecting...`);
-});
-
-connection.onreconnected(() => {
-    console.log(`[DEBUG] ${userId}: SignalR reconnected`);
-    registerMessageHandler(); // Re-register handler after reconnect
-});
-
-// WebRTC: New user (consolidated)
-connection.on("UserJoined", async (otherUserId, otherConnectionId) => {
-    try {
-        console.log(`[DEBUG] ${userId}: UserJoined: otherUserId=${otherUserId}, otherConnectionId=${otherConnectionId}`);
-        if (!otherUserId || !otherConnectionId) {
-            console.error(`[ERROR] ${userId}: Invalid UserJoined args: otherUserId=${otherUserId}, otherConnectionId=${otherConnectionId}`);
-            return;
-        }
-        if (!localStream) {
-            console.error(`[ERROR] ${userId}: localStream not ready`);
-            return;
-        }
-        let pc = new RTCPeerConnection();
-        pcs[otherConnectionId] = pc;
-        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-        pc.ontrack = event => addRemoteAudio(otherConnectionId, event.streams[0]);
-        let offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        console.log(`[DEBUG] ${userId}: Sending offer to ${otherUserId}`);
-        await connection.invoke("SendOffer", sessionId, JSON.stringify(offer), otherConnectionId);
-        pc.onicecandidate = event => {
-            if (event.candidate) {
-                connection.invoke("SendIceCandidate", sessionId, JSON.stringify(event.candidate), otherConnectionId);
+        });
+        connection.on("SessionStarted", () => {
+            console.log(`[DEBUG] ${uId}: SessionStarted received`);
+            if (isLecturer && document.getElementById("localVideo")) {
+                setupLocalVideo();
             }
-        };
+        });
+        connection.on("SessionEnded", () => {
+            console.log(`[DEBUG] ${uId}: Session ended`);
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
+            }
+            Object.values(pcs).forEach(pc => pc.close());
+            pcs = {};
+            let chat = document.getElementById("chatMessages");
+            if (chat) chat.innerHTML = "<p>Session has ended.</p>";
+        });
+
+        connection.on("SessionStatus", (isStarted, isMuted, lecturerConnectionId) => {
+            console.log(`[DEBUG] ${uId}: SessionStatus - started=${isStarted}, muted=${isMuted}, lecturerConnectionId=${lecturerConnectionId}`);
+            sessionLecturerConnectionId = lecturerConnectionId;
+            let status = document.getElementById("lecturerStatus");
+            if (status) status.textContent = `Lecturer: ${isMuted ? "Muted" : "Unmuted"}`;
+        });
+
+        connection.on("MuteStateUpdated", (isMuted) => {
+            console.log(`[DEBUG] ${uId}: Lecturer mute state: ${isMuted}`);
+            let status = document.getElementById("lecturerStatus");
+            if (status) status.textContent = `Lecturer: ${isMuted ? "Muted" : "Unmuted"}`;
+        });
+
+        connection.on("UserJoined", async (otherUserId, otherConnectionId) => {
+            if (!localStream || myConnectionId !== sessionLecturerConnectionId) return;
+            console.log(`[DEBUG] ${uId}: UserJoined - otherUserId=${otherUserId}, otherConnectionId=${otherConnectionId}`);
+            try {
+                let pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+                pcs[otherConnectionId] = pc;
+                localStream.getTracks().forEach(track => {
+                    console.log(`[DEBUG] ${uId}: Adding track: ${track.kind}, enabled=${track.enabled}`);
+                    pc.addTrack(track, localStream);
+                });
+                let offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+                console.log(`[DEBUG] ${uId}: Sending offer to ${otherConnectionId}`);
+                await connection.invoke("SendOffer", sId, JSON.stringify(offer), otherConnectionId);
+                pc.onicecandidate = event => {
+                    if (event.candidate) {
+                        console.log(`[DEBUG] ${uId}: Sending ICE candidate to ${otherConnectionId}`);
+                        connection.invoke("SendIceCandidate", sId, JSON.stringify(event.candidate), otherConnectionId);
+                    }
+                };
+                pc.oniceconnectionstatechange = () => {
+                    console.log(`[DEBUG] ${uId}: ICE state for ${otherConnectionId}: ${pc.iceConnectionState}`);
+                    if (pc.iceConnectionState === "failed") console.error(`[ERROR] ${uId}: ICE connection failed`);
+                };
+            } catch (e) {
+                console.error(`[ERROR] ${uId}: UserJoined failed:`, e);
+            }
+        });
+
+        connection.on("ReceiveOffer", async (offer, fromConnectionId) => {
+            if (fromConnectionId !== sessionLecturerConnectionId) return;
+            console.log(`[DEBUG] ${uId}: ReceiveOffer from ${fromConnectionId}`);
+            try {
+                let pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+                pcs[fromConnectionId] = pc;
+                pc.ontrack = event => {
+                    if (event.streams && event.streams[0]) {
+                        console.log(`[DEBUG] ${uId}: Received stream tracks:`, event.streams[0].getTracks());
+                        let videoElement = document.getElementById("lecturerVideo");
+                        if (videoElement) {
+                            videoElement.srcObject = event.streams[0];
+                            videoElement.muted = false;
+                            videoElement.play().catch(e => console.error(`[ERROR] ${uId}: Video playback failed:`, e));
+                            console.log(`[DEBUG] ${uId}: Lecturer video set, srcObject=${!!videoElement.srcObject}, muted=${videoElement.muted}`);
+                        } else {
+                            console.error(`[ERROR] ${uId}: lecturerVideo element not found`);
+                        }
+                    }
+                };
+                await pc.setRemoteDescription(JSON.parse(offer));
+                let answer = await pc.createAnswer();
+                await pc.setLocalDescription(answer);
+                console.log(`[DEBUG] ${uId}: Sending answer to ${fromConnectionId}`);
+                await connection.invoke("SendAnswer", sId, JSON.stringify(answer), fromConnectionId);
+                pc.onicecandidate = event => {
+                    if (event.candidate) {
+                        console.log(`[DEBUG] ${uId}: Sending ICE candidate to ${fromConnectionId}`);
+                        connection.invoke("SendIceCandidate", sId, JSON.stringify(event.candidate), fromConnectionId);
+                    }
+                };
+                pc.oniceconnectionstatechange = () => {
+                    console.log(`[DEBUG] ${uId}: ICE state for ${fromConnectionId}: ${pc.iceConnectionState}`);
+                    if (pc.iceConnectionState === "failed") console.error(`[ERROR] ${uId}: ICE connection failed`);
+                };
+            } catch (e) {
+                console.error(`[ERROR] ${uId}: ReceiveOffer failed:`, e);
+            }
+        });
+
+        connection.on("ReceiveAnswer", async (answer, fromConnectionId) => {
+            console.log(`[DEBUG] ${uId}: ReceiveAnswer from ${fromConnectionId}`);
+            try {
+                if (pcs[fromConnectionId]) await pcs[fromConnectionId].setRemoteDescription(JSON.parse(answer));
+            } catch (e) {
+                console.error(`[ERROR] ${uId}: ReceiveAnswer failed:`, e);
+            }
+        });
+
+        connection.on("ReceiveIceCandidate", async (candidate, fromConnectionId) => {
+            console.log(`[DEBUG] ${uId}: ReceiveIceCandidate from ${fromConnectionId}`);
+            try {
+                if (pcs[fromConnectionId]) await pcs[fromConnectionId].addIceCandidate(JSON.parse(candidate));
+            } catch (e) {
+                console.error(`[ERROR] ${uId}: ReceiveIceCandidate failed:`, e);
+            }
+        });
+
+        connection.on("UserLeft", (connectionId) => {
+            if (pcs[connectionId]) {
+                pcs[connectionId].close();
+                delete pcs[connectionId];
+                console.log(`[DEBUG] ${uId}: User ${connectionId} left`);
+            }
+        });
     } catch (e) {
-        console.error(`[ERROR] ${userId}: UserJoined failed:`, e);
+        console.error(`[ERROR] ${uId}: Session init failed:`, e);
     }
-});
+}
 
-// WebRTC: Handle answer
-connection.on("ReceiveAnswer", async (answer, fromConnectionId) => {
-    if (pcs[fromConnectionId]) {
-        await pcs[fromConnectionId].setRemoteDescription(JSON.parse(answer));
-    }
-});
-
-// WebRTC: Handle ICE
-connection.on("ReceiveIceCandidate", async (candidate, fromConnectionId) => {
-    if (pcs[fromConnectionId]) {
-        await pcs[fromConnectionId].addIceCandidate(JSON.parse(candidate));
-    }
-});
+function setupLocalVideo() {
+    console.log(`[DEBUG] Setting up local video`);
+    navigator.mediaDevices.getUserMedia({ audio: true, video: true })
+        .then(stream => {
+            localStream = stream;
+            console.log(`[DEBUG] Local stream tracks:`, localStream.getTracks().map(t => `${t.kind}: ${t.enabled}`));
+            let videoElement = document.getElementById("localVideo");
+            if (videoElement) {
+                videoElement.srcObject = stream;
+                videoElement.muted = true; // Mute local video to avoid feedback
+                videoElement.play().catch(e => console.error(`[ERROR] Local video playback failed:`, e));
+                console.log(`[DEBUG] Local video set, srcObject=${!!videoElement.srcObject}, muted=${videoElement.muted}`);
+            } else {
+                console.error(`[ERROR] localVideo element not found`);
+            }
+        })
+        .catch(e => console.error(`[ERROR] getUserMedia failed:`, e));
+}
 
 // Send chat message
-async function sendMessage() {
+async function sendMessage(sessionId, userId) {
     let input = document.getElementById("chatInput");
     let message = input.value.trim();
-    if (!message) {
-        console.log(`[DEBUG] ${userId || 'unknown'}: Empty message, ignoring`);
-        return;
-    }
-    if (!connection || connection.state !== signalR.HubConnectionState.Connected) {
-        console.error(`[ERROR] ${userId || 'unknown'}: SignalR not connected`);
-        return;
-    }
-    if (!userId || !sessionId) {
-        console.error(`[ERROR] SendMessage: userId=${userId}, sessionId=${sessionId}`);
-        return;
-    }
+    if (!message) return;
     try {
-        console.log(`[DEBUG] ${userId}: Sending: ${message} (sessionId=${sessionId})`);
         await connection.invoke("SendMessage", sessionId, userId, message);
         input.value = "";
-        console.log(`[DEBUG] ${userId}: Message sent, input cleared`);
     } catch (e) {
         console.error(`[ERROR] ${userId}: Send message failed:`, e);
-    }
-}
-
-// Toggle mic mute
-function toggleAudio() {
-    if (localStream) {
-        localStream.getAudioTracks().forEach(track => track.enabled = !track.enabled);
-        let button = document.getElementById("toggleAudio");
-        if (button) {
-            button.textContent = localStream.getAudioTracks()[0].enabled ? "Mute" : "Unmute";
-            console.log(`[DEBUG] ${userId}: Audio ${localStream.getAudioTracks()[0].enabled ? "unmuted" : "muted"}`);
-        }
-    }
-}
-
-// Add remote audio
-function addRemoteAudio(connectionId, stream) {
-    let audio = document.createElement("audio");
-    audio.id = `audio-${connectionId}`;
-    audio.srcObject = stream;
-    audio.autoplay = true;
-    let container = document.getElementById("remoteAudios");
-    if (container) {
-        container.appendChild(audio);
-        console.log(`[DEBUG] Added audio for ${connectionId}`);
-    } else {
-        console.error(`[ERROR] remoteAudios not found`);
     }
 }
