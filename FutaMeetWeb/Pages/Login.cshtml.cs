@@ -6,7 +6,7 @@ namespace FutaMeetWeb.Pages;
 public class LoginModel : PageModel
 {
     [BindProperty]
-    public string MatricNo { get; set; } = string.Empty;
+    public string MatricNo { get; set; }
 
     public string Message { get; set; }
 

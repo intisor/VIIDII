@@ -5,7 +5,7 @@ namespace FutaMeetWeb.Pages;
 
 public class IndexModel : PageModel
 {
-    public string? Message { get; set; }
+    public string Message { get; set; }
 
     public IActionResult OnGet()
     {

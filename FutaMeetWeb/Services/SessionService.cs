@@ -7,6 +7,12 @@ public class SessionService
 {
     private readonly ConcurrentDictionary<string, Session> _sessions = [];
 
+
+    public bool IsLecturer(string matricNo)
+    {
+        var lecturers = MockApiService.GetLecturers();
+        return lecturers.Any(l => l.MatricNo == matricNo);
+    }
     public Session CreateSession(string lecturerId, string title, bool? replaceExisting = false)
     {
         var lecturers = MockApiService.GetLecturers();

@@ -18,6 +18,8 @@
   },
   "homepage": "https://github.com/intisor/FutaMeet#readme",
   "dependencies": {
-    "@microsoft/signalr": "^8.0.7"
+    "@microsoft/signalr": "^7.0.14",
+    "@types/webrtc": "^0.0.33",
+    "simple-peer": "^9.11.1"
   }
 }

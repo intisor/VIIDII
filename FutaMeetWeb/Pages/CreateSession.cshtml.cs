@@ -9,19 +9,29 @@ namespace FutaMeetWeb.Pages
     public class CreateSessionModel : PageModel
     {
         private readonly SessionService _sessionService;
+
         public CreateSessionModel(SessionService sessionService)
         {
             _sessionService = sessionService;
         }
+
         [BindProperty]
-        public string Title { get; set; } = string.Empty;
+        public string Title { get; set; }
         public bool ShowReplacePrompt { get; set; }
         public string ExistingSessionId { get; set; }
         public string CurrentSessionId { get; set; }
         public bool IsSessionStarted { get; set; }
         public string Message { get; set; }
         public Session Session { get; set; }
-        public bool IsSessionLecturer { get; set; } // Add this property
+        public bool IsSessionLecturer { get; set; }
+        public bool IsLecturer
+        {
+            get
+            {
+                var matricNo = HttpContext.Session.GetString("MatricNo");
+                return !string.IsNullOrEmpty(matricNo) && _sessionService.IsLecturer(matricNo);
+            }
+        }
 
         public void OnGet()
         {
@@ -35,6 +45,7 @@ namespace FutaMeetWeb.Pages
                 IsSessionLecturer = Session.LecturerId == lecturerId;
             }
         }
+
         public IActionResult OnPost(bool? replaceExisting = null)
         {
             var lecturerId = HttpContext.Session.GetString("MatricNo");
@@ -55,39 +66,39 @@ namespace FutaMeetWeb.Pages
             HttpContext.Session.SetString("CurrentSessionId", CurrentSessionId);
             return Page();
         }
+
         public IActionResult OnPostStartSession()
         {
             var lecturerId = HttpContext.Session.GetString("MatricNo");
-            Console.WriteLine($"[DEBUG] OnPostStartSession: lecturerId={lecturerId}");
             if (string.IsNullOrEmpty(lecturerId))
             {
-                Console.WriteLine("[DEBUG] OnPostStartSession: MatricNo is null, redirecting to login");
                 return RedirectToPage("/Login");
             }
 
             Session = _sessionService.GetSessionsByLecturer(lecturerId).FirstOrDefault();
             if (Session is null)
             {
-                Console.WriteLine("[DEBUG] OnPostStartSession: No session found");
                 Message = "No session found to start.";
                 return Page();
             }
 
-            Console.WriteLine($"[DEBUG] OnPostStartSession: Starting sessionId={Session.SessionId}");
             _sessionService.StartSession(Session.SessionId);
             CurrentSessionId = Session.SessionId;
             IsSessionStarted = Session.IsSessionStarted;
             IsSessionLecturer = Session.LecturerId == lecturerId;
             Message = $"Session {Session.SessionId} started at {Session.StartTime:HH:mm}";
+
+            Console.WriteLine($"Session started: {Session.SessionId}, IsSessionStarted: {IsSessionStarted}");
+
             HttpContext.Session.SetString("SessionMessage", Message);
-            Console.WriteLine($"[DEBUG] OnPostStartSession: Session started, CurrentSessionId={CurrentSessionId}, IsSessionStarted={IsSessionStarted}");
-            return Page();
+            return RedirectToPage("/CreateSession", new { sessionId = CurrentSessionId });
         }
+
         public IActionResult OnPostEndSession()
         {
             var lecturerId = HttpContext.Session.GetString("MatricNo");
             var sessionId = HttpContext.Session.GetString("CurrentSessionId");
-            Session = _sessionService.GetSessionsByLecturer(lecturerId).FirstOrDefault() 
+            Session = _sessionService.GetSessionsByLecturer(lecturerId).FirstOrDefault()
                 ?? _sessionService.GetSessionById(sessionId);
             if (Session is null)
             {

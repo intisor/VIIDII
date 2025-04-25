@@ -15,6 +15,7 @@
         public DateTime StartTime { get; set;} = DateTime.UtcNow.AddHours(1);
         public DateTime? EndTime { get; set; } = null;
         public string Title { get; set; } = title;
+        public string LecturerConnectionId { get; set; }
         public SessionStatus Status { get; set; } = SessionStatus.Active;
         public bool IsSessionStarted { get; set; } = false;
         public HashSet<string> ParticipantIds { get; } = [];

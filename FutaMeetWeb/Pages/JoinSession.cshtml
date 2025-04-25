@@ -4,12 +4,9 @@
 @{
     ViewData["Title"] = "Join Session - FutaMeet";
 }
-
 <div class="container mt-4">
-    <h2 class="text-center mb-4 modern-heading">Join a Session (FUTA)</h2>
-
-    <!-- Loading Skeleton -->
-    <div id="loadingPlaceholder" style="display: none;">
+    <h2 class="text-center mb-4 modern-heading">Join a Session </h2>
+    <div id="loading-skeleton" style="display: none;">
         <div class="mb-3">
             <div class="placeholder-glow">
                 <span class="placeholder col-3 modern-placeholder"></span>
@@ -22,89 +19,73 @@
             <span class="placeholder col-4 modern-placeholder" style="height: 38px;"></span>
         </div>
     </div>
-
-    <!-- Main Content -->
-    <div id="content">
-        @if (string.IsNullOrEmpty(Model.SessionId))
+    <div id="main-content">
+        @if (string.IsNullOrEmpty(Model.CurrentSessionId))
         {
-            <!-- Form to Join Session -->
             <form method="post" class="modern-form p-4 mb-4">
                 <div class="mb-3">
                     <label asp-for="SessionId" class="form-label modern-label">Available Sessions</label>
                     <select asp-for="SessionId" asp-items="Model.AvailableSessions" class="form-select modern-input"
-                        required>
+                            required>
                         <option value="">-- Select a session --</option>
                     </select>
                 </div>
-                <button type="submit" class="btn btn-skeuo w-100"
-                    disabled="@(!Model.AvailableSessions.Any(s => !s.Disabled))">
+                <button type="submit" class="btn btn-skeuo w-100">
                     <i class="fas fa-sign-in-alt"></i> Join Session
                 </button>
             </form>
         }
-        <!-- Session UI (after joining) -->
-        @if (!string.IsNullOrEmpty(Model.Message) && (Model.SessionId != null) && Model.Session.Status !=
-                SessionStatus.Ended)
+        else if (Model.Session?.Status != SessionStatus.Ended)
         {
             <div class="row mt-4">
-                <!-- Media (audio/video) -->
                 <div class="col-md-8">
-                    <video id="lecturerVideo" autoplay playsinline class="modern-video"></video>
-                    <p id="lecturerStatus" class="mt-2 modern-status">Lecturer: Connecting...</p>
-                    @* <div class="d-flex gap-2 mt-2">
-                        <button id="joinSession" class="btn btn-skeuo flex-fill"
-                            onclick="this.disabled = true; initSession('@Model.SessionId', '@HttpContext.Session.GetString("MatricNo")', false)">
-                            <i class="fas fa-sign-in-alt"></i> Join Session
-                        </button>
-                        <button id="toggleAudio" class="btn btn-skeuo flex-fill" onclick="toggleAudio()">
-                            <i class="fas fa-microphone-slash"></i> Mute
-                        </button>
-                    </div> *@
+                    <video id="sessionVideo" data-session-id="@Model.CurrentSessionId" autoplay class="modern-video" style="width: 100%; max-height: 400px; background: black;"></video>
                 </div>
-                <!-- Chat -->
-                 <div class="col-md-4">
+                <div class="col-md-4">
                     <h4 class="modern-heading">Chat</h4>
-                    <div id="chatMessages" class="border rounded p-2"></div>
+                    <div id="chatMessages" class="border rounded p-2 modern-chat" style="height: 300px; overflow-y: auto;"></div>
                     <div class="input-group mt-2">
-                        <textarea id="chatInput" rows="2" class="form-control modern-input"
-                            placeholder="Type a message..."></textarea>
-                        <button class="btn btn-skeuo" onclick="sendMessage('@Model.SessionId', '@HttpContext.Session.GetString("MatricNo")')">
+                        <textarea id="chatInput" rows="2" class="form-control modern-input" placeholder="Type a message..."></textarea>
+                        <button id="sendMessage" class="btn btn-skeuo">
                             <i class="fas fa-paper-plane"></i> Send
                         </button>
                     </div>
                 </div>
             </div>
         }
-
-        <!-- Status Message -->
         @if (!string.IsNullOrEmpty(Model.Message))
         {
-            <p class="mt-3 text-center modern-status">@Model.Message</p>
+            <p class="mt-3 text-center modern-status" id="statusMessage">@Model.Message</p>
         }
     </div>
 </div>
-
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" rel="stylesheet" />
 <link href="~/lib/bootstrap/dist/css/bootstrap.min.css" rel="stylesheet" />
 <link href="~/css/site.css" rel="stylesheet" />
 <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/simple-peer/9.11.1/simplepeer.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.7/signalr.min.js"></script>
+<script src="~/js/session.js"></script>
 @section Scripts {
     <script>
-        document.addEventListener("DOMContentLoaded", function () {
-            const loadingPlaceholder = document.getElementById("loadingPlaceholder");
-            const content = document.getElementById("content");
-            loadingPlaceholder.style.display = "block";
-            content.style.display = "none";
-            setTimeout(() => {
-                loadingPlaceholder.style.display = "none";
-                content.style.display = "block";
-            }, 2000);
+        window.sessionState = @Html.Raw(Json.Serialize(new { isSessionStarted = Model.IsSessionStarted, sessionId = Model.CurrentSessionId }));
+        window.isSessionLecturer = @Json.Serialize(Model.IsSessionLecturer);
+
+        /////
+         document.addEventListener("DOMContentLoaded", function () {
+            const sessionVideo = document.getElementById("sessionVideo");
+            if (sessionVideo) {
+                console.log("Session Video Element:", sessionVideo);
+                console.log("Session Video Data-Session-Id:", sessionVideo.getAttribute("data-session-id"));
+                console.log("Session Video Source:", sessionVideo.srcObject);
+                  if (!sessionVideo.srcObject) {
+            sessionVideo.onloadedmetadata = () => {
+            console.log("Session Video Source (onloadedmetadata):", sessionVideo.srcObject);
+        };
+        }
+            } else {
+                console.error("Session Video element not found.");
+            }
         });
     </script>
-    <script src="~/js/signalr.min.js"></script>
-    <script src="~/js/session.js" asp-append-version="true"></script>
-    <script>
-            document.addEventListener("DOMContentLoaded", function () {
-                initSession('@Model.SessionId', '@HttpContext.Session.GetString("MatricNo")');
-            });
-        </script>
 }
