@@ -30,7 +30,7 @@ FutaMeetWeb is a real-time online meeting platform built for educational institu
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/FutaMeetWeb.git
+   git clone https://github.com/intisor/FutaMeetWeb.git
    ```
 
 2. Navigate to the project directory:
