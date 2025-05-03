@@ -5,18 +5,12 @@
     ViewData["Title"] = "Join Session - FutaMeet";
 }
 <div class="container mt-4">
-    <h2 class="text-center mb-4 modern-heading">Join a Session </h2>
+    <h2 class="text-center mb-4 modern-heading">Join a Session</h2>
     <div id="loading-skeleton" style="display: none;">
-        <div class="mb-3">
-            <div class="placeholder-glow">
-                <span class="placeholder col-3 modern-placeholder"></span>
-            </div>
-            <div class="placeholder-glow mt-2">
-                <span class="placeholder col-12 modern-placeholder" style="height: 38px;"></span>
-            </div>
-        </div>
-        <div class="placeholder-glow mt-3">
-            <span class="placeholder col-4 modern-placeholder" style="height: 38px;"></span>
+        <div class="placeholder-glow mb-3">
+            <span class="placeholder col-3 modern-placeholder"></span>
+            <span class="placeholder col-12 mt-2 modern-placeholder" style="height: 38px;"></span>
+            <span class="placeholder col-4 mt-3 modern-placeholder" style="height: 38px;"></span>
         </div>
     </div>
     <div id="main-content">
@@ -25,8 +19,7 @@
             <form method="post" class="modern-form p-4 mb-4">
                 <div class="mb-3">
                     <label asp-for="SessionId" class="form-label modern-label">Available Sessions</label>
-                    <select asp-for="SessionId" asp-items="Model.AvailableSessions" class="form-select modern-input"
-                            required>
+                    <select asp-for="SessionId" asp-items="Model.AvailableSessions" class="form-select modern-input" required>
                         <option value="">-- Select a session --</option>
                     </select>
                 </div>
@@ -59,33 +52,33 @@
         }
     </div>
 </div>
+
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" rel="stylesheet" />
 <link href="~/lib/bootstrap/dist/css/bootstrap.min.css" rel="stylesheet" />
 <link href="~/css/site.css" rel="stylesheet" />
 <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/simple-peer/9.11.1/simplepeer.min.js"></script>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.7/signalr.min.js"></script>
 <script src="~/js/session.js"></script>
+
 @section Scripts {
     <script>
-        window.sessionState = @Html.Raw(Json.Serialize(new { isSessionStarted = Model.IsSessionStarted, sessionId = Model.CurrentSessionId }));
+        window.sessionState = @Html.Raw(Json.Serialize(new
+            {
+                isSessionStarted = Model.IsSessionStarted,
+                sessionId = Model.CurrentSessionId
+            }));
         window.isSessionLecturer = @Json.Serialize(Model.IsSessionLecturer);
 
-        /////
-         document.addEventListener("DOMContentLoaded", function () {
+        document.addEventListener("DOMContentLoaded", () => {
             const sessionVideo = document.getElementById("sessionVideo");
-            if (sessionVideo) {
-                console.log("Session Video Element:", sessionVideo);
-                console.log("Session Video Data-Session-Id:", sessionVideo.getAttribute("data-session-id"));
-                console.log("Session Video Source:", sessionVideo.srcObject);
-                  if (!sessionVideo.srcObject) {
+            if (!sessionVideo) return console.error("Session video element not found.");
+            console.log("Video Element Ready:", sessionVideo);
+            console.log("Stream:", sessionVideo.srcObject);
+
             sessionVideo.onloadedmetadata = () => {
-            console.log("Session Video Source (onloadedmetadata):", sessionVideo.srcObject);
-        };
-        }
-            } else {
-                console.error("Session Video element not found.");
-            }
+                console.log("Metadata loaded. Stream:", sessionVideo.srcObject);
+            };
         });
     </script>
 }

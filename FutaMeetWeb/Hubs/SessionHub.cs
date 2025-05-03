@@ -14,15 +14,15 @@ namespace FutaMeetWeb.Hubs
         {
             await Groups.AddToGroupAsync(Context.ConnectionId, sessionId);
             await Clients.Group(sessionId).SendAsync("StartSession", sessionId);
-            ListGroupMembers(sessionId);
+            //ListGroupMembers(sessionId);
         }
 
         public Task SendMessage(string user, string message) => Clients.Others.SendAsync("ReceiveMessage", user, message);
-        public Task SendSignal(string sessionId, object data)
-        {
-            string serializedData = System.Text.Json.JsonSerializer.Serialize(data);
-            return Clients.Others.SendAsync("ReceiveSignal", Context.ConnectionId, serializedData);
-        }
+        //public Task SendSignal(string sessionId, object data)
+        //{
+        //    string serializedData = System.Text.Json.JsonSerializer.Serialize(data);
+        //    return Clients.Others.SendAsync("ReceiveSignal", Context.ConnectionId, serializedData);
+        //}
 
         public void ListGroupMembers(string sessionId)
         {

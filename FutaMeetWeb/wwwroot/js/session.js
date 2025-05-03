@@ -8,7 +8,7 @@ const connection = new signalR.HubConnectionBuilder()
 
 connection.onclose((error) => {
     console.error("SignalR connection closed.", error);
-    alert("Connection to the session was lost. Please refresh the page or try again.");
+    alert("Session connection lost. Please refresh or try again.");
 });
 
 connection.start().then(() => {
@@ -20,28 +20,18 @@ connection.start().then(() => {
     }
 });
 
-connection.on("ReceiveMessage", (user, message) => {
-    const chatMessages = document.getElementById("chatMessages");
-    if (chatMessages) {
-        chatMessages.innerHTML += `<div>${user}: ${message}</div>`;
-        chatMessages.scrollTop = chatMessages.scrollHeight;
-    }
-});
-
 connection.on("StartSession", (sessionId) => {
     const video = document.getElementById("sessionVideo");
-
+    console.log("Video Element Ready:", video);
     if (video && video.srcObject) {
+        console.log("Stream already attached:", video.srcObject);
         return;
     }
 
     if (window.isSessionLecturer) {
         if (localStream && video && !video.srcObject) {
             video.srcObject = localStream;
-            video.play().catch(error => {
-                console.error("Error playing video stream:", error);
-                alert("Unable to play the video stream. Please check your device.");
-            });
+            video.play().catch(error => console.error("Error playing lecturer video:", error));
             return;
         }
 
@@ -51,113 +41,98 @@ connection.on("StartSession", (sessionId) => {
                 window.localStream = stream;
                 if (video) {
                     video.srcObject = stream;
-                    video.play();
+                    video.play().catch(error => console.error("Error playing lecturer video:", error));
                 }
-                peer = new SimplePeer({
-                    initiator: true,
-                    stream: stream,
-                    config: { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] }
+                peer = new Peer(sessionId, {
+                    config: {
+                        iceServers: [
+                            { urls: "stun:stun.l.google.com:19302" },
+                            { urls: "turn:turn.bistri.com:80", username: "homeo", credential:"homeo" }                        ]
+                    }
                 });
-                setupPeerEvents(peer, sessionId);
+                peer.on("open", () => console.log("Lecturer peer open:", sessionId));
+                peer.on("connection", (conn) => {
+                    conn.on("open", () => {
+                        console.log("Student connected, peer ID:", conn.peer);
+                        const call = peer.call(conn.peer, localStream);
+                        call.on("stream", (remoteStream) => {
+                            console.log("Received student stream (if any):", remoteStream);
+                        });
+                        call.on("error", (err) => console.error("Call error:", err));
+                    });
+                    conn.on("data", (data) => console.log("Received student data:", data));
+                });
+                peer.on("error", (err) => {
+                    console.error("Peer error:", err);
+                    if (err.type === "peer-unavailable") {
+                        console.warn("Student not found. They may have disconnected.");
+                    } else if (err.type === "server-disconnected") {
+                        alert("Lost connection to PeerServer. Reconnecting...");
+                        peer.reconnect();
+                    }
+                });
+            })
+            .catch(err => {
+                console.error("Failed to get local stream:", err);
+                alert("Unable to access webcam/microphone. Please check permissions.");
             });
     } else {
-        if (peer) return;
-        peer = new SimplePeer({ config: { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] } });
-        setupPeerEvents(peer, sessionId);
-
-        peer.on("track", (track, stream) => {
-            if (video) {
-                if (track.kind === "video") {
-                    video.srcObject = stream;
-                    video.play().catch(error => {
-                        console.error("Error playing video stream:", error);
-                        alert("Unable to play the video stream. Please check your device.");
-                    });
+        if (peer) {
+            console.log("Student peer already exists:", peer.id);
+            return;
+        }
+        peer = new Peer({
+            config: {
+                iceServers: [
+                    { urls: "stun:stun.l.google.com:19302" },
+                    { urls: "turn:turn.bistri.com:80", username: "homeo", credential: "homeo" }                ]
+            }
+        });
+        peer.on("open", (id) => {
+            console.log("Student peer open:", id);
+            setTimeout(() => {
+                const conn = peer.connect(sessionId);
+                conn.on("open", () => {
+                    console.log("Connected to lecturer:", sessionId);
+                    conn.send("Student peer ready: " + id);
+                });
+                conn.on("error", (err) => console.error("Connection error:", err));
+            }, 1000); // Delay to ensure peer is ready
+        });
+        peer.on("call", (call) => {
+            console.log("Received lecturer call:", call.peer);
+            call.answer();
+            call.on("stream", (remoteStream) => {
+                let isStreamAttached = false
+                if (isStreamAttached) {
+                    console.log("Ignoring duplicate lecturer stream:", remoteStream);
+                    return;
                 }
+                console.log("Received lecturer stream:", remoteStream);
+                if (video) {
+                    video.srcObject = remoteStream;
+                    video.onloadedmetadata = () => {
+                        video.play().catch(error => console.error("Error playing lecturer stream:", error));
+                    };
+                    isStreamAttached = true
+                }
+            });
+            call.on("error", (err) => console.error("Call error:", err));
+        });
+        peer.on("error", (err) => {
+            console.error("Peer error:", err);
+            if (err.type === "peer-unavailable") {
+                alert("Lecturer not available. Please try again later.");
             }
         });
     }
 });
 
-function setupPeerEvents(peer, sessionId) {
-    if (peer != null) {
-        const processedSignals = new Set();
-
-        peer.on("signal", data => {
-            if (data.type === "answer") {
-                if (!peer._pc.localDescription) {
-                    console.warn("Attempted to send SDP answer before processing SDP offer. Ignoring.");
-                    return;
-                }
-            }
-            connection.invoke("SendSignal", sessionId, [data])
-                .catch(err => console.error("Error invoking SendSignal:", err));
-        });
-
-        peer.on("signalingStateChange", () => {
-            if (pendingAnswer) {
-                if (peer._pc.signalingState == "have-local-offer") {
-                    try {
-                        peer.signal(pendingAnswer);
-                        pendingAnswer = null;
-                    } catch (error) {
-                        console.error("Error processing pending SDP answer:", error);
-                    }
-                }
-            }
-        });
-
-        peer.on("connect", () => console.log("Peer connected."));
-        peer.on("close", () => console.log("Peer closed."));
-        peer.on("error", (err) => {
-            console.error("Peer error:", err);
-            if (err.message.includes("setRemoteDescription")) {
-                console.warn("Ignoring setRemoteDescription error. Peer will continue functioning.");
-                return;
-            }
-        });
-    }
-}
-
-let pendingAnswer = null;
-connection.on("ReceiveSignal", (connectionId, serializedData) => {
-    try {
-        const signalDataArray = JSON.parse(serializedData);
-
-        signalDataArray.forEach(signalData => {
-            if (peer && !peer.destroyed) {
-                if (signalData.type === "answer") {
-                    if (peer._pc.signalingState !== "have-local-offer") {
-                        console.warn("Storing out-of-order SDP answer. Will process later.");
-                        pendingAnswer = signalData;
-                        return;
-                    }
-                }
-                peer.signal(signalData);
-
-                let isPendingAnswerProcessed = false;
-                setTimeout(() => {
-                    if (pendingAnswer != null && !isPendingAnswerProcessed) {
-                        if (peer._pc.signalingState === "have-local-offer") {
-                            try {
-                                peer.signal(pendingAnswer);
-                                pendingAnswer = null;
-                                isPendingAnswerProcessed = true;
-                            } catch (error) {
-                                console.error("Error processing pending SDP answer:", error);
-                            }
-                        } else {
-                            console.warn("Cannot process pending SDP answer. Current signaling state:", peer._pc.signalingState);
-                        }
-                    }
-                }, 500);
-            } else {
-                console.warn("Peer is not initialized or destroyed. Recreating peer...");
-                recreatePeer(false, localStream);
-            }
-        });
-    } catch (error) {
-        console.error("Error processing signal data:", serializedData, error);
+connection.on("ReceiveMessage", (user, message) => {
+    const chatMessages = document.getElementById("chatMessages");
+    if (chatMessages) {
+        chatMessages.innerHTML += `<div>${user}: ${message}</div>`;
+        chatMessages.scrollTop = chatMessages.scrollHeight;
     }
 });
 

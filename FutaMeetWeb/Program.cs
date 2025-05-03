@@ -27,7 +27,10 @@ var app = builder.Build();
     app.UseAuthorization();
     app.MapStaticAssets();
     app.UseSession();
-    app.MapHub<SessionHub>("/sessionHub");
+    app.MapHub<SessionHub>("/sessionHub", options =>
+	{
+		options.Transports = Microsoft.AspNetCore.Http.Connections.HttpTransportType.WebSockets;
+	});
     app.MapRazorPages()
 		.WithStaticAssets();
 app.Run();
