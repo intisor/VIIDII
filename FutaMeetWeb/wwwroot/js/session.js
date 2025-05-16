@@ -1,5 +1,8 @@
 ﻿let localStream = null;
 let peer = null;
+let isStreamAttached = false;
+let attachedStreamId = null; // Track stream ID
+let hasJoinedSession = false; // Track session join
 
 const connection = new signalR.HubConnectionBuilder()
     .withUrl("/sessionHub")
@@ -11,6 +14,14 @@ connection.onclose((error) => {
     alert("Session connection lost. Please refresh or try again.");
 });
 
+connection.onreconnected(() => {
+    console.log("SignalR reconnected, rejoining session...");
+    const { sessionId } = window.sessionState || {};
+    if (sessionId && !window.isSessionLecturer && !hasJoinedSession) {
+        connection.invoke("StartSession", sessionId);
+    }
+});
+
 connection.start().then(() => {
     const { sessionId, isSessionStarted } = window.sessionState || {};
     if (sessionId && isSessionStarted && window.isSessionLecturer && !localStream) {
@@ -18,9 +29,14 @@ connection.start().then(() => {
     } else if (sessionId && !window.isSessionLecturer) {
         connection.invoke("StartSession", sessionId);
     }
-});
+}).catch(err => console.error("SignalR connection failed:", err));
 
 connection.on("StartSession", (sessionId) => {
+    if (hasJoinedSession) {
+        console.log("Already joined session, skipping StartSession:", sessionId);
+        return;
+    }
+    hasJoinedSession = true;
     const video = document.getElementById("sessionVideo");
     console.log("Video Element Ready:", video);
     if (video && video.srcObject) {
@@ -47,17 +63,23 @@ connection.on("StartSession", (sessionId) => {
                     config: {
                         iceServers: [
                             { urls: "stun:stun.l.google.com:19302" },
-                            { urls: "turn:turn.bistri.com:80", username: "homeo", credential:"homeo" }                        ]
+                            { urls: "turn:turn.bistri.com:80", username: "homeo", credential: "homeo" }
+                        ]
                     }
                 });
-                peer.on("open", () => console.log("Lecturer peer open:", sessionId));
+                peer.on("open", () => {
+                    console.log("Lecturer peer open:", sessionId);
+                    connection.invoke("SessionStarted", sessionId).catch(err => console.error("Failed to broadcast SessionStarted:", err));
+                });
                 peer.on("connection", (conn) => {
                     conn.on("open", () => {
                         console.log("Student connected, peer ID:", conn.peer);
+                        if (!conn.peer) {
+                            console.warn("Invalid student peer ID, skipping call");
+                            return;
+                        }
                         const call = peer.call(conn.peer, localStream);
-                        call.on("stream", (remoteStream) => {
-                            console.log("Received student stream (if any):", remoteStream);
-                        });
+                        call.on("open", () => console.log("Call to student opened:", conn.peer));
                         call.on("error", (err) => console.error("Call error:", err));
                     });
                     conn.on("data", (data) => console.log("Received student data:", data));
@@ -85,36 +107,33 @@ connection.on("StartSession", (sessionId) => {
             config: {
                 iceServers: [
                     { urls: "stun:stun.l.google.com:19302" },
-                    { urls: "turn:turn.bistri.com:80", username: "homeo", credential: "homeo" }                ]
+                    { urls: "turn:turn.bistri.com:80", username: "homeo", credential: "homeo" }
+                ]
             }
         });
         peer.on("open", (id) => {
             console.log("Student peer open:", id);
-            setTimeout(() => {
-                const conn = peer.connect(sessionId);
-                conn.on("open", () => {
-                    console.log("Connected to lecturer:", sessionId);
-                    conn.send("Student peer ready: " + id);
-                });
-                conn.on("error", (err) => console.error("Connection error:", err));
-            }, 1000); // Delay to ensure peer is ready
         });
         peer.on("call", (call) => {
             console.log("Received lecturer call:", call.peer);
             call.answer();
             call.on("stream", (remoteStream) => {
-                let isStreamAttached = false
+                if (remoteStream.id === attachedStreamId) {
+                    console.log("Ignoring duplicate lecturer stream, ID:", remoteStream.id);
+                    return;
+                }
                 if (isStreamAttached) {
-                    console.log("Ignoring duplicate lecturer stream:", remoteStream);
+                    console.log("Stream already attached, ignoring new stream:", remoteStream.id);
                     return;
                 }
                 console.log("Received lecturer stream:", remoteStream);
+                isStreamAttached = true;
+                attachedStreamId = remoteStream.id;
                 if (video) {
                     video.srcObject = remoteStream;
                     video.onloadedmetadata = () => {
                         video.play().catch(error => console.error("Error playing lecturer stream:", error));
                     };
-                    isStreamAttached = true
                 }
             });
             call.on("error", (err) => console.error("Call error:", err));
@@ -122,9 +141,83 @@ connection.on("StartSession", (sessionId) => {
         peer.on("error", (err) => {
             console.error("Peer error:", err);
             if (err.type === "peer-unavailable") {
-                alert("Lecturer not available. Please try again later.");
+                console.warn("Lecturer not available. Waiting for session start...");
+            } else if (err.type === "server-disconnected") {
+                console.warn("PeerServer disconnected. Reconnecting...");
+                peer.reconnect();
             }
         });
+    }
+});
+
+function tryConnect(sessionId, attempt = 1, maxAttempts = 3) {
+    console.log(`Attempting to connect to lecturer, attempt ${attempt}/${maxAttempts}`);
+    if (!peer || peer.disconnected) {
+        console.warn("Student peer not initialized or disconnected, reinitializing...");
+        peer = new Peer({
+            config: {
+                iceServers: [
+                    { urls: "stun:stun.l.google.com:19302" },
+                    { urls: "turn:turn.bistri.com:80", username: "homeo", credential: "homeo" }
+                ]
+            }
+        });
+        peer.on("open", (id) => {
+            console.log("Student peer open:", id);
+        });
+        peer.on("call", (call) => {
+            console.log("Received lecturer call:", call.peer);
+            call.answer();
+            call.on("stream", (remoteStream) => {
+                if (remoteStream.id === attachedStreamId) {
+                    console.log("Ignoring duplicate lecturer stream, ID:", remoteStream.id);
+                    return;
+                }
+                if (isStreamAttached) {
+                    console.log("Stream already attached, ignoring new stream:", remoteStream.id);
+                    return;
+                }
+                console.log("Received lecturer stream:", remoteStream);
+                isStreamAttached = true;
+                attachedStreamId = remoteStream.id;
+                const video = document.getElementById("sessionVideo");
+                if (video) {
+                    video.srcObject = remoteStream;
+                    video.onloadedmetadata = () => {
+                        video.play().catch(error => console.error("Error playing lecturer stream:", error));
+                    };
+                }
+            });
+            call.on("error", (err) => console.error("Call error:", err));
+        });
+        peer.on("error", (err) => {
+            console.error("Peer error:", err);
+            if (err.type === "peer-unavailable") {
+                console.warn("Lecturer not available. Waiting for session start...");
+            } else if (err.type === "server-disconnected") {
+                console.warn("PeerServer disconnected. Reconnecting...");
+                peer.reconnect();
+            }
+        });
+    }
+    const conn = peer.connect(sessionId);
+    conn.on("open", () => {
+        console.log("Connected to lecturer:", sessionId);
+        conn.send("Student peer ready: " + peer.id);
+    });
+    conn.on("error", (err) => {
+        console.error("Connection error:", err);
+        if (attempt < maxAttempts && err.type === "peer-unavailable") {
+            console.warn(`Retrying connection (attempt ${attempt + 1}/${maxAttempts})...`);
+            setTimeout(() => tryConnect(sessionId, attempt + 1, maxAttempts), 2000);
+        }
+    });
+}
+
+connection.on("SessionStarted", (sessionId) => {
+    console.log("Session started by lecturer:", sessionId);
+    if (!window.isSessionLecturer) {
+        tryConnect(sessionId);
     }
 });
 

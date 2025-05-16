@@ -10,6 +10,7 @@ namespace FutaMeetWeb.Hubs
 {
     public class SessionHub : Hub
     {
+
         public async Task StartSession(string sessionId)
         {
             await Groups.AddToGroupAsync(Context.ConnectionId, sessionId);
@@ -17,13 +18,12 @@ namespace FutaMeetWeb.Hubs
             //ListGroupMembers(sessionId);
         }
 
-        public Task SendMessage(string user, string message) => Clients.Others.SendAsync("ReceiveMessage", user, message);
-        //public Task SendSignal(string sessionId, object data)
-        //{
-        //    string serializedData = System.Text.Json.JsonSerializer.Serialize(data);
-        //    return Clients.Others.SendAsync("ReceiveSignal", Context.ConnectionId, serializedData);
-        //}
+        public async Task SessionStarted(string sessionId)
+        {
+            await Clients.Group(sessionId).SendAsync("SessionStarted", sessionId);
+        }
 
+        public Task SendMessage(string user, string message) => Clients.Others.SendAsync("ReceiveMessage", user, message);
         public void ListGroupMembers(string sessionId)
         {
             var group = Clients.Group(sessionId);
