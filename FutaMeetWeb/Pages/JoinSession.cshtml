@@ -35,13 +35,18 @@
                     <video id="sessionVideo" data-session-id="@Model.CurrentSessionId" autoplay class="modern-video" style="width: 100%; max-height: 400px; background: black;"></video>
                 </div>
                 <div class="col-md-4">
-                    <h4 class="modern-heading">Chat</h4>
-                    <div id="chatMessages" class="border rounded p-2 modern-chat" style="height: 300px; overflow-y: auto;"></div>
-                    <div class="input-group mt-2">
-                        <textarea id="chatInput" rows="2" class="form-control modern-input" placeholder="Type a message..."></textarea>
-                        <button id="sendMessage" class="btn btn-skeuo">
-                            <i class="fas fa-paper-plane"></i> Send
-                        </button>
+                    <div class="col-12">
+                        <h4 class="modern-heading">DISCUSSION</h4>
+                        <div id="discussion" class="modern-chat" data-session-id="@Model.CurrentSessionId" style="height: 300px; overflow-y: auto;">
+                            <!-- Messages will be dynamically added here -->
+                        </div>
+                        <!-- Reply input area (hidden by default, shown when "Reply" is clicked) -->
+                        <div id="replyArea" class="input-group mt-2" style="display: none;">
+                            <textarea id="replyInput" rows="2" class="modern-input" placeholder="Write a reply..."></textarea>
+                            <button id="sendReply" class="btn btn-skeuo">
+                                <i class="fas fa-paper-plane"></i> Send Reply
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>

@@ -52,13 +52,23 @@
                     }
                 </div>
                 <div class="col-md-4">
-                    <h4 class="modern-heading">Chat</h4>
-                    <div id="chatMessages" class="border rounded p-2 modern-chat" style="height: 300px; overflow-y: auto;"></div>
-                    <div class="input-group mt-2">
-                        <textarea id="chatInput" rows="2" class="form-control modern-input" placeholder="Type a message..."></textarea>
-                        <button id="sendMessage" class="btn btn-skeuo">
-                            <i class="fas fa-paper-plane"></i> Send
-                        </button>
+                    <div class="col-12">
+                        <h4 class="modern-heading">DISCUSSION</h4>
+                        <div id="discussion" class="modern-chat" data-session-id="@Model.CurrentSessionId" style="height: 300px; overflow-y: auto;">
+                            <!-- Messages will be dynamically added here -->
+                        </div>
+                        <div class="input-group mt-2">
+                            <!-- Lecturer-only post input, now always visible -->
+                            <textarea id="postInput" rows="2" class="modern-input" placeholder="Create Post..."></textarea>
+                            <button id="createPost" class="btn btn-skeuo">
+                                <i class="fas fa-paper-plane"></i> Post
+                            </button>
+                        </div>
+
+                        <h4 class="modern-heading mt-4">PARTICIPANTS</h4>
+                        <div id="participantPanel" class="modern-chat" style="height: 200px; overflow-y: auto;">
+                            <!-- Participant list will be dynamically added here -->
+                        </div>
                     </div>
                 </div>
             </div>

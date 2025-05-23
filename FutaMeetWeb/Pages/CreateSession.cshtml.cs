@@ -23,14 +23,12 @@ namespace FutaMeetWeb.Pages
         public bool IsSessionStarted { get; set; }
         public string Message { get; set; }
         public Session Session { get; set; }
-        public bool IsSessionLecturer { get; set; }
-        public bool IsLecturer
+        public bool IsSessionLecturer { get; set; } // Fixed: Changed from method group to property
+
+        private bool IsSessionLecturerMethod(string sessionId, string matricNo) // Renamed method to avoid conflict
         {
-            get
-            {
-                var matricNo = HttpContext.Session.GetString("MatricNo");
-                return !string.IsNullOrEmpty(matricNo) && _sessionService.IsLecturer(matricNo);
-            }
+            var session = _sessionService.GetSessionById(sessionId);
+            return session != null && session.LecturerId == matricNo;
         }
 
         public void OnGet()
@@ -42,7 +40,7 @@ namespace FutaMeetWeb.Pages
                 CurrentSessionId = Session.SessionId;
                 IsSessionStarted = Session.IsSessionStarted;
                 Message = HttpContext.Session.GetString("SessionMessage");
-                IsSessionLecturer = Session.LecturerId == lecturerId;
+                IsSessionLecturer = Session.LecturerId == lecturerId; // No conflict now
             }
         }
 
@@ -61,7 +59,7 @@ namespace FutaMeetWeb.Pages
                 ? $"Created session Kept existing session: {session.SessionId}"
                 : $"session: {session.SessionId}";
             IsSessionStarted = session.IsSessionStarted;
-            IsSessionLecturer = session.LecturerId == lecturerId;
+            IsSessionLecturer = session.LecturerId == lecturerId; // No conflict now
             HttpContext.Session.SetString("SessionMessage", Message);
             HttpContext.Session.SetString("CurrentSessionId", CurrentSessionId);
             return Page();
@@ -85,7 +83,7 @@ namespace FutaMeetWeb.Pages
             _sessionService.StartSession(Session.SessionId);
             CurrentSessionId = Session.SessionId;
             IsSessionStarted = Session.IsSessionStarted;
-            IsSessionLecturer = Session.LecturerId == lecturerId;
+            IsSessionLecturer = Session.LecturerId == lecturerId; // No conflict now
             Message = $"Session {Session.SessionId} started at {Session.StartTime:HH:mm}";
 
             Console.WriteLine($"Session started: {Session.SessionId}, IsSessionStarted: {IsSessionStarted}");
@@ -108,7 +106,7 @@ namespace FutaMeetWeb.Pages
             _sessionService.EndSession(Session.SessionId, Session.LecturerId);
             CurrentSessionId = Session.SessionId;
             IsSessionStarted = Session.IsSessionStarted;
-            IsSessionLecturer = Session.LecturerId == lecturerId;
+            IsSessionLecturer = Session.LecturerId == lecturerId; // No conflict now
             Message = $"Session {Session.SessionId} stopped at {Session.EndTime:HH:mm}";
             HttpContext.Session.SetString("SessionMessage", Message);
             return Page();

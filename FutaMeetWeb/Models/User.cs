@@ -19,6 +19,10 @@
         public SessionStatus Status { get; set; } = SessionStatus.Active;
         public bool IsSessionStarted { get; set; } = false;
         public HashSet<string> ParticipantIds { get; } = [];
+        public Dictionary<string,StudentStatus> PartipantStatus { get; } = new();
+
+        public enum StudentStatus { Active, InActive, BatteryLow, DataFinished, Disconnected }
+
 
         private static string GenerateSessionCode() => $"{DateTime.UtcNow.AddHours(1):yyyyMMdd}-{string.Concat(Enumerable.Range(0, 6).Select(_ => (char)('A' + Random.Shared.Next(26))))}";
     }

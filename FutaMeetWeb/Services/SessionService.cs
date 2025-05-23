@@ -1,4 +1,4 @@
-﻿using FutaMeetWeb.Models;
+﻿using FutaMeetWeb.Models;               
 using System.Collections.Concurrent;
 
 namespace FutaMeetWeb.Services;
@@ -6,8 +6,6 @@ namespace FutaMeetWeb.Services;
 public class SessionService
 {
     private readonly ConcurrentDictionary<string, Session> _sessions = [];
-
-
     public bool IsLecturer(string matricNo)
     {
         var lecturers = MockApiService.GetLecturers();
@@ -53,7 +51,7 @@ public class SessionService
             return (null, "Invalid user.");
         if (_sessions.Values.Any(s => s.Status == SessionStatus.Active && s.ParticipantIds.Contains(participantId) && s.SessionId != sessionId))
             return (null, "You are already in a different session.");
-        session.ParticipantIds.Add(participantId);
+            session.ParticipantIds.Add(participantId);
         return (session, null);
     }
 
@@ -79,6 +77,20 @@ public class SessionService
             session.StartTime = DateTime.UtcNow.AddHours(1);
         }
         return session;
+    }
+
+    public Session.StudentStatus UpdateParticipantStatus(string sessionId,string participantId,Session.StudentStatus status )
+    {
+        if (_sessions.TryGetValue(sessionId, out var session) && session.ParticipantIds.Contains(participantId))
+        {
+            session.PartipantStatus[participantId] = status;
+            return status;
+        }
+        return status;
+    }
+    public Dictionary<string,Session.StudentStatus> GetParticipantStatus(string sessionId)
+    {
+        return _sessions.TryGetValue(sessionId, out var session) ? session.PartipantStatus : new Dictionary<string, Session.StudentStatus>();
     }
 
     public Session GetSessionById(string sessionId) =>

@@ -1,19 +1,37 @@
-﻿let localStream = null;
-let peer = null;
-let isStreamAttached = false;
-let attachedStreamId = null; // Track stream ID
-let hasJoinedSession = false; // Track session join
+﻿// === Initialization ===
+// Global variables for stream and session management
+let localStream = null;          // Holds the local video/audio stream
+let peer = null;                 // PeerJS instance for video calls
+let isStreamAttached = false;    // Tracks if a stream is already attached to video
+let attachedStreamId = null;     // Tracks the ID of the attached stream
+let hasJoinedSession = false;    // Tracks if the user has joined the session
 
+// Initialize SignalR connection
 const connection = new signalR.HubConnectionBuilder()
     .withUrl("/sessionHub")
     .withAutomaticReconnect()
     .build();
 
+// Function to get dynamic timestamp
+function getTimestamp() {
+    const options = {
+        timeZone: 'Africa/Lagos',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+    };
+    const time = new Date().toLocaleTimeString('en-US', options);
+    return `${time} WAT`;
+}
+
+// === SignalR Connection Management ===
+// Handle connection closure with error notification
 connection.onclose((error) => {
     console.error("SignalR connection closed.", error);
     alert("Session connection lost. Please refresh or try again.");
 });
 
+// Handle reconnection and rejoin logic for students
 connection.onreconnected(() => {
     console.log("SignalR reconnected, rejoining session...");
     const { sessionId } = window.sessionState || {};
@@ -22,6 +40,7 @@ connection.onreconnected(() => {
     }
 });
 
+// Start the SignalR connection and initialize session
 connection.start().then(() => {
     const { sessionId, isSessionStarted } = window.sessionState || {};
     if (sessionId && isSessionStarted && window.isSessionLecturer && !localStream) {
@@ -29,8 +48,22 @@ connection.start().then(() => {
     } else if (sessionId && !window.isSessionLecturer) {
         connection.invoke("StartSession", sessionId);
     }
+    // Load initial messages if session exists
+    if (sessionId) {
+        connection.invoke("GetMessages", sessionId);
+    }
 }).catch(err => console.error("SignalR connection failed:", err));
 
+// Show/hide lecturer post input on page load (already visible per CSS)
+document.addEventListener("DOMContentLoaded", () => {
+    if (window.isSessionLecturer) {
+        document.getElementById("postInput").style.display = "block"; // Redundant with CSS, kept for clarity
+        document.getElementById("createPost").style.display = "block"; // Redundant with CSS, kept for clarity
+    }
+});
+
+// === Streaming Logic ===
+// Handle session start and video streaming setup
 connection.on("StartSession", (sessionId) => {
     if (hasJoinedSession) {
         console.log("Already joined session, skipping StartSession:", sessionId);
@@ -45,12 +78,12 @@ connection.on("StartSession", (sessionId) => {
     }
 
     if (window.isSessionLecturer) {
+        // Attach existing stream or get new one for lecturer
         if (localStream && video && !video.srcObject) {
             video.srcObject = localStream;
             video.play().catch(error => console.error("Error playing lecturer video:", error));
             return;
         }
-
         navigator.mediaDevices.getUserMedia({ video: true, audio: true })
             .then(stream => {
                 localStream = stream;
@@ -99,6 +132,7 @@ connection.on("StartSession", (sessionId) => {
                 alert("Unable to access webcam/microphone. Please check permissions.");
             });
     } else {
+        // Student setup to receive lecturer stream
         if (peer) {
             console.log("Student peer already exists:", peer.id);
             return;
@@ -150,6 +184,7 @@ connection.on("StartSession", (sessionId) => {
     }
 });
 
+// Function to handle student connection attempts to lecturer
 function tryConnect(sessionId, attempt = 1, maxAttempts = 3) {
     console.log(`Attempting to connect to lecturer, attempt ${attempt}/${maxAttempts}`);
     if (!peer || peer.disconnected) {
@@ -214,6 +249,8 @@ function tryConnect(sessionId, attempt = 1, maxAttempts = 3) {
     });
 }
 
+// === Session Management ===
+// Handle session start broadcast from lecturer
 connection.on("SessionStarted", (sessionId) => {
     console.log("Session started by lecturer:", sessionId);
     if (!window.isSessionLecturer) {
@@ -221,25 +258,199 @@ connection.on("SessionStarted", (sessionId) => {
     }
 });
 
-connection.on("ReceiveMessage", (user, message) => {
-    const chatMessages = document.getElementById("chatMessages");
-    if (chatMessages) {
-        chatMessages.innerHTML += `<div>${user}: ${message}</div>`;
-        chatMessages.scrollTop = chatMessages.scrollHeight;
+// === Messaging Logic ===
+
+// Handle sending a post on button click (lecturer only)
+document.getElementById("createPost")?.addEventListener("click", () => {
+    const input = document.getElementById("postInput");
+    const discussion = document.getElementById("discussion");
+    const sessionId = discussion?.getAttribute("data-session-id");
+    console.log("Attempting to create post with sessionId:", sessionId);
+    if (input && sessionId && window.isSessionLecturer) {
+        const messageContent = input.value.trim();
+        if (messageContent) {
+            const messageBox = document.createElement("div");
+            messageBox.className = "message-box";
+            const messageDiv = document.createElement("div");
+            messageDiv.className = "lecturer-msg";
+            messageDiv.innerHTML = `
+                <div class="lecturer-username">Lecturer</div>
+                <div class="lecturer-content">${messageContent}</div>
+                <div class="message-footer">
+                    <div class="timestamp">${getTimestamp()}</div>
+                    <button class="reply-btn">Reply</button>
+                </div>
+            `;
+            messageBox.appendChild(messageDiv);
+            discussion.appendChild(messageBox);
+            discussion.scrollTop = discussion.scrollHeight;
+
+            connection.invoke("CreatePost", sessionId, messageContent).catch(err => console.error("Hub error:", err));
+            input.value = "";
+        }
+    } else {
+        console.warn("Cannot create post: sessionId, input, or lecturer check failed", { sessionId, isLecturer: window.isSessionLecturer });
+    }
+}, { once: false });
+// Handle receiving a post (for all clients)
+connection.on("ReceivePost", (message) => {
+    const discussion = document.getElementById("discussion");
+    if (discussion) {
+        const messageBox = document.createElement("div");
+        messageBox.className = "message-box";
+        const messageDiv = document.createElement("div");
+        messageDiv.className = "lecturer-msg";
+        messageDiv.setAttribute("data-post-id", message.id); // Changed from message.PostId
+        messageDiv.innerHTML = `
+            <div class="lecturer-username">${message.userName || "Lecturer"}</div>
+            <div class="lecturer-content">${message.content}</div>
+            <div class="message-footer">
+                <div class="timestamp">${getTimestamp()}</div>
+                <button class="reply-btn">Reply</button>
+            </div>
+        `;
+        messageBox.appendChild(messageDiv);
+        discussion.appendChild(messageBox);
+        discussion.scrollTop = discussion.scrollHeight;
+
+        messageDiv.querySelector(".reply-btn").addEventListener("click", () => {
+            const replyArea = document.getElementById("replyArea");
+            const replyInput = document.getElementById("replyInput");
+            if (replyArea && replyInput) {
+                replyArea.style.display = "block";
+                replyInput.dataset.postId = message.id; // Changed from message.PostId
+            }
+        });
     }
 });
 
-document.getElementById("sendMessage")?.addEventListener("click", () => {
-    const input = document.getElementById("chatInput");
-    if (input) {
-        connection.invoke("SendMessage", "User", input.value);
-        input.value = "";
+// Handle receiving a reply (for all clients)
+connection.on("ReceiveComment", (comment) => {
+    const discussion = document.getElementById("discussion");
+    if (discussion) {
+        const parentMessage = discussion.querySelector(`[data-post-id="${comment.parentId}"]`); // Fix: Use parentId
+        if (parentMessage) {
+            const messageBox = document.createElement("div");
+            messageBox.className = "message-box";
+            const messageDiv = document.createElement("div");
+            messageDiv.className = "student-msg";
+            messageDiv.innerHTML = `
+                <div class="student-username">${comment.userName || "Student"}</div>
+                <div class="student-content">${comment.content}</div>
+                <div class="message-footer">
+                    <div class="timestamp">${getTimestamp()}</div>
+                    <button class="reply-btn">Reply</button>
+                </div>
+            `;
+            messageBox.appendChild(messageDiv);
+            parentMessage.parentNode.insertAdjacentElement("afterend", messageBox);
+            discussion.scrollTop = discussion.scrollHeight;
+        } else {
+            console.warn(`Parent post not found for comment with parentId: ${comment.parentId}`);
+        }
+    }
+});
+// Handle sending a reply (for students)
+document.getElementById("sendReply")?.addEventListener("click", () => {
+    const input = document.getElementById("replyInput");
+    const replyArea = document.getElementById("replyArea");
+    const { sessionId } = window.sessionState || {};
+    const postId = input?.dataset.postId;
+    if (input && sessionId && postId) {
+        const replyContent = input.value.trim();
+        if (replyContent) {
+            connection.invoke("CreateComment", sessionId, postId, replyContent).catch(err => console.error("Hub error:", err));
+            input.value = "";
+            input.dataset.postId = "";
+            replyArea.style.display = "none";
+        }
     }
 });
 
-document.getElementById("startSession")?.addEventListener("click", () => {
-    const sessionId = document.getElementById("sessionVideo")?.dataset.sessionId;
-    if (sessionId) {
-        connection.invoke("StartSession", sessionId);
+connection.on("ReceiveMessages", (messages) => {
+    const discussion = document.getElementById("discussion");
+    if (discussion) {
+        messages.forEach(message => {
+            const messageBox = document.createElement("div");
+            messageBox.className = "message-box";
+            const messageDiv = document.createElement("div");
+
+            if (message.isLecturerPost && message.parentId === message.id) { // Changed from message.IsLecturerPost, message.ParentId, message.Id
+                messageDiv.className = "lecturer-msg";
+                messageDiv.setAttribute("data-post-id", message.id); // Changed from message.Id
+                messageDiv.innerHTML = `
+                    <div class="lecturer-username">${message.userName || "Lecturer"}</div>
+                    <div class="lecturer-content">${message.content}</div>
+                    <div class="message-footer">
+                        <div class="timestamp">${getTimestamp()}</div>
+                        <button class="reply-btn">Reply</button>
+                    </div>
+                `;
+                messageBox.appendChild(messageDiv);
+                discussion.appendChild(messageBox);
+
+                messageDiv.querySelector(".reply-btn").addEventListener("click", () => {
+                    const replyArea = document.getElementById("replyArea");
+                    const replyInput = document.getElementById("replyInput");
+                    if (replyArea && replyInput) {
+                        replyArea.style.display = "block";
+                        replyInput.dataset.postId = message.id; // Changed from message.Id
+                    }
+                });
+            } else {
+                messageDiv.className = "student-msg";
+                messageDiv.innerHTML = `
+                    <div class="student-username">${message.userName || "Student"}</div>
+                    <div class="student-content">${message.content}</div>
+                    <div class="message-footer">
+                        <div class="timestamp">${getTimestamp()}</div>
+                        <button class="reply-btn">Reply</button>
+                    </div>
+                `;
+                messageBox.appendChild(messageDiv);
+                const parentMessage = discussion.querySelector(`[data-post-id="${message.parentId}"]`); // Changed from message.ParentId
+                if (parentMessage) {
+                    parentMessage.parentNode.insertAdjacentElement("afterend", messageBox);
+                } else {
+                    discussion.appendChild(messageBox);
+                }
+            }
+        });
+        discussion.scrollTop = discussion.scrollHeight;
+    }
+});
+connection.on("PostCreated", (postId) => {
+    const discussion = document.getElementById("discussion");
+    const lastMessage = discussion.lastElementChild;
+    if (lastMessage && lastMessage.className === "message-box") {
+        const messageDiv = lastMessage.querySelector(".lecturer-msg");
+        if (messageDiv && !messageDiv.getAttribute("data-post-id")) {
+            messageDiv.setAttribute("data-post-id", postId);
+            messageDiv.querySelector(".reply-btn").addEventListener("click", () => {
+                const replyArea = document.getElementById("replyArea");
+                const replyInput = document.getElementById("replyInput");
+                if (replyArea && replyInput) {
+                    replyArea.style.display = "block";
+                    replyInput.dataset.postId = postId;
+                }
+            });
+        }
+    }
+});
+
+// Handle receiving participant list (lecturer only)
+connection.on("ReceiveParticipants", (participants) => {
+    const panel = document.getElementById("participantPanel");
+    if (panel) {
+        panel.innerHTML = "";
+        const list = document.createElement("ul");
+        list.className = "list-group";
+        Object.values(participants).forEach(name => {
+            const item = document.createElement("li");
+            item.className = "list-group-item";
+            item.textContent = name;
+            list.appendChild(item);
+        });
+        panel.appendChild(list);
     }
 });

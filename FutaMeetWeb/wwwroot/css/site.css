@@ -119,71 +119,6 @@ main {
 }
 
 /* Chat Container */
-#chatMessages {
-    background: #f8f9fa;
-    border: 1px solid transparent;
-    border-image: linear-gradient(135deg, #6A1B9A, #AB47BC) 1;
-    border-radius: 8px;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
-    height: 300px;
-    overflow-y: auto;
-    padding: 10px;
-    margin-bottom: 15px;
-}
-
-    /* Chat Messages */
-    #chatMessages .sender, #chatMessages .receiver {
-        margin: 5px 0;
-        display: flex;
-        flex-direction: column;
-    }
-
-    #chatMessages .sender {
-        align-items: flex-end;
-    }
-
-    #chatMessages .receiver {
-        align-items: flex-start;
-    }
-
-    #chatMessages p {
-        background: linear-gradient(135deg, #fff, #f0f0f0);
-        border-radius: 12px;
-        padding: 8px 12px;
-        margin: 0;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-        max-width: 60%;
-        display: inline-block;
-        word-wrap: break-word;
-        font-size: 14px;
-    }
-
-    #chatMessages .sender p {
-        background: linear-gradient(135deg, #DCF8C6, #C8E6C9);
-        border: 1px solid #4CAF50;
-    }
-
-    #chatMessages .receiver p {
-        background: linear-gradient(135deg, #fff, #f0f0f0);
-        border: 1px solid #2196F3;
-    }
-
-    /* Timestamp */
-    #chatMessages .timestamp {
-        font-size: 0.65em;
-        color: #666;
-        margin-top: 3px;
-        text-align: right;
-        display: flex;
-        align-items: center;
-        gap: 3px;
-    }
-
-        #chatMessages .timestamp i {
-            font-size: 0.8em;
-        }
-
-/* Modern Chat Styling */
 .modern-chat {
     height: 300px;
     overflow-y: auto;
@@ -193,39 +128,83 @@ main {
     padding: 10px;
 }
 
-.modern-chat .sender {
-    text-align: right;
-    margin-bottom: 10px;
+/* Message Styles */
+.message-box {
+    margin: 5px 0;
+    max-width: 100%; /* Span the full width of the discussion pane */
+    position: relative;
+    word-wrap: break-word;
 }
 
-.modern-chat .receiver {
-    text-align: left;
-    margin-bottom: 10px;
+.lecturer-msg {
+    text-align: left; /* Align content to the left */
 }
 
-.modern-chat .sender p,
-.modern-chat .receiver p {
-    background-color: #007bff;
+.lecturer-username {
+    background-color: #28a745;
     color: white;
-    display: inline-block;
-    padding: 8px 12px;
-    border-radius: 15px;
-    margin: 0;
+    padding: 5px 10px;
+    border-top-left-radius: 5px;
+    border-top-right-radius: 5px;
+    font-weight: bold;
+    font-size: 14px;
 }
 
-.modern-chat .receiver p {
-    background-color: #6c757d;
+.lecturer-content {
+    background-color: #ffffff;
+    color: #333;
+    padding: 10px;
+    border-bottom-left-radius: 5px;
+    border-bottom-right-radius: 5px;
+    font-size: 14px;
 }
 
-.modern-chat .timestamp {
-    font-size: 0.8em;
-    color: #6c757d;
-    display: block;
+.student-msg {
+    text-align: right; /* Align content to the right */
+}
+
+.student-username {
+    background-color: #f8f9fa;
+    color: #333;
+    padding: 5px 10px;
+    border-top-left-radius: 5px;
+    border-top-right-radius: 5px;
+    font-weight: bold;
+    font-size: 14px;
+}
+
+.student-content {
+    background-color: #ffffff;
+    color: #333;
+    padding: 10px;
+    border-bottom-left-radius: 5px;
+    border-bottom-right-radius: 5px;
+    font-size: 14px;
+}
+
+.message-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     margin-top: 5px;
 }
 
+.timestamp {
+    font-size: 0.65em;
+    color: #666;
+}
+
+.reply-btn {
+    background: none;
+    border: none;
+    color: #6f42c1;
+    cursor: pointer;
+    font-size: 14px;
+    padding: 0;
+}
+
 /* Input */
-#chatInput {
+#postInput {
     border: 1px solid transparent;
     border-image: linear-gradient(135deg, #6A1B9A, #AB47BC) 1;
     border-radius: 5px;
@@ -233,6 +212,7 @@ main {
     resize: none;
     padding: 8px;
     font-size: 14px;
+    display: block; /* Always visible for lecturer */
 }
 
 /* Buttons */
