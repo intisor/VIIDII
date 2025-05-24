@@ -448,9 +448,107 @@ connection.on("ReceiveParticipants", (participants) => {
         Object.values(participants).forEach(name => {
             const item = document.createElement("li");
             item.className = "list-group-item";
+            item.id = `participant-${name}`;
             item.textContent = name;
             list.appendChild(item);
         });
         panel.appendChild(list);
     }
 });
+
+// === Participant Status & Issue Reporting ===
+
+// Respond to server ping for activity check
+connection.on("AreYouThere", () => {
+    if (window.isSessionLecturer) return;
+    const modal = document.createElement("div");
+    modal.innerHTML = `
+        <div class="modal fade" id="activityModal" tabindex="-1">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Are you still there?</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p>Please confirm you're active.</p>
+                        <button id="confirmActive" class="btn btn-primary">I'm Here</button>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+    document.body.appendChild(modal);
+    const bsModal = new bootstrap.Modal(document.getElementById("activityModal"));
+    bsModal.show();
+    document.getElementById("confirmActive").onclick = () => {
+        connection.invoke("ConfirmActive").catch(err => console.error("Failed to confirm active:", err));
+        bsModal.hide();
+        modal.remove();
+    };
+    document.querySelector("#activityModal .btn-close").onclick = () => {
+        modal.remove();
+    };
+});
+
+// Report tab activity status to server (students only)
+document.addEventListener("visibilitychange", () => {
+    if (window.isSessionLecturer) return;
+    const isActive = !document.hidden;
+    connection.invoke("UpdateTabStatus", isActive)
+        .catch(err => console.error("Failed to update tab status:", err));
+});
+
+// Flag battery low issue (students only)
+document.getElementById("flagBatteryLow")?.addEventListener("click", () => {
+    if (window.isSessionLecturer) return;
+    if ('getBattery' in navigator) {
+        navigator.getBattery().then(battery => {
+            let batteryLevel = battery.level * 100;
+            if (batteryLevel < 15) {
+                connection.invoke("FlagIssue", "BatteryLow")
+                    .catch(err => console.error("Failed to flag battery issue:", err));
+            } else {
+                console.log("Battery level is sufficient, ignoring flag.");
+            }
+        });
+    }else {
+        // If unsupported, allow the flag to be sent
+        connection.invoke("FlagIssue", "BatteryLow")
+            .catch(err => console.error("Failed to flag battery issue:", err));
+        console.log("Battery API not supported, flagging issue anyway.");
+    }
+});
+
+// Flag data finished issue (students only)
+document.getElementById("flagDataFinished")?.addEventListener("click", () => {
+    if (window.isSessionLecturer) return;
+    connection.invoke("FlagIssue", "DataFinished") 
+        .catch(err => console.error("Failed to flag data issue:", err));
+});
+
+// Lecturer receives participant statuses 
+connection.on("ReceiveParticipantStatuses", (statuses) => {
+    if (!window.isSessionLecturer) return;
+    const panel = document.getElementById("participantPanel");
+    if (panel) {
+        Object.entries(statuses).forEach(([id, status]) => {
+            const item = document.getElementById(`participant-${id}`);
+            if (item) {
+                item.textContent = `${id} (${status})`;
+                item.className = `list-group-item ${getStatusClass(status)}`;
+            }
+        });
+    }
+});
+
+// status class 
+function getStatusClass(status) {
+    switch (status) {
+        case "Active": return "list-group-item-success";
+        case "Inactive": return "list-group-item-warning";
+        case "BatteryLow": return "list-group-item-danger";
+        case "DataFinished": return "list-group-item-danger";
+        case "Disconnected": return "list-group-item-secondary";
+        default: return "";
+    }
+}

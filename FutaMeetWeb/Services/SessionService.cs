@@ -32,7 +32,6 @@ public class SessionService
         _sessions.TryAdd(session.SessionId, session);
         return session;
     }
-
     public Session LeaveSession(string sessionId, string participantId)
     {
         if (!_sessions.TryGetValue(sessionId, out var session) || session.Status != SessionStatus.Active)
@@ -42,8 +41,7 @@ public class SessionService
         session.ParticipantIds.Remove(participantId);
         return session;
     }
-
-    public (Session Session, string Error) JoinSession(string sessionId, string participantId)
+    public (Session Session, string Error) JoinSession(string sessionId, string participantId,string connectionId)
     {
         if (!_sessions.TryGetValue(sessionId, out var session) || session.Status == SessionStatus.Ended)
             return (null, "Session not found or inactive.");
@@ -51,10 +49,11 @@ public class SessionService
             return (null, "Invalid user.");
         if (_sessions.Values.Any(s => s.Status == SessionStatus.Active && s.ParticipantIds.Contains(participantId) && s.SessionId != sessionId))
             return (null, "You are already in a different session.");
-            session.ParticipantIds.Add(participantId);
+        session.ParticipantIds.Add(participantId);
+        session.PartipantStatuses[participantId] = Session.StudentStatus.Active;
+        session.ParticipantConnectionIds[participantId] = connectionId;
         return (session, null);
     }
-
     public Session EndSession(string sessionId, string lecturerId)
     {
         if (!_sessions.TryGetValue(sessionId, out var session))
@@ -78,39 +77,32 @@ public class SessionService
         }
         return session;
     }
-
-    public Session.StudentStatus UpdateParticipantStatus(string sessionId,string participantId,Session.StudentStatus status )
+    public bool UpdateParticipantStatus(string sessionId,string participantId,Session.StudentStatus status )
     {
         if (_sessions.TryGetValue(sessionId, out var session) && session.ParticipantIds.Contains(participantId))
         {
-            session.PartipantStatus[participantId] = status;
-            return status;
+            session.PartipantStatuses[participantId] = status;
+            return true;
         }
-        return status;
+        return false;
     }
     public Dictionary<string,Session.StudentStatus> GetParticipantStatus(string sessionId)
     {
-        return _sessions.TryGetValue(sessionId, out var session) ? session.PartipantStatus : new Dictionary<string, Session.StudentStatus>();
+        return _sessions.TryGetValue(sessionId, out var session) ? session.PartipantStatuses : new Dictionary<string, Session.StudentStatus>();
     }
-
     public Session GetSessionById(string sessionId) =>
         _sessions.TryGetValue(sessionId, out var session) ? session : null;
-
     public List<Session> GetSessionsByLecturer(string lecturerId) =>
         _sessions.Values
             .Where(s => s.LecturerId == lecturerId && (s.Status == SessionStatus.Active || s.Status == SessionStatus.Started))
             .ToList();
-
-    public List<Session> GetSessionsByParticipant(string participantId) =>
+    public Session GetSessionByParticipant(string participantId) =>
         _sessions.Values
-            .Where(s => s.Status == SessionStatus.Active && s.ParticipantIds.Contains(participantId))
-            .ToList();
-
+            .FirstOrDefault(s => s.Status == SessionStatus.Started && s.ParticipantIds.Contains(participantId));
     public List<Session> GetSessionsBy<TKey>(TKey key, Func<Session, TKey> selector) =>
         _sessions.Values
             .Where(s => Equals(selector(s), key))
             .ToList();
-
     public List<Session> GetActiveSessions() =>
         _sessions.Values
             .Where(s => s.Status == SessionStatus.Active)
