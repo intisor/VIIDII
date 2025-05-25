@@ -24,10 +24,14 @@ jobs:
           dotnet-version: '9.x'
 
       - name: Build with dotnet
-        run: dotnet build FutaMeetWeb.sln --configuration Release
+        run: |
+              cd futameetweb
+              dotnet build --configuration Release
 
       - name: dotnet publish
-        run: dotnet publish FutaMeetWeb.sln -c Release -o "${{env.DOTNET_ROOT}}/myapp"
+        run: |
+              cd futameetweb
+              dotnet publish -c Release -o "${{env.DOTNET_ROOT}}/myapp"
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
