@@ -30,7 +30,6 @@ namespace FutaMeetWeb.Pages
             var session = _sessionService.GetSessionById(sessionId);
             return session != null && session.LecturerId == matricNo;
         }
-
         public void OnGet()
         {
             var lecturerId = HttpContext.Session.GetString("MatricNo");
@@ -109,7 +108,7 @@ namespace FutaMeetWeb.Pages
             IsSessionLecturer = Session.LecturerId == lecturerId; // No conflict now
             Message = $"Session {Session.SessionId} stopped at {Session.EndTime:HH:mm}";
             HttpContext.Session.SetString("SessionMessage", Message);
-            return Page();
+            return RedirectToPage("/SessionRecap", new { sessionId });
         }
     }
 }

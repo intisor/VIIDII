@@ -286,3 +286,22 @@ main {
         .footer a:hover {
             color: #AB47BC;
         }
+.list-group-item i {
+    margin-right: 8px;
+}
+
+.list-group-item-success {
+    background-color: #d4edda;
+}
+
+.list-group-item-warning {
+    background-color: #fff3cd;
+}
+
+.list-group-item-danger {
+    background-color: #f8d7da;
+}
+
+.list-group-item-secondary {
+    background-color: #e2e3e5;
+}

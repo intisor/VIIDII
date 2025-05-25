@@ -43,13 +43,14 @@ namespace FutaMeetWeb.Services
                             if(SessionHub.TryGetLastSeen(participantId, out var last) &&
                             DateTime.UtcNow - last > Timeout)
                             {
-                                if (session.PartipantStatuses[participantId] != Session.StudentStatus.InActive)
+                                if (session.ParticipantStatuses[participantId] != Session.StudentStatus.InActive)
                                 {
                                     _sessionService.UpdateParticipantStatus(session.SessionId, participantId, Session.StudentStatus.InActive);
                                     if (!string.IsNullOrEmpty(session.LecturerConnectionId))
                                     {
                                         var statuses = _sessionService.GetParticipantStatus(session.SessionId);
                                         await _hubContext.Clients.Client(session.LecturerConnectionId).SendAsync("ReceiveParticipantStatuses", statuses);
+                                        Console.WriteLine($"Marked {participantId} as Inactive in session {session.SessionId}");
                                     }
                                 }
                             }

@@ -1,0 +1,108 @@
+﻿@page
+@using FutaMeetWeb.Models
+@model FutaMeetWeb.Pages.SessionRecapModel
+@{
+    ViewData["Title"] = "Session Recap - FutaMeet";
+}
+<div class="container mt-4">
+    <h2 class="text-center mb-4 modern-heading">Session Recap: @Model.Session?.Title</h2>
+    <div class="row">
+        <div class="col-md-6">
+            <h4 class="modern-heading">Timeline</h4>
+            <ul class="timeline">
+                @foreach (var evt in Model.TimelineEvents)
+                {
+                    <li class="timeline-item">
+                        <div class="timeline-badge"><i class="fas fa-circle"></i></div>
+                        <div class="timeline-panel">
+                            <div class="timeline-heading">
+                                <h6 class="timeline-title">@evt.Timestamp.ToString("hh:mm tt")</h6>
+                            </div>
+                            <div class="timeline-body">
+                                <p>@evt.Description</p>
+                            </div>
+                        </div>
+                    </li>
+                }
+            </ul>
+        </div>
+        <div class="col-md-6">
+            <h4 class="modern-heading">Attendance Scores</h4>
+            <canvas id="scoreChart" height="200"></canvas>
+        </div>
+    </div>
+</div>
+
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" rel="stylesheet" />
+<link href="~/lib/bootstrap/dist/css/bootstrap.min.css" rel="stylesheet" />
+<link href="~/css/site.css" rel="stylesheet" />
+<script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+
+@section Scripts {
+    <script>
+        const ctx = document.getElementById("scoreChart").getContext("2d");
+        new Chart(ctx, {
+            type: "bar",
+            data: {
+                labels: @Html.Raw(Json.Serialize(Model.Scores.Keys)),
+                datasets: [{
+                    label: "Attendance Score",
+                    data: @Html.Raw(Json.Serialize(Model.Scores.Values)),
+                    backgroundColor: "rgba(54, 162, 235, 0.6)",
+                    borderColor: "rgba(54, 162, 235, 1)",
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                scales: {
+                    y: { beginAtZero: true, max: 100 }
+                }
+            }
+        });
+    </script>
+}
+
+<style>
+    .timeline {
+        list-style: none;
+        padding: 20px 0;
+        position: relative;
+    }
+
+        .timeline:before {
+            content: '';
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 4px;
+            background: #ddd;
+            left: 30px;
+            margin: 0;
+        }
+
+    .timeline-item {
+        padding-left: 60px;
+        position: relative;
+        margin-bottom: 20px;
+    }
+
+    .timeline-badge {
+        position: absolute;
+        left: 15px;
+        top: 0;
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        background: #fff;
+        text-align: center;
+        line-height: 30px;
+    }
+
+    .timeline-panel {
+        background: #f8f9fa;
+        padding: 15px;
+        border-radius: 5px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+</style>

@@ -19,7 +19,8 @@
         public SessionStatus Status { get; set; } = SessionStatus.Active;
         public bool IsSessionStarted { get; set; } = false;
         public HashSet<string> ParticipantIds { get; } = [];
-        public Dictionary<string,StudentStatus> PartipantStatuses { get; } = [];
+        public Dictionary<string,StudentStatus> ParticipantStatuses { get; } = [];
+        public Dictionary<string, List<(StudentStatus status, DateTime TimeStamp)>> ParticipantEvents { get; } = [];
         public Dictionary<string,string> ParticipantConnectionIds  { get; } = [];
 
         public enum StudentStatus { Active, InActive, BatteryLow, DataFinished, Disconnected }

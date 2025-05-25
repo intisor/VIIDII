@@ -5,6 +5,8 @@ let peer = null;                 // PeerJS instance for video calls
 let isStreamAttached = false;    // Tracks if a stream is already attached to video
 let attachedStreamId = null;     // Tracks the ID of the attached stream
 let hasJoinedSession = false;    // Tracks if the user has joined the session
+let lastTabStatusUpdate = 0;
+const tabStatusThrottle = 50000; // 50 seconds
 
 // Initialize SignalR connection
 const connection = new signalR.HubConnectionBuilder()
@@ -438,23 +440,7 @@ connection.on("PostCreated", (postId) => {
     }
 });
 
-// Handle receiving participant list (lecturer only)
-connection.on("ReceiveParticipants", (participants) => {
-    const panel = document.getElementById("participantPanel");
-    if (panel) {
-        panel.innerHTML = "";
-        const list = document.createElement("ul");
-        list.className = "list-group";
-        Object.values(participants).forEach(name => {
-            const item = document.createElement("li");
-            item.className = "list-group-item";
-            item.id = `participant-${name}`;
-            item.textContent = name;
-            list.appendChild(item);
-        });
-        panel.appendChild(list);
-    }
-});
+
 
 // === Participant Status & Issue Reporting ===
 
@@ -493,6 +479,12 @@ connection.on("AreYouThere", () => {
 // Report tab activity status to server (students only)
 document.addEventListener("visibilitychange", () => {
     if (window.isSessionLecturer) return;
+    const now = Date.now();
+    if (now - lastTabStatusUpdate < tabStatusThrottle) {
+        console.log("Throttled tab status update");
+        return;
+    }
+    lastTabStatusUpdate = now;
     const isActive = !document.hidden;
     connection.invoke("UpdateTabStatus", isActive)
         .catch(err => console.error("Failed to update tab status:", err));
@@ -501,24 +493,22 @@ document.addEventListener("visibilitychange", () => {
 // Flag battery low issue (students only)
 document.getElementById("flagBatteryLow")?.addEventListener("click", () => {
     if (window.isSessionLecturer) return;
-    if ('getBattery' in navigator) {
+    if ("getBattery" in navigator) {
         navigator.getBattery().then(battery => {
             let batteryLevel = battery.level * 100;
             if (batteryLevel < 15) {
                 connection.invoke("FlagIssue", "BatteryLow")
                     .catch(err => console.error("Failed to flag battery issue:", err));
             } else {
-                console.log("Battery level is sufficient, ignoring flag.");
+                alert(`Battery level is ${batteryLevel}%. Only flag if below 15%.`);
             }
         });
-    }else {
-        // If unsupported, allow the flag to be sent
+    } else {
         connection.invoke("FlagIssue", "BatteryLow")
             .catch(err => console.error("Failed to flag battery issue:", err));
         console.log("Battery API not supported, flagging issue anyway.");
     }
 });
-
 // Flag data finished issue (students only)
 document.getElementById("flagDataFinished")?.addEventListener("click", () => {
     if (window.isSessionLecturer) return;
@@ -526,21 +516,53 @@ document.getElementById("flagDataFinished")?.addEventListener("click", () => {
         .catch(err => console.error("Failed to flag data issue:", err));
 });
 
+// Handle receiving participant list (lecturer only)
+connection.on("ReceiveParticipants", (participants) => {
+    const panel = document.getElementById("participantPanel");
+    if (panel) {
+        console.log("Received participants:", participants);
+        panel.innerHTML = "";
+        const list = document.createElement("ul");
+        list.className = "list-group";
+        Object.entries(participants).forEach(([id, name]) => {
+            const item = document.createElement("li");
+            item.className = "list-group-item";
+            item.id = `participant-${id}`;
+            item.innerHTML = `<i class="fas fa-user me-2"></i>${name}`;
+            list.appendChild(item);
+        });
+        panel.appendChild(list);
+        console.log("Panel updated:", panel.innerHTML);
+    }
+});
+
 // Lecturer receives participant statuses 
 connection.on("ReceiveParticipantStatuses", (statuses) => {
     if (!window.isSessionLecturer) return;
     const panel = document.getElementById("participantPanel");
     if (panel) {
+        console.log("Received statuses:", statuses);
         Object.entries(statuses).forEach(([id, status]) => {
             const item = document.getElementById(`participant-${id}`);
             if (item) {
-                item.textContent = `${id} (${status})`;
+                const name = item.textContent.split(" (")[0].replace(/<i[^>]*>.*<\/i>/, "").trim();
+                item.innerHTML = `<i class="${getStatusIcon(status)} me-2"></i>${name} (${status})`;
                 item.className = `list-group-item ${getStatusClass(status)}`;
             }
         });
     }
 });
-
+// status icon
+function getStatusIcon(status) {
+    switch (status) {
+        case "Active": return "fas fa-check-circle";
+        case "Inactive": return "fas fa-exclamation-circle";
+        case "BatteryLow": return "fas fa-battery-quarter";
+        case "DataFinished": return "fas fa-signal";
+        case "Disconnected": return "fas fa-times-circle";
+        default: return "fas fa-user";
+    }
+}
 // status class 
 function getStatusClass(status) {
     switch (status) {

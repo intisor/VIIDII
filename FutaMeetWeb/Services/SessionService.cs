@@ -6,6 +6,7 @@ namespace FutaMeetWeb.Services;
 public class SessionService
 {
     private readonly ConcurrentDictionary<string, Session> _sessions = [];
+  
     public bool IsLecturer(string matricNo)
     {
         var lecturers = MockApiService.GetLecturers();
@@ -49,8 +50,10 @@ public class SessionService
             return (null, "Invalid user.");
         if (_sessions.Values.Any(s => s.Status == SessionStatus.Active && s.ParticipantIds.Contains(participantId) && s.SessionId != sessionId))
             return (null, "You are already in a different session.");
+        if (string.IsNullOrEmpty(connectionId))
+            return (null, "Invalid connection ID.");
         session.ParticipantIds.Add(participantId);
-        session.PartipantStatuses[participantId] = Session.StudentStatus.Active;
+        session.ParticipantStatuses[participantId] = Session.StudentStatus.Active;
         session.ParticipantConnectionIds[participantId] = connectionId;
         return (session, null);
     }
@@ -81,14 +84,17 @@ public class SessionService
     {
         if (_sessions.TryGetValue(sessionId, out var session) && session.ParticipantIds.Contains(participantId))
         {
-            session.PartipantStatuses[participantId] = status;
+            if (session.ParticipantStatuses.TryGetValue(participantId, out var currentStatus) && currentStatus == status)
+                return false;
+            session.ParticipantStatuses[participantId] = status;
+            Console.WriteLine($"Updated {participantId} status to {status} in session {sessionId}");
             return true;
         }
         return false;
     }
     public Dictionary<string,Session.StudentStatus> GetParticipantStatus(string sessionId)
     {
-        return _sessions.TryGetValue(sessionId, out var session) ? session.PartipantStatuses : new Dictionary<string, Session.StudentStatus>();
+        return _sessions.TryGetValue(sessionId, out var session) ? session.ParticipantStatuses : new Dictionary<string, Session.StudentStatus>();
     }
     public Session GetSessionById(string sessionId) =>
         _sessions.TryGetValue(sessionId, out var session) ? session : null;
@@ -98,7 +104,9 @@ public class SessionService
             .ToList();
     public Session GetSessionByParticipant(string participantId) =>
         _sessions.Values
-            .FirstOrDefault(s => s.Status == SessionStatus.Started && s.ParticipantIds.Contains(participantId));
+            .FirstOrDefault(s =>
+                (s.Status == SessionStatus.Started || s.Status == SessionStatus.Active)
+                && s.ParticipantIds.Contains(participantId));
     public List<Session> GetSessionsBy<TKey>(TKey key, Func<Session, TKey> selector) =>
         _sessions.Values
             .Where(s => Equals(selector(s), key))
@@ -107,4 +115,47 @@ public class SessionService
         _sessions.Values
             .Where(s => s.Status == SessionStatus.Active)
             .ToList();
+
+    public Dictionary<string, double> CalculateAttendanceScore(string sessionId)
+    {
+        if (!_sessions.TryGetValue(sessionId, out var session))
+            return new Dictionary<string, double>();
+        var totalMinutes = Math.Max(
+            ((session.EndTime ?? DateTime.UtcNow) - session.StartTime).TotalMinutes,
+            1
+        );
+        return session.ParticipantIds
+            .ToDictionary(participantId =>  participantId,
+            participantId => CalculateScoreperParticicpant(session,participantId,totalMinutes));
+    }
+    public double CalculateScoreperParticicpant(Session session, string participantId, double totalMinutes)
+    {
+        if (!session.ParticipantEvents.TryGetValue(participantId, out var events) || events.Count == 0)
+            return 0;
+        double score = 0;
+        DateTime lastTime = session.StartTime;
+        foreach(var (status,time) in events)
+        {
+            score += GetStatusWeight(status) * (time - lastTime).TotalMinutes;
+            lastTime = time;
+        }
+        var finalMinutes = ((session.EndTime ?? DateTime.UtcNow) - lastTime).TotalMinutes;
+        if(session.ParticipantStatuses.TryGetValue(participantId, out var lastStatus))
+        {
+            score += GetStatusWeight(lastStatus) * finalMinutes;
+        }
+        return Math.Clamp((score / totalMinutes) * 100, 0, 100);
+    }
+    private int GetStatusWeight(Session.StudentStatus status)
+    {
+        return status switch
+        {
+            Session.StudentStatus.Active => 10,
+            Session.StudentStatus.InActive => -5,
+            Session.StudentStatus.BatteryLow => -10,
+            Session.StudentStatus.DataFinished => -10,
+            Session.StudentStatus.Disconnected => -20,
+            _ => 0
+        };
+    }
 }

@@ -31,6 +31,7 @@ namespace FutaMeetWeb.Hubs
                 if (IsSessionLecturer(sessionId,matricNo))
                 {
                     session.LecturerConnectionId = Context.ConnectionId;
+                    Console.WriteLine($"Lecturer {matricNo} set LecturerConnectionId: {session.LecturerConnectionId}");
                 }
                 else
                 {
@@ -40,6 +41,7 @@ namespace FutaMeetWeb.Hubs
                         Console.WriteLine($"JoinSession failed: {error}");
                         return;
                     }
+                    Console.WriteLine($"Student {matricNo} joined session {sessionId}, ParticipantIds: {string.Join(", ", session.ParticipantIds)}");
                 }
                 if (!string.IsNullOrEmpty(session.LecturerConnectionId))
                 {
@@ -94,14 +96,16 @@ namespace FutaMeetWeb.Hubs
         {
             var matricNo = Context.GetHttpContext()?.Session.GetString("MatricNo");
             var session = _sessionService.GetSessionByParticipant(matricNo);
-            if (session is not null && !IsSessionLecturer(session.SessionId,matricNo) & session.IsSessionStarted)
+            if (session is not null && !IsSessionLecturer(session.SessionId, matricNo) && session.IsSessionStarted)
             {
                 var status = isActive ? Session.StudentStatus.Active : Session.StudentStatus.InActive;
-                _sessionService.UpdateParticipantStatus(session.SessionId, matricNo, status);
-                if (session.LecturerConnectionId != null)
+                if (_sessionService.UpdateParticipantStatus(session.SessionId, matricNo, status))
                 {
-                    var statuses = _sessionService.GetParticipantStatus(session.SessionId);
-                    await Clients.Client(session.LecturerConnectionId).SendAsync("ReceiveParticipantStatuses",statuses);
+                    if (session.LecturerConnectionId != null)
+                    {
+                        var statuses = _sessionService.GetParticipantStatus(session.SessionId);
+                        await Clients.Client(session.LecturerConnectionId).SendAsync("ReceiveParticipantStatuses", statuses);
+                    }
                 }
             }
         }
@@ -126,7 +130,7 @@ namespace FutaMeetWeb.Hubs
         {
             var matricNo = Context.GetHttpContext()?.Session.GetString("MatricNo");
             var session = _sessionService.GetSessionByParticipant(matricNo);
-            if (session is not null && IsSessionLecturer(session.SessionId, matricNo) && session.IsSessionStarted)
+            if (session is not null && !IsSessionLecturer(session.SessionId, matricNo) && session.IsSessionStarted)
             {
                 _lastSeen[matricNo] = DateTime.UtcNow;
                 _sessionService.UpdateParticipantStatus(session.SessionId, matricNo, Session.StudentStatus.Active);
@@ -141,14 +145,17 @@ namespace FutaMeetWeb.Hubs
         public override async Task OnDisconnectedAsync(Exception exception)
         {
             var matricNo = Context.GetHttpContext()?.Session.GetString("MatricNo");
-            var session = _sessionService.GetSessionByParticipant(matricNo);
-            if (session is not null && !IsSessionLecturer(session.SessionId,matricNo))
+            if (!string.IsNullOrEmpty(matricNo))
             {
-                _sessionService.UpdateParticipantStatus(session.SessionId, matricNo, Session.StudentStatus.Disconnected);
-                if (session.LecturerConnectionId != null)
+                var session = _sessionService.GetSessionByParticipant(matricNo);
+                if (session is not null && !IsSessionLecturer(session.SessionId, matricNo))
                 {
-                    var statuses = _sessionService.GetParticipantStatus(session.SessionId);
-                    await Clients.Client(session.LecturerConnectionId).SendAsync("ReceiveParticipantStatuses", statuses);
+                    _sessionService.UpdateParticipantStatus(session.SessionId, matricNo, Session.StudentStatus.Disconnected);
+                    if (session.LecturerConnectionId != null)
+                    {
+                        var statuses = _sessionService.GetParticipantStatus(session.SessionId);
+                        await Clients.Client(session.LecturerConnectionId).SendAsync("ReceiveParticipantStatuses", statuses);
+                    }
                 }
             }
             await base.OnDisconnectedAsync(exception);
