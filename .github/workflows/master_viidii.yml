@@ -56,7 +56,7 @@ jobs:
         id: deploy-to-webapp
         uses: azure/webapps-deploy@v3
         with:
-          app-name: 'viidii'
+          app-name: 'viidii-cfa7hagsewc5h6cq'
           slot-name: 'Production'
           package: .
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_2E111B15EC4B4C1FAA9552956EE5BEA8 }}
