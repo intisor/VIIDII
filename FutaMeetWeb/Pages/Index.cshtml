@@ -92,8 +92,8 @@
         }
 
         .sign-in-btn {
-            display: inline-block;
-            width: 100%;
+            display: flow;
+            width: auto;
             padding: 12px;
             background-color: #3A86FF;
             color: white;
@@ -120,6 +120,168 @@
             font-size: 0.9rem;
             display: block;
         }
+
+        /* Mobile Design */
+        @@media only screen and (max-width: 480px) {
+            body {
+                background: #F9FAFB;
+                justify-content: flex-start;
+                padding-top: 0;
+                min-height: 100vh;
+                margin: 0;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+            }
+
+            .top-curve-wrapper {
+                position: absolute;
+                top: -60px;
+                left: -60px;
+                width: 295.94px;
+                height: 258.04px;
+                filter: blur(2.5px);
+                z-index: 0;
+            }
+
+            .background-gradient {
+                position: absolute;
+                width: 100%;
+                height: 426px;
+                left: 0;
+                bottom: 0;
+                background: linear-gradient(306.91deg, #3A86FF 13.83%, #9CC3FF 108.03%);
+                box-shadow: 0px -10px 20px rgba(58, 134, 255, 0.25);
+                border-radius: 50px 50px 0px 0px;
+                z-index: 0;
+            }
+
+            .logo {
+                position: relative;
+                width: 125px;
+                height: 107.23px;
+                margin-top: clamp(240px, 20vh, 220px);
+                margin-bottom: 0.5rem;
+                z-index: 1;
+            }
+
+                .logo img {
+                    width: 100%;
+                    height: auto;
+                    display: block;
+                    margin: 0 auto;
+                }
+
+            .welcome-container {
+                color:azure;
+                position: absolute;
+                bottom: clamp(14%, 16vw, 16%);
+                left: 50%;
+                transform: translateX(-50%);
+                background: none;
+                box-shadow: none;
+                border-radius: 0;
+                padding: 0;
+                width: 100%;
+                max-width: clamp(300px, 90%, 333px);
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                margin-bottom:-80px;
+                z-index: 1;
+            }
+
+            .welcome-text {
+                font-family: 'Poppins', sans-serif;
+                font-weight: 600;
+                font-size: clamp(1.8rem, 9vw, 2.1rem);
+                line-height: 1.3;
+                color: #565D68;
+                margin-top: 2rem;
+                margin-bottom: 0.5rem;
+                text-align: center;
+                z-index: 1;
+            }
+
+            .lets-get-started {
+                font-family: 'DM Sans', sans-serif;
+                font-weight: 500;
+                font-size: clamp(1rem, 5vw, 1.2rem);
+                line-height: 1.5;
+                color: #FFFFFF;
+                margin-bottom: clamp(1rem, 5vw, 1.5rem);
+                margin-top:1px;
+                text-align: center;
+                z-index: 1;
+            }
+
+            .sign-in-btn {
+                width: 100%;
+                max-width: clamp(250px, 90%, 300px);
+                height: 56px;
+                box-sizing: border-box;
+                border: 2.5px solid #FFFFFF;
+                border-radius: 24px;
+                background: transparent;
+                color: #FFFFFF;
+                font-family: 'Poppins', sans-serif;
+                font-weight: 500;
+                font-size: clamp(1rem, 4vw, 1.2rem);
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                margin: 0 auto 1rem auto;
+                text-decoration: none;
+                transition: background 0.2s, color 0.2s;
+                z-index: 1;
+            }
+
+                .sign-in-btn:active,
+                .sign-in-btn:focus,
+                .sign-in-btn:hover {
+                    background: rgba(255, 255, 255, 0.12);
+                    color: #FFFFFF;
+                }
+
+            .futarians-btn {
+                width: 100%;
+                max-width: clamp(250px, 90%, 300px);
+                height: 56px;
+                box-sizing: border-box;
+                color: #fff;
+                font-family: 'DM Sans', sans-serif;
+                font-weight: 500;
+                font-size: clamp(1.1rem, 5vw, 1.3rem);
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                margin: 10px auto 0.5rem auto;
+                text-align: center;
+                z-index: 1;
+            }
+
+            .urgent-message {
+                font-family: 'DM Sans', sans-serif;
+                font-weight: bold;
+                font-size: clamp(1.2rem, 5vw, 1.5rem);
+                margin-bottom: 20px;
+                color: #FFD700;
+            }
+
+            .guest-link {
+                color: #FFFFFF;
+                text-decoration: none;
+                font-family: 'DM Sans', sans-serif;
+                font-weight: 500;
+                font-size: clamp(0.9rem, 4vw, 1rem);
+                margin-top: 0.5rem;
+                text-align: center;
+                opacity: 0.95;
+                z-index: 1;
+            }
+        }
+
+
     </style>
 </head>
 <body>
@@ -133,15 +295,18 @@
     <div class="logo">
         <img src="~/images/viidii-logo.png" alt="Viidii Logo" />
     </div>
+    <h1>Welcome,</h1>
 
     <!-- Welcome Box -->
     <div class="welcome-container">
-        <h1>Welcome,</h1>
-        <p>Let's get you started!</p>
+        <p style="margin-bottom:50px;">Let's get you started!</p>
         <a asp-page="/Login" class="sign-in-btn">
             <span class="sign-in-text">Sign In</span>
         </a>
+        <div class="futarians-btn">Made for Futarians By Futarians</div>
+        <p class="urgent-message" style=" color: #FFD700;">Hey, hurry up, class is starting soon!</p>
         <a href="#" class="guest-link">Join as guest</a>
     </div>
+    <div class="background-gradient"></div>
 </body>
 </html>
