@@ -6,7 +6,7 @@ on:
       - master
 
 env:
-  AZURE_WEBAPP_NAME: viidii-cfa7hagsewc5h6cq
+  AZURE_WEBAPP_NAME: viidii
   AZURE_WEBAPP_PACKAGE_PATH: FutaMeetWeb/published
   CONFIGURATION: Release
   DOTNET_CORE_VERSION: 9.0.x
