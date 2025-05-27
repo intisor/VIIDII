@@ -2,6 +2,7 @@
 @model FutaMeetWeb.Pages.LoginModel
 @{
     Layout = null;
+
 }
 
 <!DOCTYPE html>
@@ -268,14 +269,15 @@
     </style>
 </head>
 <body>
-    <div class="gradient-background"></div>
+    @* <div class="gradient-background"></div> *@
     <div class="top-curve-wrapper">
         <div class="top-curve-rect-1"></div>
         <div class="top-curve-rect-2"></div>
     </div>
-    <div class="login-container">
+   
         @if (!Model.IsLoggedIn)
         {
+        <div class="login-container">
             <h1>Sign in</h1>
             <form method="post">
                 <div class="input-group">
@@ -295,14 +297,44 @@
                 <button type="submit" class="sign-in-btn">Sign In</button>
             </form>
             <a href="#" class="forgot-password">Forgot Password?</a>
+        </div>
         }
         else
         {
+            <h1>Already Signed In</h1>
+            <p>You are already signed in as <strong>@Model.MatricNo</strong> (@Model.Role).</p>
+            <nav style="margin-bottom:1rem;">
+                <ul style="list-style:none;padding:0;">
+                @if (Model.Role == "Student")
+                    {
+                    <a asp-page="/Index" class="sign-in-btn">
+                        <span class="sign-in-text">Home</span>
+                    </a>
+                        <a asp-page="/JoinSession" class="sign-in-btn">
+                            <span class="sign-in-text">Join Session</span>
+                        </a>
+                    }
+                else if (Model.Role == "Lecturer")
+                    {
+                        <li><a href="/CreateSession" class="sign-in-btn">Create Session</a></li>
+                        <li><a href="/JoinSession" class="sign-in-btn">Join Session</a></li>
+                        <li><a href="/Index" class="sign-in-btn">Home</a></li>
+                    }
+                else if (Model.Role == "Admin")
+                    {
+                        <li><a href="/Admin" class="sign-in-btn">Admin Dashboard</a></li>
+                        <li><a href="/Index" class="sign-in-btn">Home</a></li>
+                    }
+                </ul>
+            </nav>
+        <form method="post" asp-page-handler="Logout">
+            <button type="submit" class="sign-in-btn">Sign Out</button>
+        </form>
             @if (!string.IsNullOrEmpty(Model.Message))
             {
                 <p>@Model.Message</p>
             }
         }
-    </div>
+
 </body>
 </html>

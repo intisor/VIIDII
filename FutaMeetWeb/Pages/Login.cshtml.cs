@@ -21,10 +21,17 @@ public class LoginModel : PageModel
 
     public string Message { get; set; }
     public bool IsLoggedIn => !string.IsNullOrEmpty(HttpContext.Session.GetString("MatricNo"));
+    public string Role { get; set; }
 
 
     public IActionResult OnGet()
     {
+        var matricNo = HttpContext.Session.GetString("MatricNo");
+        if (!string.IsNullOrEmpty(matricNo))
+        {
+            var user = MockApiService.GetUsers().FirstOrDefault(u => u.MatricNo == matricNo);
+            Role = user.Role.ToString() ?? "";
+        }
         return Page(); // Explicit render
     }
 
@@ -36,6 +43,7 @@ public class LoginModel : PageModel
             return Page();
         }
         var user = MockApiService.GetUsers().FirstOrDefault(u => u.MatricNo == MatricNo);
+        Role = user.Role.ToString() ?? "";
 
         if (user == null || user.Password != Password)
         {
@@ -43,12 +51,7 @@ public class LoginModel : PageModel
             return Page();
         }
 
-        HttpContext.Session.SetString("MatricNo", matricNo);
-        if (!_sessionService.IsLecturer(MatricNo))
-        {
-            // Not a lecturer, so treat as student and redirect
-            return RedirectToPage("/JoinSession");
-        }
+        HttpContext.Session.SetString("MatricNo", matricNo);   
         Message = $"Logged in as {MatricNo}";
         return Page();
     }
