@@ -137,6 +137,67 @@
         background: linear-gradient(135deg, #8338EC, #3A86FF);
         z-index: 0;
         }
+        /*After signin*/ 
+        .nav-item .big-nav-btn {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 100%;
+            max-width: 400px;
+            height: 60px;
+            font-size: 1.3rem;
+            font-weight: 600;
+            border-radius: 30px;
+            background: linear-gradient(135deg, #8338EC, #3A86FF);
+            color: #fff !important;
+            text-decoration: none;
+            box-shadow: 0 8px 24px rgba(58,134,255,0.15);
+            border: 2.5px solid #FFFFFF;
+            margin: 0 auto;
+            transition: background 0.2s, color 0.2s;
+        }
+
+            .nav-item .big-nav-btn:active,
+            .nav-item .big-nav-btn:focus,
+            .nav-item .big-nav-btn:hover {
+                background: rgba(131, 56, 236, 0.85);
+                color: #fff !important;
+            }
+
+        .top-action-btn {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-width: 120px;
+            height: 48px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            border-radius: 20px;
+            color: #fff !important;
+            text-decoration: none;
+            border: none;
+            outline: none;
+            margin: 0 0 0 12px;
+            padding: 0 24px;
+            box-shadow: 0 4px 16px rgba(58,134,255,0.10);
+            transition: background 0.2s, color 0.2s;
+            cursor: pointer;
+        }
+
+            .top-action-btn.home {
+                background: linear-gradient(135deg, #3A86FF 0%, #6DD5FA 100%);
+            }
+
+            .top-action-btn.logout {
+                background: linear-gradient(135deg, #8338EC 0%, #C19BF5 100%);
+            }
+
+            .top-action-btn:active,
+            .top-action-btn:focus,
+            .top-action-btn:hover {
+                opacity: 0.92;
+                color: #fff !important;
+            }
 
         /* Mobile Design */
         @@media only screen and (max-width: 480px) {
@@ -301,40 +362,42 @@
         }
         else
         {
+        <div style="position:fixed;top:24px;right:32px;z-index:100;display:flex;gap:12px;">
+            <a asp-page="/Index" class="top-action-btn home">Home</a>
+            <form method="post" asp-page-handler="Logout" style="display:inline;">
+                <button type="submit" class="top-action-btn logout">Sign Out</button>
+            </form>
+        </div>
+
+          <div style="margin-top:120px;text-align:center;">
             <h1>Already Signed In</h1>
-            <p>You are already signed in as <strong>@Model.MatricNo</strong> (@Model.Role).</p>
-            <nav style="margin-bottom:1rem;">
-                <ul style="list-style:none;padding:0;">
-                @if (Model.Role == "Student")
-                    {
-                    <a asp-page="/Index" class="sign-in-btn">
-                        <span class="sign-in-text">Home</span>
-                    </a>
-                        <a asp-page="/JoinSession" class="sign-in-btn">
-                            <span class="sign-in-text">Join Session</span>
-                        </a>
-                    }
-                else if (Model.Role == "Lecturer")
-                    {
-                        <li><a href="/CreateSession" class="sign-in-btn">Create Session</a></li>
-                        <li><a href="/JoinSession" class="sign-in-btn">Join Session</a></li>
-                        <li><a href="/Index" class="sign-in-btn">Home</a></li>
-                    }
-                else if (Model.Role == "Admin")
-                    {
-                        <li><a href="/Admin" class="sign-in-btn">Admin Dashboard</a></li>
-                        <li><a href="/Index" class="sign-in-btn">Home</a></li>
-                    }
+            <p>Hey,<strong>@Model.MatricNo</strong></p>
+           
+            <nav>
+            <ul style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 20px; width: 100%; max-width: 400px;">
+
+                @if (Model.Role == "Admin")
+                {
+                    <li class="nav-item">
+                        <a asp-page="/Admin" class="nav-link big-nav-btn">Admin</a>
+                    </li>
+                }
+                @if (Model.Role == "Lecturer")
+                {
+                    <li class="nav-item">
+                        <a asp-page="/CreateSession" class="nav-link big-nav-btn">Create Session</a>
+                    </li>
+                }
+                <li class="nav-item">
+                    <a asp-page="/JoinSession" class="nav-link big-nav-btn">Join Session</a>
+                </li>
                 </ul>
             </nav>
-        <form method="post" asp-page-handler="Logout">
-            <button type="submit" class="sign-in-btn">Sign Out</button>
-        </form>
-            @if (!string.IsNullOrEmpty(Model.Message))
-            {
-                <p>@Model.Message</p>
-            }
+        </div>
+            @* @if (!string.IsNullOrEmpty(Model.Message)) *@
+            @* { *@
+            @*     <p>@Model.Message</p> *@
+            @* } *@
         }
-
 </body>
 </html>

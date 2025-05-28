@@ -4,67 +4,269 @@
 @{
     ViewData["Title"] = "Join Session - FutaMeet";
 }
-<div class="container mt-4">
-    <h2 class="text-center mb-4 modern-heading">Join a Session</h2>
-    <div id="loading-skeleton" style="display: none;">
-        <div class="placeholder-glow mb-3">
-            <span class="placeholder col-3 modern-placeholder"></span>
-            <span class="placeholder col-12 mt-2 modern-placeholder" style="height: 38px;"></span>
-            <span class="placeholder col-4 mt-3 modern-placeholder" style="height: 38px;"></span>
-        </div>
-    </div>
-    <div id="main-content">
-        @if (string.IsNullOrEmpty(Model.CurrentSessionId))
-        {
-            <form method="post" class="modern-form p-4 mb-4">
+
+<style>
+    body {
+        margin: 0;
+        padding: 0;
+        background: #F9FAFB;
+        font-family: 'Poppins', sans-serif;
+        color: #333;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .gradient-bg {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 50%;
+        background: linear-gradient(135deg, #8338EC, #3A86FF);
+        z-index: 0;
+        min-height: 100vh;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+
+    .centered-form {
+        max-width: 400px;
+        width: 100%;
+        z-index: 1;
+        margin: 0 auto;
+    }
+
+    .modern-card {
+        background: white;
+        padding: 2rem;
+        border-radius: 20px;
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+        text-align: center;
+    }
+
+    .modern-heading {
+        font-size: 2rem;
+        margin-bottom: 1.5rem;
+        color: #FFFFFF;
+        text-align: center;
+        background: linear-gradient(135deg, #8338EC, #3A86FF);
+        padding: 1rem;
+        border-radius: 12px 12px 0 0;
+    }
+
+    .mb-3 {
+        margin-bottom: 1rem;
+        text-align: left;
+        padding: 0 1rem;
+    }
+
+    label, .modern-label {
+        display: block;
+        margin-bottom: 0.5rem;
+        color: #565D68;
+    }
+
+    select, .modern-input, .modern-select, input {
+        width: 100%;
+        padding: 0.75rem;
+        border: 1px solid #A26AF1;
+        border-radius: 8px;
+        box-sizing: border-box;
+        font-family: 'Poppins', sans-serif;
+        background: rgba(255, 255, 255, 0.9);
+        color: #333;
+    }
+
+    .btn-skeuo {
+        display: inline-block;
+        width: 100%;
+        padding: 12px;
+        background: linear-gradient(135deg, #8338EC, #3A86FF);
+        color: white;
+        border: none;
+        border-radius: 24px;
+        font-size: 1rem;
+        cursor: pointer;
+        margin-top: 1rem;
+        text-decoration: none;
+        transition: background 0.2s, color 0.2s;
+        border: 2.5px solid #FFFFFF;
+        height: 56px;
+        max-width: 333px;
+        justify-content: center;
+        align-items: center;
+    }
+
+        .btn-skeuo:active,
+        .btn-skeuo:focus,
+        .btn-skeuo:hover {
+            background: rgba(255, 255, 255, 0.12);
+            color: #FFFFFF;
+        }
+
+    .mt-3 {
+        margin-top: 1rem;
+    }
+
+    .text-center {
+        text-align: center;
+    }
+    /* Mobile Design */
+    @@media only screen and (max-width: 480px) {
+        .gradient-bg
+
+    {
+        position: absolute;
+        width: 100%;
+        height: 426px;
+        left: 0;
+        bottom: 0;
+        background: linear-gradient(306.91deg, #3A86FF 13.83%, #9CC3FF 108.03%);
+        box-shadow: 0px -10px 20px rgba(58, 134, 255, 0.25);
+        border-radius: 50px 50px 0px 0px;
+        z-index: 0;
+    }
+
+    .centered-form {
+        position: absolute;
+        bottom: 10%;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 100%;
+        max-width: 333px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        margin-bottom: 0;
+        z-index: 1;
+    }
+
+    .modern-card {
+        background: none;
+        box-shadow: none;
+        border-radius: 0;
+        padding: 0;
+        width: 100%;
+        max-width: 333px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .modern-heading {
+        font-size: 2.1rem;
+        margin-top: 2rem;
+        margin-bottom: 0.5rem;
+        color: #FFFFFF;
+        text-align: center;
+        background: linear-gradient(135deg, #8338EC, #3A86FF);
+        padding: 1.5rem 1rem;
+        border-radius: 12px 12px 0 0;
+        width: 100%;
+        max-width: 333px;
+    }
+
+    .mb-3 {
+        margin-bottom: 1rem;
+        width: 100%;
+        max-width: 333px;
+        position: relative;
+    }
+
+    select, .modern-input, .modern-select, input {
+        width: 100%;
+        padding: 0.75rem;
+        border: 1px solid #A26AF1;
+        border-radius: 8px;
+        box-sizing: border-box;
+        background: rgba(255, 255, 255, 0.9);
+        color: #333;
+    }
+
+    .btn-skeuo {
+        width: 100%;
+        max-width: 333px;
+        height: 56px;
+        box-sizing: border-box;
+        border: 2.5px solid #FFFFFF;
+        border-radius: 24px;
+        background: linear-gradient(135deg, #8338EC, #3A86FF);
+        color: #FFFFFF;
+        font-size: 1.2rem;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin: 1rem auto 1rem auto;
+        text-decoration: none;
+        transition: background 0.2s, color 0.2s;
+    }
+
+        .btn-skeuo:active,
+        .btn-skeuo:focus,
+        .btn-skeuo:hover {
+            background: rgba(255, 255, 255, 0.12);
+            color: #FFFFFF;
+        }
+
+    }
+</style>
+
+@* <div class="gradient-bg"></div> *@
+<div class="centered-form">
+    @if (string.IsNullOrEmpty(Model.CurrentSessionId))
+    {
+        <div class="modern-card">
+            <div class="modern-heading">Join a Session</div>
+            <form method="post">
                 <div class="mb-3">
-                    <label asp-for="SessionId" class="form-label modern-label">Available Sessions</label>
-                    <select asp-for="SessionId" asp-items="Model.AvailableSessions" class="form-select modern-input" required>
+                    <label asp-for="SessionId" class="modern-label">Available Sessions</label>
+                    <select asp-for="SessionId" asp-items="Model.AvailableSessions" class="modern-select" required>
                         <option value="">-- Select a session --</option>
                     </select>
                 </div>
-                <button type="submit" class="btn btn-skeuo w-100">
+                <button type="submit" class="btn-skeuo">
                     <i class="fas fa-sign-in-alt"></i> Join Session
                 </button>
             </form>
-        }
-        else if (Model.Session?.Status != SessionStatus.Ended)
-        {
-            <div class="row mt-4">
-                <div class="col-md-8">
-                    <video id="sessionVideo" data-session-id="@Model.CurrentSessionId" autoplay class="modern-video" style="width: 100%; max-height: 400px; background: black;"></video>
-                    <div class="d-flex gap-2 mt-2" id="studentStatusControls">
-                        <button id="flagBatteryLow" class="btn btn-warning flex-fill" type="button">
-                            <i class="fas fa-battery-quarter"></i> Battery Low
-                        </button>
-                        <button id="flagDataFinished" class="btn btn-danger flex-fill" type="button">
-                            <i class="fas fa-signal"></i> Data Finished
-                        </button>
-                    </div>
-
+            @if (!string.IsNullOrEmpty(Model.Message))
+            {
+                <p class="mt-3 text-center modern-status" id="statusMessage">@Model.Message</p>
+            }
+        </div>
+    }
+    else if (Model.Session?.Status != SessionStatus.Ended)
+    {
+        <div class="modern-card">
+            <div class="modern-heading">Session Live</div>
+            <video id="sessionVideo" data-session-id="@Model.CurrentSessionId" autoplay class="modern-video" style="width: 100%; max-height: 400px; background: black; border-radius: 12px;"></video>
+            <div class="d-flex gap-2 mt-2" id="studentStatusControls">
+                <button id="flagBatteryLow" class="btn btn-warning flex-fill" type="button">
+                    <i class="fas fa-battery-quarter"></i> Battery Low
+                </button>
+                <button id="flagDataFinished" class="btn btn-danger flex-fill" type="button">
+                    <i class="fas fa-signal"></i> Data Finished
+                </button>
+            </div>
+            <div class="col-12 mt-3">
+                <h4 class="modern-heading" style="font-size:1.2rem; background: #f9fafb; color: #333;">DISCUSSION</h4>
+                <div id="discussion" class="modern-chat" data-session-id="@Model.CurrentSessionId" style="height: 200px; overflow-y: auto; background: #f9fafb; border-radius: 8px;">
+                    <!-- Messages will be dynamically added here -->
                 </div>
-                <div class="col-md-4">
-                    <div class="col-12">
-                        <h4 class="modern-heading">DISCUSSION</h4>
-                        <div id="discussion" class="modern-chat" data-session-id="@Model.CurrentSessionId" style="height: 300px; overflow-y: auto;">
-                            <!-- Messages will be dynamically added here -->
-                        </div>
-                        <!-- Reply input area (hidden by default, shown when "Reply" is clicked) -->
-                        <div id="replyArea" class="input-group mt-2" style="display: none;">
-                            <textarea id="replyInput" rows="2" class="modern-input" placeholder="Write a reply..."></textarea>
-                            <button id="sendReply" class="btn btn-skeuo">
-                                <i class="fas fa-paper-plane"></i> Send Reply
-                            </button>
-                        </div>
-                    </div>
+                <!-- Reply input area (hidden by default, shown when "Reply" is clicked) -->
+                <div id="replyArea" class="input-group mt-2" style="display: none;">
+                    <textarea id="replyInput" rows="2" class="modern-input" placeholder="Write a reply..."></textarea>
+                    <button id="sendReply" class="btn btn-skeuo">
+                        <i class="fas fa-paper-plane"></i> Send Reply
+                    </button>
                 </div>
             </div>
-        }
-        @if (!string.IsNullOrEmpty(Model.Message))
-        {
-            <p class="mt-3 text-center modern-status" id="statusMessage">@Model.Message</p>
-        }
-    </div>
+            @if (!string.IsNullOrEmpty(Model.Message))
+            {
+                <p class="mt-3 text-center modern-status" id="statusMessage">@Model.Message</p>
+            }
+        </div>
+    }
 </div>
 
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" rel="stylesheet" />
@@ -82,14 +284,11 @@
                 isSessionStarted = Model.IsSessionStarted,
                 sessionId = Model.CurrentSessionId
             }));
-        window.isSessionLecturer = @Json.Serialize(Model.IsSessionLecturer);
+        window.isSessionLecturer = false; // Always student here
 
         document.addEventListener("DOMContentLoaded", () => {
             const sessionVideo = document.getElementById("sessionVideo");
-            if (!sessionVideo) return console.error("Session video element not found.");
-            console.log("Video Element Ready:", sessionVideo);
-            console.log("Stream:", sessionVideo.srcObject);
-
+            if (!sessionVideo) return;
             sessionVideo.onloadedmetadata = () => {
                 console.log("Metadata loaded. Stream:", sessionVideo.srcObject);
             };
