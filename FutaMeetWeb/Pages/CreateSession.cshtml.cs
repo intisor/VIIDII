@@ -3,6 +3,7 @@ using FutaMeetWeb.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc.Rendering;
 
 namespace FutaMeetWeb.Pages
 {
@@ -25,6 +26,21 @@ namespace FutaMeetWeb.Pages
         public Session Session { get; set; }
         public bool IsSessionLecturer { get; set; } // Fixed: Changed from method group to property
 
+        [BindProperty]
+        public List<User.Departments> AllowedDepartments { get; set; } = new();
+
+        [BindProperty]
+        public List<User.Levels> AllowedLevels { get; set; } = new();
+
+        public IEnumerable<SelectListItem> DepartmentOptions => Enum.GetValues<User.Departments>()
+            .Cast<User.Departments>()
+            .Select(d => new SelectListItem { Value = d.ToString(), Text = d.ToString() });
+
+        public IEnumerable<SelectListItem> LevelOptions => Enum.GetValues<User.Levels>()
+            .Cast<User.Levels>()
+            .Select(l => new SelectListItem { Value = l.ToString(), Text = l.ToString() });
+
+
         private bool IsSessionLecturerMethod(string sessionId, string matricNo) // Renamed method to avoid conflict
         {
             var session = _sessionService.GetSessionById(sessionId);
@@ -46,7 +62,7 @@ namespace FutaMeetWeb.Pages
         public IActionResult OnPost(bool? replaceExisting = null)
         {
             var lecturerId = HttpContext.Session.GetString("MatricNo");
-            var session = _sessionService.CreateSession(lecturerId, Title, true);
+            var session = _sessionService.CreateSession(lecturerId, Title, AllowedDepartments, AllowedLevels, true);
             if (replaceExisting == null && session.Status == SessionStatus.Active && session.Title != Title)
             {
                 ShowReplacePrompt = true;

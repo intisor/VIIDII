@@ -343,18 +343,14 @@
             <form method="post">
                 <div class="input-group">
                     <label for="MatricNo">Matric No.</label>
-                    <select asp-for="MatricNo" required>
+                    <select asp-for="MatricNo" asp-items="Model.UserOptions" required>
                         <option value="">-- Pick a user --</option>
-                        <option value="Lec001">Lec001 (Lecturer)</option>
-                        <option value="123456">123456 (Student)</option>
-                        <option value="654321">654321 (Student)</option>
-                        <option value="Admin">Admin (Admin)</option>
                     </select>
                     <div class="input-group">
                         <label for="Password">Password</label>
                         <input type="password" asp-for="Password" required />
                     </div>
-                </div>
+                </div>`
                 <button type="submit" class="sign-in-btn">Sign In</button>
             </form>
             <a href="#" class="forgot-password">Forgot Password?</a>
@@ -371,7 +367,7 @@
 
           <div style="margin-top:120px;text-align:center;">
             <h1>Already Signed In</h1>
-            <p>Hey,<strong>@Model.MatricNo</strong></p>
+            <p>Hey,<strong>@Model.UserName</strong></p>
            
             <nav>
             <ul style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 20px; width: 100%; max-width: 400px;">

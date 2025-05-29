@@ -20,6 +20,8 @@ namespace FutaMeetWeb.Pages
         public string CurrentSessionId { get; set; }
         public Session Session { get; set; }
         public string Message { get; set; }
+      
+
         public List<SelectListItem> AvailableSessions { get; set; } = [];
         public bool IsSessionStarted { get; set; }
         public bool IsSessionLecturer { get; set; }
@@ -96,14 +98,17 @@ namespace FutaMeetWeb.Pages
         }
         private void LoadAvailableSessions()
         {
-            AvailableSessions = _sessionService.GetSessionsBy(true, s => s.Status == SessionStatus.Active || s.Status == SessionStatus.Started)
+            var matricNo = HttpContext.Session.GetString("MatricNo");
+            var user = MockApiService.GetUsers().FirstOrDefault(s => s.MatricNo == matricNo);
+            AvailableSessions = _sessionService.GetActiveSessions()
+                .Where(s => (user.Department.HasValue && user.Level.HasValue)  && (s.AllowedDepartments.Contains(user.Department.Value) && s.AllowedLevels.Contains(user.Level.Value)))
                 .Select(s => new SelectListItem
                 {
                     Value = s.SessionId,
                     Text = $"{s.Title} (by {s.LecturerId})"
                 })
                 .ToList();
-
+   
             if (!AvailableSessions.Any())
             {
                 AvailableSessions.Add(new SelectListItem

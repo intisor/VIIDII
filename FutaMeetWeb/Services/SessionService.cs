@@ -12,7 +12,8 @@ public class SessionService
         var lecturers = MockApiService.GetLecturers();
         return lecturers.Any(l => l.MatricNo == matricNo);
     }
-    public Session CreateSession(string lecturerId, string title, bool? replaceExisting = false)
+    public Session CreateSession(string lecturerId, string title, List<User.Departments> allowedDepartments,
+    List<User.Levels> allowedLevels, bool? replaceExisting = false)
     {
         var lecturers = MockApiService.GetLecturers();
         if (!lecturers.Any(l => l.MatricNo == lecturerId))
@@ -28,7 +29,12 @@ public class SessionService
             _sessions.TryRemove(existingSession.SessionId, out _);
         }
 
-        var session = new Session(lecturerId, title);
+        var session = new Session(lecturerId)
+        {
+            Title = title,
+            AllowedDepartments = allowedDepartments ?? new List<User.Departments>(),
+            AllowedLevels = allowedLevels ?? new List<User.Levels>()
+        };
         session.Status = SessionStatus.Active;
         _sessions.TryAdd(session.SessionId, session);
         return session;
@@ -42,12 +48,18 @@ public class SessionService
         session.ParticipantIds.Remove(participantId);
         return session;
     }
-    public (Session Session, string Error) JoinSession(string sessionId, string participantId,string connectionId)
+    public (Session Session, string Error) JoinSession(string sessionId, string participantId, string connectionId)
     {
         if (!_sessions.TryGetValue(sessionId, out var session) || session.Status == SessionStatus.Ended)
             return (null, "Session not found or inactive.");
-        if (!MockApiService.GetUsers().Any(u => u.MatricNo == participantId))
+        var user = MockApiService.GetUsers().FirstOrDefault(u => u.MatricNo == participantId);
+        if (user is null)
             return (null, "Invalid user.");
+        if ( !session.AllowedDepartments.Contains(user.Department.Value))
+            return (null, "Your department is not allowed for this session.");
+
+        if (!session.AllowedDepartments.Contains(user.Department.Value))
+            return (null, "Your department is not allowed for this session.");
         if (_sessions.Values.Any(s => s.Status == SessionStatus.Active && s.ParticipantIds.Contains(participantId) && s.SessionId != sessionId))
             return (null, "You are already in a different session.");
         if (string.IsNullOrEmpty(connectionId))

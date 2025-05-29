@@ -3,6 +3,7 @@
 @model FutaMeetWeb.Pages.JoinSessionModel
 @{
     ViewData["Title"] = "Join Session - FutaMeet";
+    Layout = null;
 }
 
 <style>
@@ -13,7 +14,43 @@
         font-family: 'Poppins', sans-serif;
         color: #333;
         position: relative;
+        display: flex;
+        justify-content: center;
+        align-items: center;
         overflow: hidden;
+    }
+
+    .top-curve-wrapper {
+        position: absolute;
+        top: -100px;
+        left: -100px;
+        z-index: 0;
+        width: 300px;
+        height: 300px;
+    }
+
+    .top-curve-rect-1 {
+        position: absolute;
+        width: 245px;
+        height: 245px;
+        background: linear-gradient(128.97deg, #8338EC 2.4%, #C19BF5 85.87%);
+        border-radius: 50%;
+        top: 0;
+        left: 0;
+        filter: blur(2.5px);
+        z-index: 1;
+    }
+
+    .top-curve-rect-2 {
+        position: absolute;
+        width: 140px;
+        height: 140px;
+        background: linear-gradient(151.12deg, #3A86FF 29.33%, #9CC3FF 86.49%);
+        border-radius: 50%;
+        top: 30px;
+        left: 30px;
+        filter: blur(2.5px);
+        z-index: 2;
     }
 
     .gradient-bg {
@@ -42,6 +79,7 @@
         padding: 2rem;
         border-radius: 20px;
         box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+        color: #FFFFFF;
         text-align: center;
     }
 
@@ -213,6 +251,10 @@
 </style>
 
 @* <div class="gradient-bg"></div> *@
+<div class="top-curve-wrapper">
+    <div class="top-curve-rect-1"></div>
+    <div class="top-curve-rect-2"></div>
+</div>
 <div class="centered-form">
     @if (string.IsNullOrEmpty(Model.CurrentSessionId))
     {
@@ -226,7 +268,7 @@
                     </select>
                 </div>
                 <button type="submit" class="btn-skeuo">
-                    <i class="fas fa-sign-in-alt"></i> Join Session
+                    <i ></i> Join Session
                 </button>
             </form>
             @if (!string.IsNullOrEmpty(Model.Message))

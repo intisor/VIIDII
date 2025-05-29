@@ -1,12 +1,16 @@
 using FutaMeetWeb.Hubs;
+using FutaMeetWeb.Models;
 using FutaMeetWeb.Services;
+using Microsoft.AspNetCore.Identity;
 
 var builder = WebApplication.CreateBuilder(args);
     builder.Services.AddRazorPages();
     builder.Services.AddSingleton<MockApiService>();
     builder.Services.AddSingleton<SessionService>();
 	builder.Services.AddSingleton<MessageService>();
-	builder.Services.AddHostedService<ParticipantPingService>();	
+	builder.Services.AddScoped<PasswordHasher<User>, PasswordHasher<User>>();
+
+builder.Services.AddHostedService<ParticipantPingService>();	
 	builder.Services.AddDistributedMemoryCache();
     builder.Services.AddSession(options =>
     {

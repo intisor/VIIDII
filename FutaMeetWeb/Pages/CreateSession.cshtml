@@ -3,7 +3,229 @@
 @model FutaMeetWeb.Pages.CreateSessionModel
 @{
     ViewData["Title"] = "Create Session - FutaMeet";
+    Layout = null;
 }
+<style>
+    body {
+        margin: 0;
+        padding: 0;
+        background: #F9FAFB;
+        font-family: 'Poppins', sans-serif;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        color: #333;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .gradient-background {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 50%;
+        background: linear-gradient(135deg, #8338EC, #3A86FF);
+        z-index: 0;
+    }
+
+    .login-container {
+        text-align: center;
+        background: white;
+        padding: 2rem;
+        border-radius: 20px;
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+        max-width: 400px;
+        width: 100%;
+        z-index: 1;
+    }
+
+    h1 {
+        font-size: 2rem;
+        margin-bottom: 1.5rem;
+        color: #FFFFFF;
+        text-align: center;
+        background: linear-gradient(135deg, #8338EC, #3A86FF);
+        padding: 1rem;
+        border-radius: 12px 12px 0 0;
+    }
+
+    .input-group {
+        margin-bottom: 1rem;
+        text-align: left;
+        padding: 0 1rem;
+    }
+
+    label {
+        display: block;
+        margin-bottom: 0.5rem;
+        color: #565D68;
+    }
+
+    input, select {
+        width: 100%;
+        padding: 0.75rem;
+        border: 1px solid #A26AF1;
+        border-radius: 8px;
+        box-sizing: border-box;
+        font-family: 'Poppins', sans-serif;
+    }
+
+    button {
+        display: inline-block;
+        width: 100%;
+        padding: 12px;
+        background: linear-gradient(135deg, #8338EC, #3A86FF);
+        color: white;
+        border: none;
+        border-radius: 24px;
+        font-size: 1rem;
+        cursor: pointer;
+        margin-top: 1rem;
+        text-decoration: none;
+    }
+
+    details {
+        border: 1px solid #ccc;
+        border-radius: 5px;
+        padding: 10px;
+        margin-bottom: 1rem;
+    }
+
+    summary {
+        font-weight: bold;
+        cursor: pointer;
+        outline: none;
+    }
+
+        summary::-webkit-details-marker {
+            display: none;
+        }
+
+        summary:after {
+            content: '+';
+            display: inline-block;
+            margin-left: 5px;
+        }
+
+    details[open] summary:after {
+        content: '-';
+    }
+
+    .form-check {
+        margin-bottom: 10px;
+    }
+
+    .form-check-input {
+        margin-right: 10px;
+    }
+
+    .form-check-label {
+        cursor: pointer;
+    }
+
+    /* Mobile Design */
+    @@media only screen and (max-width: 480px) {
+     body
+    {
+        background: #F9FAFB;
+        justify-content: flex-start;
+        padding-top: 0;
+        min-height: 100vh;
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .gradient-background {
+        position: absolute;
+        width: 100%;
+        height: 426px;
+        left: 0;
+        bottom: 0;
+        background: linear-gradient(306.91deg, #3A86FF 13.83%, #9CC3FF 108.03%);
+        box-shadow: 0px -10px 20px rgba(58, 134, 255, 0.25);
+        border-radius: 50px 50px 0px 0px;
+        z-index: 0;
+    }
+
+    .login-container {
+        position: absolute;
+        bottom: 10%;
+        left: 50%;
+        transform: translateX(-50%);
+        background: none;
+        box-shadow: none;
+        border-radius: 0;
+        padding: 0;
+        width: 100%;
+        max-width: 333px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        margin-bottom: 0;
+        z-index: 1;
+    }
+
+    h1 {
+        font-size: 2.1rem;
+        margin-top: 2rem;
+        margin-bottom: 0.5rem;
+        color: #FFFFFF;
+        text-align: center;
+        background: linear-gradient(135deg, #8338EC, #3A86FF);
+        padding: 1.5rem 1rem;
+        border-radius: 12px 12px 0 0;
+        width: 100%;
+        max-width: 333px;
+    }
+
+    .input-group {
+        margin-bottom: 1rem;
+        width: 100%;
+        max-width: 333px;
+        position: relative;
+    }
+
+    input, select {
+        width: 100%;
+        padding: 0.75rem;
+        border: 1px solid #A26AF1;
+        border-radius: 8px;
+        box-sizing: border-box;
+        background: rgba(255, 255, 255, 0.9);
+        color: #333;
+    }
+
+    button {
+        width: 100%;
+        max-width: 333px;
+        height: 56px;
+        box-sizing: border-box;
+        border: 2.5px solid #FFFFFF;
+        border-radius: 24px;
+        background: linear-gradient(135deg, #8338EC, #3A86FF);
+        color: #FFFFFF;
+        font-size: 1.2rem;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin: 1rem auto 1rem auto;
+        text-decoration: none;
+        transition: background 0.2s, color 0.2s;
+    }
+
+        button:active,
+        button:focus,
+        button:hover {
+            background: rgba(255, 255, 255, 0.12);
+            color: #FFFFFF;
+        }
+
+    }
+</style>
 <div class="container mt-4">
     <h2 class="text-center mb-4 modern-heading">Create a Session </h2>
     <div id="main-content">
@@ -13,6 +235,35 @@
                 <div class="mb-3">
                     <label asp-for="Title" class="form-label modern-label">Session Title</label>
                     <input asp-for="Title" class="form-control modern-input" required />
+                </div>
+                <div class="mb-3">
+                    <details>
+                        <summary>Allowed Departments</summary>
+                        @foreach (var department in Model.DepartmentOptions)
+                        {
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="AllowedDepartments" value="@department.Value" id="@($"chkDepartment{department.Value}")">
+                                <label class="form-check-label" for="@($"chkDepartment{department.Value}")">
+                                    @department.Text
+                                </label>
+                            </div>
+                        }
+                    </details>
+                </div>
+
+                <div class="mb-3">
+                    <details>
+                        <summary>Allowed Levels</summary>
+                        @foreach (var level in Model.LevelOptions)
+                        {
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="AllowedLevels" value="@level.Value" id="@($"chkLevel{level.Value}")">
+                                <label class="form-check-label" for="@($"chkLevel{level.Value}")">
+                                    @level.Text
+                                </label>
+                            </div>
+                        }
+                    </details>
                 </div>
                 <button type="submit" class="btn btn-skeuo w-100">
                     <i class="fas fa-plus-circle"></i> Create Session
