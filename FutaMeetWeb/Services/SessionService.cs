@@ -12,8 +12,7 @@ public class SessionService
         var lecturers = MockApiService.GetLecturers();
         return lecturers.Any(l => l.MatricNo == matricNo);
     }
-    public Session CreateSession(string lecturerId, string title, List<User.Departments> allowedDepartments,
-    List<User.Levels> allowedLevels, bool? replaceExisting = false)
+    public Session CreateSession(string lecturerId, string title, List<User.Departments> allowedDepartments,List<User.Levels> allowedLevels, bool? replaceExisting = false)
     {
         var lecturers = MockApiService.GetLecturers();
         if (!lecturers.Any(l => l.MatricNo == lecturerId))
@@ -35,6 +34,15 @@ public class SessionService
             AllowedDepartments = allowedDepartments ?? new List<User.Departments>(),
             AllowedLevels = allowedLevels ?? new List<User.Levels>()
         };
+
+        session.AllowedDepartments = session.AllowedDepartments.Contains(User.Departments.Any) ? [.. Enum.GetValues<User.Departments>()] : session.AllowedDepartments;
+
+        if (session.AllowedLevels.Contains(User.Levels.Any))
+        {
+            session.AllowedLevels = Enum.GetValues(typeof(User.Levels)).Cast<User.Levels>().ToList();
+        }
+
+
         session.Status = SessionStatus.Active;
         _sessions.TryAdd(session.SessionId, session);
         return session;

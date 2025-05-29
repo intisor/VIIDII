@@ -20,15 +20,59 @@
         overflow: hidden;
     }
 
-    .gradient-background {
+    .top-curve-wrapper {
         position: absolute;
+        top: -100px;
+        left: -100px;
+        z-index: 0;
+        width: 300px;
+        height: 300px;
+    }
+
+    .top-curve-rect-1 {
+        position: absolute;
+        width: 245px;
+        height: 245px;
+        background: linear-gradient(128.97deg, #8338EC 2.4%, #C19BF5 85.87%);
+        border-radius: 50%;
         top: 0;
         left: 0;
-        width: 100%;
-        height: 50%;
-        background: linear-gradient(135deg, #8338EC, #3A86FF);
-        z-index: 0;
+        filter: blur(2.5px);
+        z-index: 1;
     }
+
+    .top-curve-rect-2 {
+        position: absolute;
+        width: 140px;
+        height: 140px;
+        background: linear-gradient(151.12deg, #3A86FF 29.33%, #9CC3FF 86.49%);
+        border-radius: 50%;
+        top: 30px;
+        left: 30px;
+        filter: blur(2.5px);
+        z-index: 2;
+    }
+
+    /* Add this to your existing CSS */
+    .container {
+        position: relative;
+        padding: 1rem; /* Adjust padding as needed */
+        margin-top: -1rem; /* Adjust margin as needed */
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+    }
+
+        /* .container::before { */
+        /*     content: ''; */
+        /*     position: absolute; */
+        /*     top: 0; */
+        /*     left: 0; */
+        /*     right: 0; */
+        /*     bottom: 0; */
+        /*     z-index: -1; */
+        /*     margin: -2px; /* Adjust the margin to control the border thickness */ */
+         
+        /*     border-radius: 10px; /* Adjust border radius as needed */ */
+        /* } */
 
     .login-container {
         text-align: center;
@@ -127,7 +171,8 @@
 
     /* Mobile Design */
     @@media only screen and (max-width: 480px) {
-     body
+        body
+
     {
         background: #F9FAFB;
         justify-content: flex-start;
@@ -226,6 +271,10 @@
 
     }
 </style>
+<div class="top-curve-wrapper">
+    <div class="top-curve-rect-1"></div>
+    <div class="top-curve-rect-2"></div>
+</div>
 <div class="container mt-4">
     <h2 class="text-center mb-4 modern-heading">Create a Session </h2>
     <div id="main-content">
@@ -332,7 +381,7 @@
 </div>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" rel="stylesheet" />
 <link href="~/lib/bootstrap/dist/css/bootstrap.min.css" rel="stylesheet" />
-<link href="~/css/site.css" rel="stylesheet" />
+@* <link href="~/css/site.css" rel="stylesheet" /> *@
 <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.7/signalr.min.js"></script>

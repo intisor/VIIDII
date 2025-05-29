@@ -11,6 +11,7 @@
 
         public enum Departments
         {
+            Any,
             ComputerScience,
             ElectricalEngineering,
             MechanicalEngineering,
@@ -21,6 +22,7 @@
 
         public enum Levels
         {
+            Any,
             Level100, 
             Level200,
             Level300,
