@@ -133,7 +133,7 @@ public class SessionService
             .ToList();
     public List<Session> GetActiveSessions() =>
         _sessions.Values
-            .Where(s => s.Status == SessionStatus.Active)
+            .Where(s => s.Status == SessionStatus.Active || s.Status == SessionStatus.Started)
             .ToList();
 
     public Dictionary<string, double> CalculateAttendanceScore(string sessionId)

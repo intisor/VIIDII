@@ -529,67 +529,68 @@
            }  
        }  
     </script>
+   
+    <script>
+           document.addEventListener('DOMContentLoaded', () => {
+            const handleCheckboxGroup = (checkboxName, anyValue) => {
+                const checkboxes = Array.from(document.querySelectorAll(`input[name="${checkboxName}"]`));
+                const anyCheckbox = checkboxes.find(cb => cb.value === anyValue);
+
+                checkboxes.forEach(checkbox => {
+                    checkbox.addEventListener('change', () => {
+                        if (checkbox.value === anyValue) {
+                            const isAnyChecked = checkbox.checked;
+                            checkboxes.forEach(cb => {
+                                if (cb.value !== anyValue) {
+                                    cb.disabled = isAnyChecked;
+                                    if (isAnyChecked) cb.checked = false;
+                                }
+                            });
+                        } else if (checkbox.checked && anyCheckbox) {
+                            anyCheckbox.checked = false;
+                        }
+                    });
+                });
+            };
+
+            // Apply the function to department checkboxes
+            handleCheckboxGroup('AllowedDepartments', 'Any');
+
+            // Apply the function to level checkboxes
+            handleCheckboxGroup('AllowedLevels', 'Any');
+        });
+
+    </script>
+    <script>
+            document.addEventListener('DOMContentLoaded', function() {
+            const messagePopup = document.getElementById('messagePopup');
+
+            if (messagePopup && messagePopup.innerText.trim() !== "") {
+                // Show the popup
+                messagePopup.classList.add('show');
+
+                // Hide the popup after 5 seconds
+                setTimeout(function() {
+                    messagePopup.classList.remove('show');
+                }, 5000); // 5000 milliseconds = 5 seconds
+            }
+        });
+
+    </script>
+  
 }
 <script>
-    // Pass session state to session.js
     window.sessionState = @Html.Raw(Json.Serialize(new
         {
             isSessionStarted = Model.IsSessionStarted,
             sessionId = Model.CurrentSessionId
         }));
     console.log("Session state set:", window.sessionState);
-</script>
-<script>
     // Expose IsSessionLecturer to JavaScript
-    window.isSessionLecturer = @Json.Serialize(Model.IsSessionLecturer);
 </script>
-<script>
-       document.addEventListener('DOMContentLoaded', () => {
-        const handleCheckboxGroup = (checkboxName, anyValue) => {
-            const checkboxes = Array.from(document.querySelectorAll(`input[name="${checkboxName}"]`));
-            const anyCheckbox = checkboxes.find(cb => cb.value === anyValue);
-
-            checkboxes.forEach(checkbox => {
-                checkbox.addEventListener('change', () => {
-                    if (checkbox.value === anyValue) {
-                        const isAnyChecked = checkbox.checked;
-                        checkboxes.forEach(cb => {
-                            if (cb.value !== anyValue) {
-                                cb.disabled = isAnyChecked;
-                                if (isAnyChecked) cb.checked = false;
-                            }
-                        });
-                    } else if (checkbox.checked && anyCheckbox) {
-                        anyCheckbox.checked = false;
-                    }
-                });
-            });
-        };
-
-        // Apply the function to department checkboxes
-        handleCheckboxGroup('AllowedDepartments', 'Any');
-
-        // Apply the function to level checkboxes
-        handleCheckboxGroup('AllowedLevels', 'Any');
-    });
-
-</script>
-<script>
-        document.addEventListener('DOMContentLoaded', function() {
-        const messagePopup = document.getElementById('messagePopup');
-
-        if (messagePopup && messagePopup.innerText.trim() !== "") {
-            // Show the popup
-            messagePopup.classList.add('show');
-
-            // Hide the popup after 5 seconds
-            setTimeout(function() {
-                messagePopup.classList.remove('show');
-            }, 5000); // 5000 milliseconds = 5 seconds
-        }
-    });
-
-</script>
+    <script>
+    window.isSessionLecturer = @Json.Serialize(Model.IsSessionLecturer)
+    </script>
 <script>
     document.getElementById('toggleView').addEventListener('click', function() {
         const participantsContainer = document.getElementById('participantsContainer');
@@ -607,3 +608,4 @@
         }
     });
 </script>
+

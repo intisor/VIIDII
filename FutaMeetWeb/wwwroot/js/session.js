@@ -1,10 +1,9 @@
 ﻿// === Initialization ===
-// Global variables for stream and session management
-let localStream = null;          // Holds the local video/audio stream
-let peer = null;                 // PeerJS instance for video calls
-let isStreamAttached = false;    // Tracks if a stream is already attached to video
-let attachedStreamId = null;     // Tracks the ID of the attached stream
-let hasJoinedSession = false;    // Tracks if the user has joined the session
+let localStream = null;
+let peer = null;
+let isStreamAttached = false;
+let attachedStreamId = null;
+let hasJoinedSession = false;
 let lastTabStatusUpdate = 0;
 const tabStatusThrottle = 50000; // 50 seconds
 
@@ -27,46 +26,48 @@ function getTimestamp() {
 }
 
 // === SignalR Connection Management ===
-// Handle connection closure with error notification
 connection.onclose((error) => {
     console.error("SignalR connection closed.", error);
     alert("Session connection lost. Please refresh or try again.");
 });
 
-// Handle reconnection and rejoin logic for students
 connection.onreconnected(() => {
     console.log("SignalR reconnected, rejoining session...");
     const { sessionId } = window.sessionState || {};
     if (sessionId && !window.isSessionLecturer && !hasJoinedSession) {
+        console.log("Reconnecting to session:", sessionId);
         connection.invoke("StartSession", sessionId);
     }
 });
 
-// Start the SignalR connection and initialize session
 connection.start().then(() => {
+    console.log("SignalR connection started.");
     const { sessionId, isSessionStarted } = window.sessionState || {};
     if (sessionId && isSessionStarted && window.isSessionLecturer && !localStream) {
+        console.log("Starting session as lecturer:", sessionId);
         connection.invoke("StartSession", sessionId);
     } else if (sessionId && !window.isSessionLecturer) {
+        console.log("Starting session as student:", sessionId);
         connection.invoke("StartSession", sessionId);
     }
     // Load initial messages if session exists
     if (sessionId) {
+        console.log("Loading initial messages for session:", sessionId);
         connection.invoke("GetMessages", sessionId);
     }
 }).catch(err => console.error("SignalR connection failed:", err));
 
-// Show/hide lecturer post input on page load (already visible per CSS)
 document.addEventListener("DOMContentLoaded", () => {
+    console.log("DOM fully loaded and parsed.");
     if (window.isSessionLecturer) {
-        document.getElementById("postInput").style.display = "block"; // Redundant with CSS, kept for clarity
-        document.getElementById("createPost").style.display = "block"; // Redundant with CSS, kept for clarity
+        document.getElementById("postInput").style.display = "block";
+        document.getElementById("createPost").style.display = "block";
     }
 });
 
 // === Streaming Logic ===
-// Handle session start and video streaming setup
 connection.on("StartSession", (sessionId) => {
+    console.log("StartSession event received for session:", sessionId);
     if (hasJoinedSession) {
         console.log("Already joined session, skipping StartSession:", sessionId);
         return;
@@ -80,17 +81,20 @@ connection.on("StartSession", (sessionId) => {
     }
 
     if (window.isSessionLecturer) {
-        // Attach existing stream or get new one for lecturer
+        console.log("Setting up lecturer stream.");
         if (localStream && video && !video.srcObject) {
+            console.log("Attaching existing stream to video element.");
             video.srcObject = localStream;
             video.play().catch(error => console.error("Error playing lecturer video:", error));
             return;
         }
         navigator.mediaDevices.getUserMedia({ video: true, audio: true })
             .then(stream => {
+                console.log("Successfully obtained local stream:", stream);
                 localStream = stream;
                 window.localStream = stream;
                 if (video) {
+                    console.log("Attaching local stream to video element.");
                     video.srcObject = stream;
                     video.play().catch(error => console.error("Error playing lecturer video:", error));
                 }
@@ -107,6 +111,7 @@ connection.on("StartSession", (sessionId) => {
                     connection.invoke("SessionStarted", sessionId).catch(err => console.error("Failed to broadcast SessionStarted:", err));
                 });
                 peer.on("connection", (conn) => {
+                    console.log("Student connection received:", conn.peer);
                     conn.on("open", () => {
                         console.log("Student connected, peer ID:", conn.peer);
                         if (!conn.peer) {
@@ -134,7 +139,7 @@ connection.on("StartSession", (sessionId) => {
                 alert("Unable to access webcam/microphone. Please check permissions.");
             });
     } else {
-        // Student setup to receive lecturer stream
+        console.log("Setting up student to receive lecturer stream.");
         if (peer) {
             console.log("Student peer already exists:", peer.id);
             return;
@@ -154,6 +159,7 @@ connection.on("StartSession", (sessionId) => {
             console.log("Received lecturer call:", call.peer);
             call.answer();
             call.on("stream", (remoteStream) => {
+                console.log("Received lecturer stream:", remoteStream);
                 if (remoteStream.id === attachedStreamId) {
                     console.log("Ignoring duplicate lecturer stream, ID:", remoteStream.id);
                     return;
@@ -162,12 +168,13 @@ connection.on("StartSession", (sessionId) => {
                     console.log("Stream already attached, ignoring new stream:", remoteStream.id);
                     return;
                 }
-                console.log("Received lecturer stream:", remoteStream);
                 isStreamAttached = true;
                 attachedStreamId = remoteStream.id;
                 if (video) {
+                    console.log("Attaching remote stream to video element.");
                     video.srcObject = remoteStream;
                     video.onloadedmetadata = () => {
+                        console.log("Metadata loaded, attempting to play video.");
                         video.play().catch(error => console.error("Error playing lecturer stream:", error));
                     };
                 }
@@ -186,7 +193,6 @@ connection.on("StartSession", (sessionId) => {
     }
 });
 
-// Function to handle student connection attempts to lecturer
 function tryConnect(sessionId, attempt = 1, maxAttempts = 3) {
     console.log(`Attempting to connect to lecturer, attempt ${attempt}/${maxAttempts}`);
     if (!peer || peer.disconnected) {
@@ -219,8 +225,10 @@ function tryConnect(sessionId, attempt = 1, maxAttempts = 3) {
                 attachedStreamId = remoteStream.id;
                 const video = document.getElementById("sessionVideo");
                 if (video) {
+                    console.log("Attaching remote stream to video element.");
                     video.srcObject = remoteStream;
                     video.onloadedmetadata = () => {
+                        console.log("Metadata loaded, attempting to play video.");
                         video.play().catch(error => console.error("Error playing lecturer stream:", error));
                     };
                 }
@@ -251,14 +259,15 @@ function tryConnect(sessionId, attempt = 1, maxAttempts = 3) {
     });
 }
 
-// === Session Management ===
-// Handle session start broadcast from lecturer
 connection.on("SessionStarted", (sessionId) => {
     console.log("Session started by lecturer:", sessionId);
     if (!window.isSessionLecturer) {
         tryConnect(sessionId);
     }
 });
+
+// Additional logging for messaging and participant status logic can be added similarly
+
 
 // === Messaging Logic ===
 
@@ -447,33 +456,24 @@ connection.on("PostCreated", (postId) => {
 // Respond to server ping for activity check
 connection.on("AreYouThere", () => {
     if (window.isSessionLecturer) return;
-    const modal = document.createElement("div");
-    modal.innerHTML = `
-        <div class="modal fade" id="activityModal" tabindex="-1">
-            <div class="modal-dialog">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h5 class="modal-title">Are you still there?</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                    </div>
-                    <div class="modal-body">
-                        <p>Please confirm you're active.</p>
-                        <button id="confirmActive" class="btn btn-primary">I'm Here</button>
-                    </div>
-                </div>
-            </div>
-        </div>`;
-    document.body.appendChild(modal);
-    const bsModal = new bootstrap.Modal(document.getElementById("activityModal"));
+    const activityModal = document.getElementById("activityModal");
+    if (!activityModal) {
+        console.error("Activity modal not found in DOM");
+        return;
+    }
+    const bsModal = new bootstrap.Modal(activityModal);
     bsModal.show();
-    document.getElementById("confirmActive").onclick = () => {
+    const confirmButton = document.getElementById("confirmActive");
+    const closeButton = activityModal.querySelector(".btn-close");
+    const onConfirm = () => {
         connection.invoke("ConfirmActive").catch(err => console.error("Failed to confirm active:", err));
         bsModal.hide();
-        modal.remove();
     };
-    document.querySelector("#activityModal .btn-close").onclick = () => {
-        modal.remove();
+    const onClose = () => {
+        bsModal.hide();
     };
+    confirmButton.onclick = onConfirm;
+    closeButton.onclick = onClose;
 });
 
 // Report tab activity status to server (students only)
@@ -523,6 +523,7 @@ connection.on("ReceiveParticipants", (participants) => {
         console.log("Received participants:", participants);
         panel.innerHTML = "";
         const list = document.createElement("ul");
+
         list.className = "list-group";
         Object.entries(participants).forEach(([id, name]) => {
             const item = document.createElement("li");
@@ -546,13 +547,27 @@ connection.on("ReceiveParticipantStatuses", (statuses) => {
             const item = document.getElementById(`participant-${id}`);
             if (item) {
                 const name = item.textContent.split(" (")[0].replace(/<i[^>]*>.*<\/i>/, "").trim();
-                item.innerHTML = `<i class="${getStatusIcon(status)} me-2"></i>${name} (${status})`;
-                item.className = `list-group-item ${getStatusClass(status)}`;
+                const statusString = mapStatusToString(status); // Convert numeric to string
+                item.innerHTML = `<i class="${getStatusIcon(statusString)} me-2"></i>${name} (${statusString})`;
+                item.className = `list-group-item ${getStatusClass(statusString)}`;
             }
         });
     }
 });
-// status icon
+
+function mapStatusToString(status) {
+    // Convert numeric or unexpected status to string
+    switch (String(status)) {
+        case "1": return "Active";
+        case "2": return "Inactive";
+        case "3": return "BatteryLow";
+        case "4": return "DataFinished";
+        case "5": return "Disconnected";
+        default: return String(status); // Use as-is if already a string
+    }
+}
+
+// Existing functions remain unchanged
 function getStatusIcon(status) {
     switch (status) {
         case "Active": return "fas fa-check-circle";
@@ -563,7 +578,7 @@ function getStatusIcon(status) {
         default: return "fas fa-user";
     }
 }
-// status class 
+
 function getStatusClass(status) {
     switch (status) {
         case "Active": return "list-group-item-success";

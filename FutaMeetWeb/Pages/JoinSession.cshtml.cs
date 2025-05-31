@@ -26,7 +26,7 @@ namespace FutaMeetWeb.Pages
         public bool IsSessionStarted { get; set; }
         public bool IsSessionLecturer { get; set; }
 
-        public IActionResult OnGet(string sessionId = null)
+        public IActionResult OnGet(string sessionId)
         {
             LoadAvailableSessions();
             var matricNo = HttpContext.Session.GetString("MatricNo");
@@ -94,7 +94,7 @@ namespace FutaMeetWeb.Pages
             Message = $"Joined session {SessionId}";
             HttpContext.Session.SetString("CurrentSessionId", CurrentSessionId);
             HttpContext.Session.SetString("SessionMessage", Message);
-            return Page();
+            return RedirectToPage();
         }
         private void LoadAvailableSessions()
         {

@@ -81,7 +81,7 @@ namespace FutaMeetWeb.Pages
                 CurrentSessionId = _sessionService.GetSessionsByLecturer(lecturerId).FirstOrDefault().SessionId;
                 return Page();
             }
-            CurrentSessionId = _sessionService.GetSessionsByLecturer(lecturerId).FirstOrDefault().SessionId;
+            CurrentSessionId = session.SessionId;
             Message =  $"session: {session.SessionId}";
             IsSessionStarted = session.IsSessionStarted;
             IsSessionLecturer = session.LecturerId == lecturerId; // No conflict now

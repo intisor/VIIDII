@@ -303,6 +303,21 @@
                     </button>
                 </div>
             </div>
+            <!-- Activity Modal -->
+            <div class="modal fade modern-modal" id="activityModal" tabindex="-1">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Are you still there?</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                            <p>Please confirm you're active.</p>
+                            <button id="confirmActive" class="btn btn-primary">I'm Here</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
             @if (!string.IsNullOrEmpty(Model.Message))
             {
                 <p class="mt-3 text-center modern-status" id="statusMessage">@Model.Message</p>
@@ -337,3 +352,19 @@
         });
     </script>
 }
+<script>
+    window.sessionState = @Html.Raw(Json.Serialize(new
+        {
+            isSessionStarted = Model.IsSessionStarted,
+            sessionId = Model.CurrentSessionId
+        }));
+    window.isSessionLecturer = false; // Always student here
+
+    document.addEventListener("DOMContentLoaded", () => {
+        const sessionVideo = document.getElementById("sessionVideo");
+        if (!sessionVideo) return;
+        sessionVideo.onloadedmetadata = () => {
+            console.log("Metadata loaded. Stream:", sessionVideo.srcObject);
+        };
+    });
+</script>
