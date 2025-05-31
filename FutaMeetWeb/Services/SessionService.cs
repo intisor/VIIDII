@@ -63,11 +63,11 @@ public class SessionService
         var user = MockApiService.GetUsers().FirstOrDefault(u => u.MatricNo == participantId);
         if (user is null)
             return (null, "Invalid user.");
-        if ( !session.AllowedDepartments.Contains(user.Department.Value))
+        if (!session.AllowedDepartments.Contains(User.Departments.Any) && !session.AllowedDepartments.Contains(user.Department.Value))
             return (null, "Your department is not allowed for this session.");
 
-        if (!session.AllowedDepartments.Contains(user.Department.Value))
-            return (null, "Your department is not allowed for this session.");
+        if (!session.AllowedLevels.Contains(User.Levels.Any) &&!session.AllowedLevels.Contains(user.Level.Value))
+            return (null, "Your level is not allowed for this session.");
         if (_sessions.Values.Any(s => s.Status == SessionStatus.Active && s.ParticipantIds.Contains(participantId) && s.SessionId != sessionId))
             return (null, "You are already in a different session.");
         if (string.IsNullOrEmpty(connectionId))

@@ -59,6 +59,25 @@
         filter: blur(2.5px);
         z-index: 2;
         }
+
+        .message-popup {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background-color: #333;
+            color: #fff;
+            padding: 15px;
+            border-radius: 5px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            opacity: 0;
+            transition: opacity 0.5s ease-in-out;
+            z-index: 1000;
+        }
+
+            .message-popup.show {
+                opacity: 1;
+            }
+
         .login-container {
         text-align: center;
         background: white;
@@ -84,6 +103,10 @@
         margin-bottom: 1rem;
         text-align: left;
         padding: 0 1rem;
+        }
+
+        .password-input-group {
+            margin-top: 1rem; /* Adjust this value to move the password label down */
         }
 
         label {
@@ -335,7 +358,6 @@
         <div class="top-curve-rect-1"></div>
         <div class="top-curve-rect-2"></div>
     </div>
-   
         @if (!Model.IsLoggedIn)
         {
         <div class="login-container">
@@ -346,7 +368,7 @@
                     <select asp-for="MatricNo" asp-items="Model.UserOptions" required>
                         <option value="">-- Pick a user --</option>
                     </select>
-                    <div class="input-group">
+                    <div class="input-group password-input-group">
                         <label for="Password">Password</label>
                         <input type="password" asp-for="Password" required />
                     </div>
@@ -390,10 +412,28 @@
                 </ul>
             </nav>
         </div>
-            @* @if (!string.IsNullOrEmpty(Model.Message)) *@
-            @* { *@
-            @*     <p>@Model.Message</p> *@
-            @* } *@
         }
+    <div id="messagePopup" class="message-popup">
+        @if (!string.IsNullOrEmpty(Model.Message))
+        {
+            <p>@Model.Message</p>
+        }
+    </div>
+    <script>
+            document.addEventListener('DOMContentLoaded', function() {
+            const messagePopup = document.getElementById('messagePopup');
+
+            if (messagePopup && messagePopup.innerText.trim() !== "") {
+                // Show the popup
+                messagePopup.classList.add('show');
+
+                // Hide the popup after 5 seconds
+                setTimeout(function() {
+                    messagePopup.classList.remove('show');
+                }, 5000); // 5000 milliseconds = 5 seconds
+            }
+        });
+
+    </script>
 </body>
 </html>

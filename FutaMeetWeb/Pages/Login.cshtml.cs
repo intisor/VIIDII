@@ -59,6 +59,12 @@ public class LoginModel : PageModel
             Message = "Pick a user!";
             return Page();
         }
+        UserOptions = [.. MockApiService.GetUsers()
+           .Select(u => new SelectListItem
+           {
+               Value = u.MatricNo,
+               Text = $"{u.Name} ({u.Role})"
+           })];
         var user = MockApiService.GetUsers().FirstOrDefault(u => u.MatricNo == MatricNo);
         Role = user.Role.ToString() ?? "";
         UserName = user?.Name ?? "";
@@ -70,7 +76,7 @@ public class LoginModel : PageModel
         }
 
         HttpContext.Session.SetString("MatricNo", matricNo);   
-        Message = $"Logged in as {MatricNo}";
+        Message = $"Logged in as {UserName}";
         return Page();
     }
 

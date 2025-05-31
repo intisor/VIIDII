@@ -59,20 +59,30 @@ namespace FutaMeetWeb.Pages
             }
         }
 
-        public IActionResult OnPost(bool? replaceExisting = null)
+        public IActionResult OnPost(bool replaceExisting = false)
         {
             var lecturerId = HttpContext.Session.GetString("MatricNo");
-            var session = _sessionService.CreateSession(lecturerId, Title, AllowedDepartments, AllowedLevels, true);
-            if (replaceExisting == null && session.Status == SessionStatus.Active && session.Title != Title)
+            if (AllowedDepartments == null || !AllowedDepartments.Any())
+            {
+                AllowedDepartments.Add(Models.User.Departments.Any);
+            }
+
+            if (AllowedLevels == null || !AllowedLevels.Any())
+            {
+                AllowedLevels.Add(Models.User.Levels.Any);
+            }
+
+            var session = _sessionService.CreateSession(lecturerId, Title, AllowedDepartments, AllowedLevels, replaceExisting);
+            if (!replaceExisting && session.Status == SessionStatus.Started)
             {
                 ShowReplacePrompt = true;
                 ExistingSessionId = session.SessionId;
+                Message = $"Created session. Kept existing session: {session.SessionId}";
+                CurrentSessionId = _sessionService.GetSessionsByLecturer(lecturerId).FirstOrDefault().SessionId;
                 return Page();
             }
             CurrentSessionId = _sessionService.GetSessionsByLecturer(lecturerId).FirstOrDefault().SessionId;
-            Message = replaceExisting == false
-                ? $"Created session Kept existing session: {session.SessionId}"
-                : $"session: {session.SessionId}";
+            Message =  $"session: {session.SessionId}";
             IsSessionStarted = session.IsSessionStarted;
             IsSessionLecturer = session.LecturerId == lecturerId; // No conflict now
             HttpContext.Session.SetString("SessionMessage", Message);
