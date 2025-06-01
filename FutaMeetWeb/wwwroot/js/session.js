@@ -1,5 +1,4 @@
-﻿// === Initialization ===
-let localStream = null;
+﻿let localStream = null;
 let peer = null;
 let isStreamAttached = false;
 let attachedStreamId = null;
@@ -7,13 +6,11 @@ let hasJoinedSession = false;
 let lastTabStatusUpdate = 0;
 const tabStatusThrottle = 50000; // 50 seconds
 
-// Initialize SignalR connection
 const connection = new signalR.HubConnectionBuilder()
     .withUrl("/sessionHub")
     .withAutomaticReconnect()
     .build();
 
-// Function to get dynamic timestamp
 function getTimestamp() {
     const options = {
         timeZone: 'Africa/Lagos',
@@ -21,11 +18,9 @@ function getTimestamp() {
         minute: '2-digit',
         hour12: true
     };
-    const time = new Date().toLocaleTimeString('en-US', options);
-    return `${time} WAT`;
+    return `${new Date().toLocaleTimeString('en-US', options)} WAT`;
 }
 
-// === SignalR Connection Management ===
 connection.onclose((error) => {
     console.error("SignalR connection closed.", error);
     alert("Session connection lost. Please refresh or try again.");
@@ -34,9 +29,10 @@ connection.onclose((error) => {
 connection.onreconnected(() => {
     console.log("SignalR reconnected, rejoining session...");
     const { sessionId } = window.sessionState || {};
-    if (sessionId && !window.isSessionLecturer && !hasJoinedSession) {
+    if (sessionId && !window.isSessionLecturer) {
         console.log("Reconnecting to session:", sessionId);
-        connection.invoke("StartSession", sessionId);
+        connection.invoke("JoinSession", sessionId);
+        tryConnect(sessionId);
     }
 });
 
@@ -47,10 +43,11 @@ connection.start().then(() => {
         console.log("Starting session as lecturer:", sessionId);
         connection.invoke("StartSession", sessionId);
     } else if (sessionId && !window.isSessionLecturer) {
-        console.log("Starting session as student:", sessionId);
-        connection.invoke("StartSession", sessionId);
+        console.log("Joining session as student:", sessionId);
+        connection.invoke("JoinSession", sessionId)
+            .then(() => console.log("JoinSession invoked successfully"))
+            .catch(err => console.error("JoinSession failed:", err));
     }
-    // Load initial messages if session exists
     if (sessionId) {
         console.log("Loading initial messages for session:", sessionId);
         connection.invoke("GetMessages", sessionId);
@@ -65,11 +62,11 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 });
 
-// === Streaming Logic ===
 connection.on("StartSession", (sessionId) => {
     console.log("StartSession event received for session:", sessionId);
     if (hasJoinedSession) {
-        console.log("Already joined session, skipping StartSession:", sessionId);
+        console.log("Already joined, attempting to reattach stream:", sessionId);
+        tryConnect(sessionId);
         return;
     }
     hasJoinedSession = true;
@@ -85,7 +82,6 @@ connection.on("StartSession", (sessionId) => {
         if (localStream && video && !video.srcObject) {
             console.log("Attaching existing stream to video element.");
             video.srcObject = localStream;
-            video.play().catch(error => console.error("Error playing lecturer video:", error));
             return;
         }
         navigator.mediaDevices.getUserMedia({ video: true, audio: true })
@@ -96,7 +92,6 @@ connection.on("StartSession", (sessionId) => {
                 if (video) {
                     console.log("Attaching local stream to video element.");
                     video.srcObject = stream;
-                    video.play().catch(error => console.error("Error playing lecturer video:", error));
                 }
                 peer = new Peer(sessionId, {
                     config: {
@@ -140,110 +135,69 @@ connection.on("StartSession", (sessionId) => {
             });
     } else {
         console.log("Setting up student to receive lecturer stream.");
-        if (peer) {
-            console.log("Student peer already exists:", peer.id);
-            return;
-        }
-        peer = new Peer({
-            config: {
-                iceServers: [
-                    { urls: "stun:stun.l.google.com:19302" },
-                    { urls: "turn:turn.bistri.com:80", username: "homeo", credential: "homeo" }
-                ]
-            }
-        });
-        peer.on("open", (id) => {
-            console.log("Student peer open:", id);
-        });
-        peer.on("call", (call) => {
-            console.log("Received lecturer call:", call.peer);
-            call.answer();
-            call.on("stream", (remoteStream) => {
-                console.log("Received lecturer stream:", remoteStream);
-                if (remoteStream.id === attachedStreamId) {
-                    console.log("Ignoring duplicate lecturer stream, ID:", remoteStream.id);
-                    return;
-                }
-                if (isStreamAttached) {
-                    console.log("Stream already attached, ignoring new stream:", remoteStream.id);
-                    return;
-                }
-                isStreamAttached = true;
-                attachedStreamId = remoteStream.id;
-                if (video) {
-                    console.log("Attaching remote stream to video element.");
-                    video.srcObject = remoteStream;
-                    video.onloadedmetadata = () => {
-                        console.log("Metadata loaded, attempting to play video.");
-                        video.play().catch(error => console.error("Error playing lecturer stream:", error));
-                    };
-                }
-            });
-            call.on("error", (err) => console.error("Call error:", err));
-        });
-        peer.on("error", (err) => {
-            console.error("Peer error:", err);
-            if (err.type === "peer-unavailable") {
-                console.warn("Lecturer not available. Waiting for session start...");
-            } else if (err.type === "server-disconnected") {
-                console.warn("PeerServer disconnected. Reconnecting...");
-                peer.reconnect();
-            }
-        });
+        setupStudentPeer(sessionId, video);
     }
 });
 
-function tryConnect(sessionId, attempt = 1, maxAttempts = 3) {
+function setupStudentPeer(sessionId, video) {
+    if (peer && !peer.disconnected) {
+        console.log("Student peer exists:", peer.id);
+        tryConnect(sessionId);
+        return;
+    }
+    peer = new Peer({
+        config: {
+            iceServers: [
+                { urls: "stun:stun.l.google.com:19302" },
+                { urls: "turn:turn.bistri.com:80", username: "homeo", credential: "homeo" }
+            ]
+        }
+    });
+    peer.on("open", (id) => {
+        console.log("Student peer open:", id);
+        tryConnect(sessionId);
+    });
+    peer.on("call", (call) => {
+        console.log("Received lecturer call:", call.peer);
+        call.answer();
+        call.on("stream", (remoteStream) => {
+            console.log("Received lecturer stream:", remoteStream);
+            if (remoteStream.id === attachedStreamId) {
+                console.log("Ignoring duplicate stream, ID:", remoteStream.id);
+                return;
+            }
+            if (isStreamAttached) {
+                console.log("Stream already attached, ignoring new stream:", remoteStream.id);
+                return;
+            }
+            isStreamAttached = true;
+            attachedStreamId = remoteStream.id;
+            if (video) {
+                console.log("Attaching remote stream to video element.");
+                video.srcObject = remoteStream;
+            }
+        });
+        call.on("error", (err) => console.error("Call error:", err));
+    });
+    peer.on("error", (err) => {
+        console.error("Peer error:", err);
+        if (err.type === "peer-unavailable") {
+            console.warn("Lecturer not available, retrying...");
+            setTimeout(() => tryConnect(sessionId), 3000);
+        } else if (err.type === "server-disconnected") {
+            console.warn("PeerServer disconnected, reconnecting...");
+            peer.reconnect();
+        }
+    });
+}
+
+function tryConnect(sessionId, attempt = 1, maxAttempts = 15) {
     console.log(`Attempting to connect to lecturer, attempt ${attempt}/${maxAttempts}`);
     if (!peer || peer.disconnected) {
         console.warn("Student peer not initialized or disconnected, reinitializing...");
-        peer = new Peer({
-            config: {
-                iceServers: [
-                    { urls: "stun:stun.l.google.com:19302" },
-                    { urls: "turn:turn.bistri.com:80", username: "homeo", credential: "homeo" }
-                ]
-            }
-        });
-        peer.on("open", (id) => {
-            console.log("Student peer open:", id);
-        });
-        peer.on("call", (call) => {
-            console.log("Received lecturer call:", call.peer);
-            call.answer();
-            call.on("stream", (remoteStream) => {
-                if (remoteStream.id === attachedStreamId) {
-                    console.log("Ignoring duplicate lecturer stream, ID:", remoteStream.id);
-                    return;
-                }
-                if (isStreamAttached) {
-                    console.log("Stream already attached, ignoring new stream:", remoteStream.id);
-                    return;
-                }
-                console.log("Received lecturer stream:", remoteStream);
-                isStreamAttached = true;
-                attachedStreamId = remoteStream.id;
-                const video = document.getElementById("sessionVideo");
-                if (video) {
-                    console.log("Attaching remote stream to video element.");
-                    video.srcObject = remoteStream;
-                    video.onloadedmetadata = () => {
-                        console.log("Metadata loaded, attempting to play video.");
-                        video.play().catch(error => console.error("Error playing lecturer stream:", error));
-                    };
-                }
-            });
-            call.on("error", (err) => console.error("Call error:", err));
-        });
-        peer.on("error", (err) => {
-            console.error("Peer error:", err);
-            if (err.type === "peer-unavailable") {
-                console.warn("Lecturer not available. Waiting for session start...");
-            } else if (err.type === "server-disconnected") {
-                console.warn("PeerServer disconnected. Reconnecting...");
-                peer.reconnect();
-            }
-        });
+        const video = document.getElementById("sessionVideo");
+        setupStudentPeer(sessionId, video);
+        return;
     }
     const conn = peer.connect(sessionId);
     conn.on("open", () => {
@@ -254,7 +208,9 @@ function tryConnect(sessionId, attempt = 1, maxAttempts = 3) {
         console.error("Connection error:", err);
         if (attempt < maxAttempts && err.type === "peer-unavailable") {
             console.warn(`Retrying connection (attempt ${attempt + 1}/${maxAttempts})...`);
-            setTimeout(() => tryConnect(sessionId, attempt + 1, maxAttempts), 2000);
+            setTimeout(() => tryConnect(sessionId, attempt + 1, maxAttempts), 3000);
+        } else {
+            console.error("Max connection attempts reached or fatal error:", err);
         }
     });
 }
@@ -266,12 +222,7 @@ connection.on("SessionStarted", (sessionId) => {
     }
 });
 
-// Additional logging for messaging and participant status logic can be added similarly
-
-
 // === Messaging Logic ===
-
-// Handle sending a post on button click (lecturer only)
 document.getElementById("createPost")?.addEventListener("click", () => {
     const input = document.getElementById("postInput");
     const discussion = document.getElementById("discussion");
@@ -295,15 +246,12 @@ document.getElementById("createPost")?.addEventListener("click", () => {
             messageBox.appendChild(messageDiv);
             discussion.appendChild(messageBox);
             discussion.scrollTop = discussion.scrollHeight;
-
             connection.invoke("CreatePost", sessionId, messageContent).catch(err => console.error("Hub error:", err));
             input.value = "";
         }
-    } else {
-        console.warn("Cannot create post: sessionId, input, or lecturer check failed", { sessionId, isLecturer: window.isSessionLecturer });
     }
 }, { once: false });
-// Handle receiving a post (for all clients)
+
 connection.on("ReceivePost", (message) => {
     const discussion = document.getElementById("discussion");
     if (discussion) {
@@ -311,7 +259,7 @@ connection.on("ReceivePost", (message) => {
         messageBox.className = "message-box";
         const messageDiv = document.createElement("div");
         messageDiv.className = "lecturer-msg";
-        messageDiv.setAttribute("data-post-id", message.id); // Changed from message.PostId
+        messageDiv.setAttribute("data-post-id", message.id);
         messageDiv.innerHTML = `
             <div class="lecturer-username">${message.userName || "Lecturer"}</div>
             <div class="lecturer-content">${message.content}</div>
@@ -323,23 +271,21 @@ connection.on("ReceivePost", (message) => {
         messageBox.appendChild(messageDiv);
         discussion.appendChild(messageBox);
         discussion.scrollTop = discussion.scrollHeight;
-
         messageDiv.querySelector(".reply-btn").addEventListener("click", () => {
             const replyArea = document.getElementById("replyArea");
             const replyInput = document.getElementById("replyInput");
             if (replyArea && replyInput) {
                 replyArea.style.display = "block";
-                replyInput.dataset.postId = message.id; // Changed from message.PostId
+                replyInput.dataset.postId = message.id;
             }
         });
     }
 });
 
-// Handle receiving a reply (for all clients)
 connection.on("ReceiveComment", (comment) => {
     const discussion = document.getElementById("discussion");
     if (discussion) {
-        const parentMessage = discussion.querySelector(`[data-post-id="${comment.parentId}"]`); // Fix: Use parentId
+        const parentMessage = discussion.querySelector(`[data-post-id="${comment.parentId}"]`);
         if (parentMessage) {
             const messageBox = document.createElement("div");
             messageBox.className = "message-box";
@@ -361,7 +307,7 @@ connection.on("ReceiveComment", (comment) => {
         }
     }
 });
-// Handle sending a reply (for students)
+
 document.getElementById("sendReply")?.addEventListener("click", () => {
     const input = document.getElementById("replyInput");
     const replyArea = document.getElementById("replyArea");
@@ -385,10 +331,9 @@ connection.on("ReceiveMessages", (messages) => {
             const messageBox = document.createElement("div");
             messageBox.className = "message-box";
             const messageDiv = document.createElement("div");
-
-            if (message.isLecturerPost && message.parentId === message.id) { // Changed from message.IsLecturerPost, message.ParentId, message.Id
+            if (message.isLecturerPost && message.parentId === message.id) {
                 messageDiv.className = "lecturer-msg";
-                messageDiv.setAttribute("data-post-id", message.id); // Changed from message.Id
+                messageDiv.setAttribute("data-post-id", message.id);
                 messageDiv.innerHTML = `
                     <div class="lecturer-username">${message.userName || "Lecturer"}</div>
                     <div class="lecturer-content">${message.content}</div>
@@ -399,13 +344,12 @@ connection.on("ReceiveMessages", (messages) => {
                 `;
                 messageBox.appendChild(messageDiv);
                 discussion.appendChild(messageBox);
-
                 messageDiv.querySelector(".reply-btn").addEventListener("click", () => {
                     const replyArea = document.getElementById("replyArea");
                     const replyInput = document.getElementById("replyInput");
                     if (replyArea && replyInput) {
                         replyArea.style.display = "block";
-                        replyInput.dataset.postId = message.id; // Changed from message.Id
+                        replyInput.dataset.postId = message.id;
                     }
                 });
             } else {
@@ -419,7 +363,7 @@ connection.on("ReceiveMessages", (messages) => {
                     </div>
                 `;
                 messageBox.appendChild(messageDiv);
-                const parentMessage = discussion.querySelector(`[data-post-id="${message.parentId}"]`); // Changed from message.ParentId
+                const parentMessage = discussion.querySelector(`[data-post-id="${message.parentId}"]`);
                 if (parentMessage) {
                     parentMessage.parentNode.insertAdjacentElement("afterend", messageBox);
                 } else {
@@ -430,6 +374,7 @@ connection.on("ReceiveMessages", (messages) => {
         discussion.scrollTop = discussion.scrollHeight;
     }
 });
+
 connection.on("PostCreated", (postId) => {
     const discussion = document.getElementById("discussion");
     const lastMessage = discussion.lastElementChild;
@@ -449,11 +394,6 @@ connection.on("PostCreated", (postId) => {
     }
 });
 
-
-
-// === Participant Status & Issue Reporting ===
-
-// Respond to server ping for activity check
 connection.on("AreYouThere", () => {
     if (window.isSessionLecturer) return;
     const activityModal = document.getElementById("activityModal");
@@ -461,22 +401,29 @@ connection.on("AreYouThere", () => {
         console.error("Activity modal not found in DOM");
         return;
     }
-    const bsModal = new bootstrap.Modal(activityModal);
+    let bsModal = bootstrap.Modal.getInstance(activityModal) || new bootstrap.Modal(activityModal, { backdrop: false });
     bsModal.show();
     const confirmButton = document.getElementById("confirmActive");
     const closeButton = activityModal.querySelector(".btn-close");
-    const onConfirm = () => {
-        connection.invoke("ConfirmActive").catch(err => console.error("Failed to confirm active:", err));
+    const hideModal = () => {
         bsModal.hide();
+        const backdrop = document.querySelector(".modal-backdrop");
+        if (backdrop) backdrop.remove();
+        document.body.classList.remove("modal-open");
     };
-    const onClose = () => {
-        bsModal.hide();
-    };
-    confirmButton.onclick = onConfirm;
-    closeButton.onclick = onClose;
+    if (!confirmButton.dataset.listener) {
+        confirmButton.addEventListener("click", () => {
+            connection.invoke("ConfirmActive").catch(err => console.error("Failed to confirm active:", err));
+            hideModal();
+        });
+        confirmButton.dataset.listener = "true";
+    }
+    if (!closeButton.dataset.listener) {
+        closeButton.addEventListener("click", hideModal);
+        closeButton.dataset.listener = "true";
+    }
 });
 
-// Report tab activity status to server (students only)
 document.addEventListener("visibilitychange", () => {
     if (window.isSessionLecturer) return;
     const now = Date.now();
@@ -490,7 +437,6 @@ document.addEventListener("visibilitychange", () => {
         .catch(err => console.error("Failed to update tab status:", err));
 });
 
-// Flag battery low issue (students only)
 document.getElementById("flagBatteryLow")?.addEventListener("click", () => {
     if (window.isSessionLecturer) return;
     if ("getBattery" in navigator) {
@@ -509,21 +455,19 @@ document.getElementById("flagBatteryLow")?.addEventListener("click", () => {
         console.log("Battery API not supported, flagging issue anyway.");
     }
 });
-// Flag data finished issue (students only)
+
 document.getElementById("flagDataFinished")?.addEventListener("click", () => {
     if (window.isSessionLecturer) return;
-    connection.invoke("FlagIssue", "DataFinished") 
+    connection.invoke("FlagIssue", "DataFinished")
         .catch(err => console.error("Failed to flag data issue:", err));
 });
 
-// Handle receiving participant list (lecturer only)
 connection.on("ReceiveParticipants", (participants) => {
     const panel = document.getElementById("participantPanel");
     if (panel) {
         console.log("Received participants:", participants);
         panel.innerHTML = "";
         const list = document.createElement("ul");
-
         list.className = "list-group";
         Object.entries(participants).forEach(([id, name]) => {
             const item = document.createElement("li");
@@ -537,7 +481,6 @@ connection.on("ReceiveParticipants", (participants) => {
     }
 });
 
-// Lecturer receives participant statuses 
 connection.on("ReceiveParticipantStatuses", (statuses) => {
     if (!window.isSessionLecturer) return;
     const panel = document.getElementById("participantPanel");
@@ -547,7 +490,7 @@ connection.on("ReceiveParticipantStatuses", (statuses) => {
             const item = document.getElementById(`participant-${id}`);
             if (item) {
                 const name = item.textContent.split(" (")[0].replace(/<i[^>]*>.*<\/i>/, "").trim();
-                const statusString = mapStatusToString(status); // Convert numeric to string
+                const statusString = mapStatusToString(status);
                 item.innerHTML = `<i class="${getStatusIcon(statusString)} me-2"></i>${name} (${statusString})`;
                 item.className = `list-group-item ${getStatusClass(statusString)}`;
             }
@@ -556,18 +499,16 @@ connection.on("ReceiveParticipantStatuses", (statuses) => {
 });
 
 function mapStatusToString(status) {
-    // Convert numeric or unexpected status to string
     switch (String(status)) {
         case "1": return "Active";
         case "2": return "Inactive";
         case "3": return "BatteryLow";
         case "4": return "DataFinished";
         case "5": return "Disconnected";
-        default: return String(status); // Use as-is if already a string
+        default: return String(status);
     }
 }
 
-// Existing functions remain unchanged
 function getStatusIcon(status) {
     switch (status) {
         case "Active": return "fas fa-check-circle";

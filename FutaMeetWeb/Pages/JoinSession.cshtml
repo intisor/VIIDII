@@ -281,7 +281,7 @@
     {
         <div class="modern-card">
             <div class="modern-heading">Session Live</div>
-            <video id="sessionVideo" data-session-id="@Model.CurrentSessionId" autoplay class="modern-video" style="width: 100%; max-height: 400px; background: black; border-radius: 12px;"></video>
+            <video id="sessionVideo" data-session-id="@Model.CurrentSessionId" muted class="modern-video" style="width: 100%; max-height: 400px; background: black; border-radius: 12px;"></video>
             <div class="d-flex gap-2 mt-2" id="studentStatusControls">
                 <button id="flagBatteryLow" class="btn btn-warning flex-fill" type="button">
                     <i class="fas fa-battery-quarter"></i> Battery Low
@@ -328,31 +328,12 @@
 
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" rel="stylesheet" />
 <link href="~/lib/bootstrap/dist/css/bootstrap.min.css" rel="stylesheet" />
-<link href="~/css/site.css" rel="stylesheet" />
+@* <link href="~/css/site.css" rel="stylesheet" /> *@
 <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.7/signalr.min.js"></script>
 <script src="~/js/session.js"></script>
-
-@section Scripts {
-    <script>
-        window.sessionState = @Html.Raw(Json.Serialize(new
-            {
-                isSessionStarted = Model.IsSessionStarted,
-                sessionId = Model.CurrentSessionId
-            }));
-        window.isSessionLecturer = false; // Always student here
-
-        document.addEventListener("DOMContentLoaded", () => {
-            const sessionVideo = document.getElementById("sessionVideo");
-            if (!sessionVideo) return;
-            sessionVideo.onloadedmetadata = () => {
-                console.log("Metadata loaded. Stream:", sessionVideo.srcObject);
-            };
-        });
-    </script>
-}
-<script>
+ <script>
     window.sessionState = @Html.Raw(Json.Serialize(new
         {
             isSessionStarted = Model.IsSessionStarted,
@@ -366,5 +347,24 @@
         sessionVideo.onloadedmetadata = () => {
             console.log("Metadata loaded. Stream:", sessionVideo.srcObject);
         };
+    });
+    window.sessionState = @Html.Raw(Json.Serialize(new
+        {
+            isSessionStarted = Model.IsSessionStarted,
+            sessionId = Model.CurrentSessionId
+        }));
+    window.isSessionLecturer = false; // Always student here
+
+    document.addEventListener("DOMContentLoaded", () => {
+        const sessionVideo = document.getElementById("sessionVideo");
+        if (!sessionVideo) return;
+        sessionVideo.onloadedmetadata = () => {
+            console.log("Metadata loaded. Stream:", sessionVideo.srcObject);
+            sessionVideo.play().catch(err => console.error("Auto-play failed:", err));
+        };
+        if (window.sessionState?.sessionId) {
+            connection.invoke("JoinSession", window.sessionState.sessionId)
+                .catch(err => console.error("JoinSession failed:", err));
+        }
     });
 </script>

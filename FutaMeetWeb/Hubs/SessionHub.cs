@@ -50,7 +50,42 @@ namespace FutaMeetWeb.Hubs
                     Console.WriteLine($"Sent participants to lecturer: {string.Join(", ", participants.Keys)}");
                 }
             }
-      
+        }
+
+        public async Task JoinSession(string sessionId)
+        {
+            var matricNo = Context.GetHttpContext()?.Session.GetString("MatricNo");
+            var session = _sessionService.GetSessionById(sessionId);
+            if (session == null)
+            {
+                Console.WriteLine($"JoinSession failed: Session {sessionId} not found.");
+                return;
+            }
+
+            await Groups.AddToGroupAsync(Context.ConnectionId, sessionId);
+            if (!IsSessionLecturer(sessionId, matricNo))
+            {
+                var (joinedSession, error) = _sessionService.JoinSession(sessionId, matricNo, Context.ConnectionId);
+                if (joinedSession is null)
+                {
+                    Console.WriteLine($"JoinSession failed: {error}");
+                    return;
+                }
+                Console.WriteLine($"Student {matricNo} joined session {sessionId}, ParticipantIds: {string.Join(", ", session.ParticipantIds)}");
+            }
+
+            if (session.IsSessionStarted)
+            {
+                await Clients.Caller.SendAsync("StartSession", sessionId);
+                await Clients.Caller.SendAsync("SessionStarted", sessionId);
+            }
+
+            if (!string.IsNullOrEmpty(session.LecturerConnectionId))
+            {
+                var participants = session.ParticipantIds.ToDictionary(id => id, id => id);
+                await Clients.Client(session.LecturerConnectionId).SendAsync("ReceiveParticipants", participants);
+                Console.WriteLine($"Sent participants to lecturer: {string.Join(", ", participants.Keys)}");
+            }
         }
 
         public async Task SessionStarted(string sessionId)

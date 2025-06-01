@@ -511,101 +511,91 @@
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.7/signalr.min.js"></script>
 <script src="~/js/session.js"></script>
-@section Scripts {
-    <script>  
-       function toggleAudio() {  
-           const stream = window.localStream;  
-           if (stream) {  
-               const audioTracks = stream.getAudioTracks();  
-               for (const track of audioTracks) {  
-                   track.enabled = !track.enabled;  
-                   const button = document.getElementById("toggleAudio");  
-                   if (button) {  
-                       button.innerHTML = track.enabled  
-                           ? '<i class="fas fa-microphone-slash"></i> Mute'  
-                           : '<i class="fas fa-microphone"></i> Unmute';  
-                   }  
-               }  
-           }  
-       }  
-    </script>
-   
-    <script>
-           document.addEventListener('DOMContentLoaded', () => {
-            const handleCheckboxGroup = (checkboxName, anyValue) => {
-                const checkboxes = Array.from(document.querySelectorAll(`input[name="${checkboxName}"]`));
-                const anyCheckbox = checkboxes.find(cb => cb.value === anyValue);
-
-                checkboxes.forEach(checkbox => {
-                    checkbox.addEventListener('change', () => {
-                        if (checkbox.value === anyValue) {
-                            const isAnyChecked = checkbox.checked;
-                            checkboxes.forEach(cb => {
-                                if (cb.value !== anyValue) {
-                                    cb.disabled = isAnyChecked;
-                                    if (isAnyChecked) cb.checked = false;
-                                }
-                            });
-                        } else if (checkbox.checked && anyCheckbox) {
-                            anyCheckbox.checked = false;
-                        }
-                    });
-                });
-            };
-
-            // Apply the function to department checkboxes
-            handleCheckboxGroup('AllowedDepartments', 'Any');
-
-            // Apply the function to level checkboxes
-            handleCheckboxGroup('AllowedLevels', 'Any');
-        });
-
-    </script>
-    <script>
-            document.addEventListener('DOMContentLoaded', function() {
-            const messagePopup = document.getElementById('messagePopup');
-
-            if (messagePopup && messagePopup.innerText.trim() !== "") {
-                // Show the popup
-                messagePopup.classList.add('show');
-
-                // Hide the popup after 5 seconds
-                setTimeout(function() {
-                    messagePopup.classList.remove('show');
-                }, 5000); // 5000 milliseconds = 5 seconds
-            }
-        });
-
-    </script>
-  
-}
 <script>
     window.sessionState = @Html.Raw(Json.Serialize(new
         {
             isSessionStarted = Model.IsSessionStarted,
             sessionId = Model.CurrentSessionId
         }));
+    window.isSessionLecturer = @Json.Serialize(Model.IsSessionLecturer);
     console.log("Session state set:", window.sessionState);
-    // Expose IsSessionLecturer to JavaScript
-</script>
-    <script>
-    window.isSessionLecturer = @Json.Serialize(Model.IsSessionLecturer)
-    </script>
-<script>
-    document.getElementById('toggleView').addEventListener('click', function() {
-        const participantsContainer = document.getElementById('participantsContainer');
-        const discussionContainer = document.getElementById('discussionContainer');
-        const toggleButton = document.getElementById('toggleView');
 
-        if (participantsContainer.style.display === 'none') {
-            participantsContainer.style.display = 'block';
-            discussionContainer.style.display = 'none';
-            toggleButton.textContent = 'Show Discussion';
-        } else {
-            participantsContainer.style.display = 'none';
-            discussionContainer.style.display = 'block';
-            toggleButton.textContent = 'Show Participants';
+    function toggleAudio() {
+        const stream = window.localStream;
+        if (stream) {
+            const audioTracks = stream.getAudioTracks();
+            for (const track of audioTracks) {
+                track.enabled = !track.enabled;
+                const button = document.getElementById("toggleAudio");
+                if (button) {
+                    button.innerHTML = track.enabled
+                        ? '<i class="fas fa-microphone-slash"></i> Mute'
+                        : '<i class="fas fa-microphone"></i> Unmute';
+                }
+            }
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const sessionVideo = document.getElementById("sessionVideo");
+        if (sessionVideo) {
+            sessionVideo.onloadedmetadata = () => {
+                console.log("Metadata loaded. Stream:", sessionVideo.srcObject);
+            };
+        }
+
+        if (window.sessionState?.sessionId && window.isSessionLecturer && typeof connection !== 'undefined') {
+            connection.invoke("StartSession", window.sessionState.sessionId)
+                .catch(err => console.error("StartSession failed:", err));
+        }
+
+        const handleCheckboxGroup = (checkboxName, anyValue) => {
+            const checkboxes = Array.from(document.querySelectorAll(`input[name="${checkboxName}"]`));
+            const anyCheckbox = checkboxes.find(cb => cb.value === anyValue);
+
+            checkboxes.forEach(checkbox => {
+                checkbox.addEventListener('change', () => {
+                    if (checkbox.value === anyValue) {
+                        const isAnyChecked = checkbox.checked;
+                        checkboxes.forEach(cb => {
+                            if (cb.value !== anyValue) {
+                                cb.disabled = isAnyChecked;
+                                if (isAnyChecked) cb.checked = false;
+                            }
+                        });
+                    } else if (checkbox.checked && anyCheckbox) {
+                        anyCheckbox.checked = false;
+                    }
+                });
+            });
+        };
+
+        handleCheckboxGroup('AllowedDepartments', 'Any');
+        handleCheckboxGroup('AllowedLevels', 'Any');
+
+        const messagePopup = document.getElementById('messagePopup');
+        if (messagePopup && messagePopup.innerText.trim() !== "") {
+            messagePopup.classList.add('show');
+            setTimeout(() => {
+                messagePopup.classList.remove('show');
+            }, 5000);
+        }
+
+        const toggleView = document.getElementById('toggleView');
+        if (toggleView) {
+            toggleView.addEventListener('click', () => {
+                const participantsContainer = document.getElementById('participantsContainer');
+                const discussionContainer = document.getElementById('discussionContainer');
+                if (participantsContainer.style.display === 'none') {
+                    participantsContainer.style.display = 'block';
+                    discussionContainer.style.display = 'none';
+                    toggleView.textContent = 'Show Discussion';
+                } else {
+                    participantsContainer.style.display = 'none';
+                    discussionContainer.style.display = 'block';
+                    toggleView.textContent = 'Show Participants';
+                }
+            });
         }
     });
 </script>
-
