@@ -500,11 +500,11 @@ connection.on("ReceiveParticipantStatuses", (statuses) => {
 
 function mapStatusToString(status) {
     switch (String(status)) {
-        case "1": return "Active";
-        case "2": return "Inactive";
-        case "3": return "BatteryLow";
-        case "4": return "DataFinished";
-        case "5": return "Disconnected";
+        case "0": return "Active";
+        case "1": return "Inactive";
+        case "2": return "BatteryLow";
+        case "3": return "DataFinished";
+        case "4": return "Disconnected";
         default: return String(status);
     }
 }
