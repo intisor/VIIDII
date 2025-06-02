@@ -14,10 +14,11 @@
         font-family: 'Poppins', sans-serif;
         color: #333;
         position: relative;
+        overflow: hidden;
         display: flex;
         justify-content: center;
         align-items: center;
-        overflow: hidden;
+        min-height: 100vh;
     }
 
     .top-curve-wrapper {
@@ -53,19 +54,23 @@
         z-index: 2;
     }
 
-    .gradient-bg {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 50%;
-        background: linear-gradient(135deg, #8338EC, #3A86FF);
-        z-index: 0;
-        min-height: 100vh;
-        display: flex;
-        justify-content: center;
-        align-items: center;
+    .message-popup {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        background-color: #333;
+        color: #fff;
+        padding: 15px;
+        border-radius: 5px;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        opacity: 0;
+        transition: opacity 0.5s ease-in-out;
+        z-index: 1000;
     }
+
+        .message-popup.show {
+            opacity: 1;
+        }
 
     .centered-form {
         max-width: 400px;
@@ -74,13 +79,14 @@
         margin: 0 auto;
     }
 
-    .modern-card {
+    .login-container {
+        text-align: center;
         background: white;
         padding: 2rem;
         border-radius: 20px;
         box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
-        color: #FFFFFF;
-        text-align: center;
+        width: 100%;
+        z-index: 1;
     }
 
     .modern-heading {
@@ -99,13 +105,13 @@
         padding: 0 1rem;
     }
 
-    label, .modern-label {
+    .modern-label {
         display: block;
         margin-bottom: 0.5rem;
         color: #565D68;
     }
 
-    select, .modern-input, .modern-select, input {
+    .modern-input, .modern-select {
         width: 100%;
         padding: 0.75rem;
         border: 1px solid #A26AF1;
@@ -130,7 +136,6 @@
         text-decoration: none;
         transition: background 0.2s, color 0.2s;
         border: 2.5px solid #FFFFFF;
-        height: 56px;
         max-width: 333px;
         justify-content: center;
         align-items: center;
@@ -143,124 +148,157 @@
             color: #FFFFFF;
         }
 
-    .mt-3 {
-        margin-top: 1rem;
+    .session-container {
+        display: flex;
+        flex-direction: row;
+        justify-content: space-between;
+        width: 90vw;
+        max-height: calc(100vh - 70px); /* Account for margin-top and padding */
+        margin-top: 50px; /* Reduced to clear top curve */
+        padding: 10px;
+        gap: 10px;
+        box-sizing: border-box;
+        overflow-y: auto; /* Allow scrolling if content overflows */
     }
 
-    .text-center {
-        text-align: center;
+    .video-section {
+        flex: 3;
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        margin-bottom: 10px;
     }
-    /* Mobile Design */
+
+    .messages-section {
+        flex: 1;
+        background-color: #e3f2fd;
+        padding: 10px;
+        border-radius: 10px;
+        box-sizing: border-box;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .message-list {
+        flex-grow: 1;
+        max-height: calc(100% - 150px); /* Adjust for heading and input */
+        overflow-y: auto;
+        border: 1px solid #ccc;
+        padding: 10px;
+        border-radius: 5px;
+        box-sizing: border-box;
+    }
+
+    .session-controls {
+        display: flex;
+        gap: 10px;
+        margin-top: 10px;
+    }
+
+    .input-group {
+        margin-top: 10px;
+    }
+
+        .input-group textarea {
+            margin-bottom: 10px;
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+        }
+
     @@media only screen and (max-width: 480px) {
-        .gradient-bg
-
-    {
-        position: absolute;
-        width: 100%;
-        height: 426px;
-        left: 0;
-        bottom: 0;
-        background: linear-gradient(306.91deg, #3A86FF 13.83%, #9CC3FF 108.03%);
-        box-shadow: 0px -10px 20px rgba(58, 134, 255, 0.25);
-        border-radius: 50px 50px 0px 0px;
-        z-index: 0;
-    }
-
-    .centered-form {
-        position: absolute;
-        bottom: 10%;
-        left: 50%;
-        transform: translateX(-50%);
-        width: 100%;
-        max-width: 333px;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        margin-bottom: 0;
-        z-index: 1;
-    }
-
-    .modern-card {
-        background: none;
-        box-shadow: none;
-        border-radius: 0;
-        padding: 0;
-        width: 100%;
-        max-width: 333px;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-    }
-
-    .modern-heading {
-        font-size: 2.1rem;
-        margin-top: 2rem;
-        margin-bottom: 0.5rem;
-        color: #FFFFFF;
-        text-align: center;
-        background: linear-gradient(135deg, #8338EC, #3A86FF);
-        padding: 1.5rem 1rem;
-        border-radius: 12px 12px 0 0;
-        width: 100%;
-        max-width: 333px;
-    }
-
-    .mb-3 {
-        margin-bottom: 1rem;
-        width: 100%;
-        max-width: 333px;
-        position: relative;
-    }
-
-    select, .modern-input, .modern-select, input {
-        width: 100%;
-        padding: 0.75rem;
-        border: 1px solid #A26AF1;
-        border-radius: 8px;
-        box-sizing: border-box;
-        background: rgba(255, 255, 255, 0.9);
-        color: #333;
-    }
-
-    .btn-skeuo {
-        width: 100%;
-        max-width: 333px;
-        height: 56px;
-        box-sizing: border-box;
-        border: 2.5px solid #FFFFFF;
-        border-radius: 24px;
-        background: linear-gradient(135deg, #8338EC, #3A86FF);
-        color: #FFFFFF;
-        font-size: 1.2rem;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        margin: 1rem auto 1rem auto;
-        text-decoration: none;
-        transition: background 0.2s, color 0.2s;
-    }
-
-        .btn-skeuo:active,
-        .btn-skeuo:focus,
-        .btn-skeuo:hover {
-            background: rgba(255, 255, 255, 0.12);
-            color: #FFFFFF;
+        body {
+            justify-content: flex-start;
+            padding-top: 0;
+            min-height: 100vh;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
         }
 
+        .gradient-bg {
+            position: absolute;
+            width: 100%;
+            height: 426px;
+            left: 0;
+            bottom: 0;
+            background: linear-gradient(306.91deg, #3A86FF 13.83%, #9CC3FF 108.03%);
+            box-shadow: 0px -10px 20px rgba(58, 134, 255, 0.25);
+            border-radius: 50px 50px 0px 0px;
+            z-index: 0;
+        }
+
+        .centered-form {
+            position: absolute;
+            bottom: 10%;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100%;
+            max-width: 333px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-bottom: 0;
+            z-index: 1;
+        }
+
+        .login-container {
+            background: none;
+            box-shadow: none;
+            border-radius: 0;
+            padding: 0;
+            width: 100%;
+            max-width: 333px;
+        }
+
+        .modern-heading {
+            font-size: 2.1rem;
+            margin-top: 2rem;
+            margin-bottom: 0.5rem;
+            width: 100%;
+            max-width: 333px;
+        }
+
+        .mb-3 {
+            width: 100%;
+            max-width: 333px;
+            position: relative;
+        }
+
+        .session-container {
+            flex-direction: column;
+            width: 100%;
+            max-height: calc(100vh - 50px); /* Adjust for mobile */
+            margin-top: 50px;
+            padding: 5px;
+            overflow-y: auto;
+        }
+
+        .video-section, .messages-section {
+            flex: none;
+            width: 100%;
+            height: auto;
+        }
+
+        .message-list {
+            max-height: 200px; /* Fixed height for mobile */
+        }
     }
 </style>
 
-@* <div class="gradient-bg"></div> *@
 <div class="top-curve-wrapper">
     <div class="top-curve-rect-1"></div>
     <div class="top-curve-rect-2"></div>
 </div>
-<div class="centered-form">
-    @if (string.IsNullOrEmpty(Model.CurrentSessionId))
-    {
-        <div class="modern-card">
+
+@if (string.IsNullOrEmpty(Model.CurrentSessionId))
+{
+    <div class="centered-form">
+        <div class="login-container">
             <div class="modern-heading">Join a Session</div>
-            <form method="post">
+            <form method="post" id="joinSessionForm">
                 <div class="mb-3">
                     <label asp-for="SessionId" class="modern-label">Available Sessions</label>
                     <select asp-for="SessionId" asp-items="Model.AvailableSessions" class="modern-select" required>
@@ -268,7 +306,7 @@
                     </select>
                 </div>
                 <button type="submit" class="btn-skeuo">
-                    <i ></i> Join Session
+                    <i class="fas fa-sign-in-alt"></i> Join Session
                 </button>
             </form>
             @if (!string.IsNullOrEmpty(Model.Message))
@@ -276,13 +314,15 @@
                 <p class="mt-3 text-center modern-status" id="statusMessage">@Model.Message</p>
             }
         </div>
-    }
-    else if (Model.Session?.Status != SessionStatus.Ended)
-    {
-        <div class="modern-card">
+    </div>
+}
+else if (Model.Session?.Status != SessionStatus.Ended)
+{
+    <div class="session-container">
+        <div class="video-section">
             <div class="modern-heading">Session Live</div>
             <video id="sessionVideo" data-session-id="@Model.CurrentSessionId" muted class="modern-video" style="width: 100%; max-height: 400px; background: black; border-radius: 12px;"></video>
-            <div class="d-flex gap-2 mt-2" id="studentStatusControls">
+            <div class="session-controls">
                 <button id="flagBatteryLow" class="btn btn-warning flex-fill" type="button">
                     <i class="fas fa-battery-quarter"></i> Battery Low
                 </button>
@@ -290,81 +330,70 @@
                     <i class="fas fa-signal"></i> Data Finished
                 </button>
             </div>
-            <div class="col-12 mt-3">
-                <h4 class="modern-heading" style="font-size:1.2rem; background: #f9fafb; color: #333;">DISCUSSION</h4>
-                <div id="discussion" class="modern-chat" data-session-id="@Model.CurrentSessionId" style="height: 200px; overflow-y: auto; background: #f9fafb; border-radius: 8px;">
-                    <!-- Messages will be dynamically added here -->
-                </div>
-                <!-- Reply input area (hidden by default, shown when "Reply" is clicked) -->
-                <div id="replyArea" class="input-group mt-2" style="display: none;">
-                    <textarea id="replyInput" rows="2" class="modern-input" placeholder="Write a reply..."></textarea>
-                    <button id="sendReply" class="btn btn-skeuo">
-                        <i class="fas fa-paper-plane"></i> Send Reply
-                    </button>
-                </div>
-            </div>
-            <!-- Activity Modal -->
-            <div class="modal fade modern-modal" id="activityModal" tabindex="-1">
-                <div class="modal-dialog">
-                    <div class="modal-content">
-                        <div class="modal-header">
-                            <h5 class="modal-title">Are you still there?</h5>
-                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                        </div>
-                        <div class="modal-body">
-                            <p>Please confirm you're active.</p>
-                            <button id="confirmActive" class="btn btn-primary">I'm Here</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            @if (!string.IsNullOrEmpty(Model.Message))
-            {
-                <p class="mt-3 text-center modern-status" id="statusMessage">@Model.Message</p>
-            }
         </div>
+        <div class="messages-section">
+            <h4 class="modern-heading" style="font-size: 1.2rem; background: #f9fafb; color: #333;">Discussion</h4>
+            <div id="discussion" class="message-list" data-session-id="@Model.CurrentSessionId">
+                <!-- Messages will be dynamically added here -->
+            </div>
+            <div id="replyArea" class="input-group" style="display: none;">
+                <textarea id="replyInput" rows="2" class="modern-input" placeholder="Write a reply..."></textarea>
+                <button id="sendReply" class="btn btn-skeuo">
+                    <i class="fas fa-paper-plane"></i> Send Reply
+                </button>
+            </div>
+        </div>
+    </div>
+    <div class="modal fade modern-modal" id="activityModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Are you still there?</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Please confirm you're active.</p>
+                    <button id="confirmActive" class="btn btn-primary">I'm Here</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<div id="messagePopup" class="message-popup">
+    @if (!string.IsNullOrEmpty(Model.Message))
+    {
+        <p>@Model.Message</p>
     }
 </div>
 
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" rel="stylesheet" />
 <link href="~/lib/bootstrap/dist/css/bootstrap.min.css" rel="stylesheet" />
-@* <link href="~/css/site.css" rel="stylesheet" /> *@
 <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.7/signalr.min.js"></script>
 <script src="~/js/session.js"></script>
- <script>
+<script>
     window.sessionState = @Html.Raw(Json.Serialize(new
-        {
-            isSessionStarted = Model.IsSessionStarted,
-            sessionId = Model.CurrentSessionId
-        }));
-    window.isSessionLecturer = false; // Always student here
+    {
+        isSessionStarted = Model.IsSessionStarted,
+        sessionId = Model.CurrentSessionId
+    }));
+    window.isSessionLecturer = false;
 
     document.addEventListener("DOMContentLoaded", () => {
         const sessionVideo = document.getElementById("sessionVideo");
-        if (!sessionVideo) return;
-        sessionVideo.onloadedmetadata = () => {
-            console.log("Metadata loaded. Stream:", sessionVideo.srcObject);
-        };
-    });
-    window.sessionState = @Html.Raw(Json.Serialize(new
-        {
-            isSessionStarted = Model.IsSessionStarted,
-            sessionId = Model.CurrentSessionId
-        }));
-    window.isSessionLecturer = false; // Always student here
+        if (sessionVideo) {
+            sessionVideo.onloadedmetadata = () => {
+                console.log("Metadata loaded. Stream:", sessionVideo.srcObject);
+                sessionVideo.play().catch(err => console.error("Auto-play failed:", err));
+            };
+        }
 
-    document.addEventListener("DOMContentLoaded", () => {
-        const sessionVideo = document.getElementById("sessionVideo");
-        if (!sessionVideo) return;
-        sessionVideo.onloadedmetadata = () => {
-            console.log("Metadata loaded. Stream:", sessionVideo.srcObject);
-            sessionVideo.play().catch(err => console.error("Auto-play failed:", err));
-        };
-        if (window.sessionState?.sessionId) {
-            connection.invoke("JoinSession", window.sessionState.sessionId)
-                .catch(err => console.error("JoinSession failed:", err));
+        const messagePopup = document.getElementById("messagePopup");
+        if (messagePopup && messagePopup.innerText.trim()) {
+            messagePopup.classList.add("show");
+            setTimeout(() => messagePopup.classList.remove("show"), 5000);
         }
     });
 </script>
