@@ -95,9 +95,17 @@ public class SessionService
         {
             if (!session.ParticipantEvents.ContainsKey(participantId))
             {
-                session.ParticipantEvents[participantId] = new List<(Session.StudentStatus, DateTime)>();
+                session.ParticipantEvents[participantId] = new List<(Session.StudentStatus status, DateTime timeStamp)>(); // Changed DateTimeOffset to DateTime
             }
-            var joinTime = DateTime.UtcNow.AddHours(1);
+            var joinTime = DateTime.UtcNow.AddHours(1); // Changed DateTimeOffset to DateTime
+            if (joinTime > session.StartTime)
+            {
+                var absentDuration = (joinTime - session.StartTime).TotalMinutes;
+                // Log disconnected for the duration of absence
+                session.ParticipantEvents[participantId].Add((Session.StudentStatus.Disconnected, session.StartTime));
+
+                Console.WriteLine($"JoinSession: {participantId} absent for {absentDuration:F1} min, Disconnected at {session.StartTime}, Active at {joinTime}");
+            }
             session.ParticipantEvents[participantId].Add((Session.StudentStatus.Active, joinTime));
             Console.WriteLine($"Logged Active event for {participantId} joining started session at: {joinTime}");
         }
@@ -111,7 +119,7 @@ public class SessionService
         if (session.LecturerId != lecturerId || session.Status != SessionStatus.Started)
             return null;
         session.Status = SessionStatus.Ended;
-        session.EndTime = DateTime.UtcNow.AddHours(1);
+        session.EndTime = DateTime.UtcNow.AddHours(1); // Changed DateTimeOffset to DateTime
         // Don't clear participant IDs so we can still calculate scores
         // session.ParticipantIds.Clear();
         session.IsSessionStarted = false;
@@ -124,14 +132,13 @@ public class SessionService
         {
             session.IsSessionStarted = true;
             session.Status = SessionStatus.Started;
-            session.StartTime = DateTime.UtcNow.AddHours(1);
-
-            // Log initial 'Active' status for all current participants
+            session.StartTime = DateTime.UtcNow.AddHours(1); // Changed DateTimeOffset to DateTime
+            Console.WriteLine($"StartSession: Session {sessionId} started at {session.StartTime}, Participants: {string.Join(", ", session.ParticipantIds)}");            // Log initial 'Active' status for all current participants
             foreach (var participantId in session.ParticipantIds.ToList()) // ToList to avoid modification issues if any
             {
                 if (!session.ParticipantEvents.ContainsKey(participantId))
                 {
-                    session.ParticipantEvents[participantId] = new List<(Session.StudentStatus, DateTime)>();
+                    session.ParticipantEvents[participantId] = new List<(Session.StudentStatus status, DateTime timeStamp)>(); // Changed DateTimeOffset to DateTime
                 }
                 // Add initial active event at session start time
                 session.ParticipantEvents[participantId].Add((Session.StudentStatus.Active, session.StartTime));
@@ -158,14 +165,11 @@ public class SessionService
             // Log the event
             if (!session.ParticipantEvents.ContainsKey(participantId))
             {
-                session.ParticipantEvents[participantId] = new List<(Session.StudentStatus, DateTime)>();
+                session.ParticipantEvents[participantId] = new List<(Session.StudentStatus status, DateTime timeStamp)>(); // Changed DateTimeOffset to DateTime
             }
-            
-            var eventTimestamp = DateTime.UtcNow.AddHours(1); // Consistent with StartTime/EndTime
+            var eventTimestamp = DateTime.UtcNow.AddHours(1); // Changed DateTimeOffset to DateTime
             session.ParticipantEvents[participantId].Add((status, eventTimestamp));
-
-            Console.WriteLine($"Logged event for {participantId}: status {status} at {eventTimestamp} in session {sessionId}");
-            return true; // Indicates a scorable event was logged
+            Console.WriteLine($"UpdateParticipantStatus: {participantId} status {status} at {eventTimestamp} in session {sessionId}"); return true; // Indicates a scorable event was logged
         }
         // If session not started, or participant/session not found, but we might still want to update current status if possible
         else if (_sessions.TryGetValue(sessionId, out session) && session.ParticipantIds.Contains(participantId))
@@ -200,16 +204,14 @@ public class SessionService
     public List<Session> GetActiveSessions() =>
         _sessions.Values
             .Where(s => s.Status == SessionStatus.Active || s.Status == SessionStatus.Started)
-            .ToList();    public Dictionary<string, ParticipantScoreDetails> CalculateAttendanceScore(string sessionId)
+            .ToList();    
+    public Dictionary<string, ParticipantScoreDetails> CalculateAttendanceScore(string sessionId)
     {
         if (!_sessions.TryGetValue(sessionId, out var session))
             return new Dictionary<string, ParticipantScoreDetails>();
-
-        var totalSessionMinutes = Math.Max(
-            ((session.EndTime ?? DateTime.UtcNow) - session.StartTime).TotalMinutes,
-            1
-        );
-
+        var endTime = session.EndTime ?? DateTime.UtcNow.AddHours(1); // Changed DateTimeOffset to DateTime
+        var totalSessionMinutes = Math.Max((endTime - session.StartTime).TotalMinutes, 1);
+        Console.WriteLine($"CalculateAttendanceScore: Session {sessionId}, Start={session.StartTime}, End={endTime}, Duration={totalSessionMinutes:F1} min");
         var userDetails = MockApiService.GetUsers().ToDictionary(u => u.MatricNo, u => u.Name); // For fetching names
 
         // Get all participant IDs that have events, even if they're no longer in ParticipantIds
@@ -242,79 +244,91 @@ public class SessionService
         };
 
         double rawScore = 0;
-        DateTime currentTime = session.StartTime; // Start tracking from session start
-        Session.StudentStatus currentStatusForCalc = Session.StudentStatus.Active; // Default assumption
+        DateTime currentTime = session.StartTime; // Changed DateTimeOffset to DateTime
+        Session.StudentStatus currentStatusForCalc = Session.StudentStatus.Disconnected;
+        Session.StudentStatus? statusThatPrecededCurrentSegment = null;
 
-        // Attempt to get the initial status at session start if available, otherwise assume Active.
-        // This is important if a participant joined *before* the session officially started.
+        Console.WriteLine($"CalculateScore: {participantId}, TotalSessionMinutes={totalSessionMinutes:F1}, StartTime={session.StartTime}");
+
         if (session.ParticipantEvents.TryGetValue(participantId, out var events) && events.Any())
         {
-            // If first event is after session start, assume Active from session.StartTime till first event.
-            var firstEvent = events.OrderBy(e => e.TimeStamp).First();
-            if (firstEvent.TimeStamp > session.StartTime)
+            var sortedEvents = events.OrderBy(e => e.timeStamp).ToList();
+            Console.WriteLine($"CalculateScore: {participantId} has {sortedEvents.Count} events");
+
+            var firstEventDetails = sortedEvents.First();
+            if (firstEventDetails.timeStamp > session.StartTime)
             {
-                var durationBeforeFirstEvent = (firstEvent.TimeStamp - session.StartTime).TotalMinutes;
+                var durationBeforeFirstEvent = (firstEventDetails.timeStamp - session.StartTime).TotalMinutes;
                 if (durationBeforeFirstEvent > 0)
                 {
-                    rawScore += GetStatusWeight(Session.StudentStatus.Active) * durationBeforeFirstEvent;
-                    UpdateDurationForStatus(details, Session.StudentStatus.Active, durationBeforeFirstEvent);
+                    rawScore += GetStatusWeight(Session.StudentStatus.Disconnected, null) * durationBeforeFirstEvent;
+                    UpdateDurationForStatus(details, Session.StudentStatus.Disconnected, durationBeforeFirstEvent);
+                    Console.WriteLine($"CalculateScore: {participantId} Disconnected for {durationBeforeFirstEvent:F1} min, Score+={rawScore:F1}");
+                }
+                statusThatPrecededCurrentSegment = Session.StudentStatus.Disconnected;
+            }
+            else
+            {
+                statusThatPrecededCurrentSegment = null;
+            }
+
+            currentTime = firstEventDetails.timeStamp; // Ensure currentTime is DateTime
+            currentStatusForCalc = firstEventDetails.status;
+            Console.WriteLine($"CalculateScore: {participantId} First event: {currentStatusForCalc} at {currentTime}");
+
+            foreach (var nextEventDetails in sortedEvents.Skip(1))
+            {
+                var nextStatus = nextEventDetails.status;
+                var eventTime = nextEventDetails.timeStamp; // Ensure eventTime is DateTime
+
+                if (eventTime < currentTime) continue;
+
+                var durationInCurrentStatus = (eventTime - currentTime).TotalMinutes;
+                if (durationInCurrentStatus > 0)
+                {
+                    var weight = GetStatusWeight(currentStatusForCalc, statusThatPrecededCurrentSegment);
+                    rawScore += weight * durationInCurrentStatus;
+                    UpdateDurationForStatus(details, currentStatusForCalc, durationInCurrentStatus);
+                    Console.WriteLine($"CalculateScore: {participantId} {currentStatusForCalc} for {durationInCurrentStatus:F1} min, Weight={weight}, Score+={rawScore:F1}");
+                }
+
+                statusThatPrecededCurrentSegment = currentStatusForCalc;
+                currentStatusForCalc = nextStatus;
+                currentTime = eventTime;
+            }
+
+            DateTime sessionEffectiveEndTime = session.EndTime ?? DateTime.UtcNow.AddHours(1); // Changed DateTimeOffset to DateTime
+            if (sessionEffectiveEndTime > currentTime)
+            {
+                var durationAfterLastEvent = (sessionEffectiveEndTime - currentTime).TotalMinutes;
+                if (durationAfterLastEvent > 0)
+                {
+                    var weight = GetStatusWeight(currentStatusForCalc, statusThatPrecededCurrentSegment);
+                    rawScore += weight * durationAfterLastEvent;
+                    UpdateDurationForStatus(details, currentStatusForCalc, durationAfterLastEvent);
+                    Console.WriteLine($"CalculateScore: {participantId} {currentStatusForCalc} (end) for {durationAfterLastEvent:F1} min, Weight={weight}, Score+={rawScore:F1}");
                 }
             }
-            // The status of the first event becomes the current status for calculation from its timestamp.
-            currentStatusForCalc = firstEvent.status;
-            currentTime = firstEvent.TimeStamp;
         }
-        else // No events at all for this participant
+        else
         {
-            // If no events, assume they were in their last known status for the whole session, or Active if no status recorded.
-            // This covers participants who joined but had no status changes.
-            currentStatusForCalc = session.ParticipantStatuses.TryGetValue(participantId, out var lastKnownStatus) ? lastKnownStatus : Session.StudentStatus.Active;
+            currentStatusForCalc = session.ParticipantStatuses.TryGetValue(participantId, out var lastKnownStatus) ? lastKnownStatus : Session.StudentStatus.Disconnected;
             var duration = totalSessionMinutes;
-            if (duration > 0) {
-                rawScore += GetStatusWeight(currentStatusForCalc) * duration;
+            if (duration > 0)
+            {
+                var weight = GetStatusWeight(currentStatusForCalc, null);
+                rawScore += weight * duration;
                 UpdateDurationForStatus(details, currentStatusForCalc, duration);
-            }
-            double maxPossibleScoreForNoEventCase = 10 * totalSessionMinutes;
-            if (maxPossibleScoreForNoEventCase == 0) details.FinalScorePercentage = 0;
-            else details.FinalScorePercentage = Math.Clamp((rawScore / maxPossibleScoreForNoEventCase) * 100, 0, 100);
-            return details;
-        }
-
-        // Process subsequent events
-        foreach (var (nextStatus, eventTime) in events.OrderBy(e => e.TimeStamp).Skip(1)) // Skip the first event as it set the initial state
-        {
-            if (eventTime < currentTime) continue; // Should not happen if events are ordered, but good for safety
-
-            var durationInCurrentStatus = (eventTime - currentTime).TotalMinutes;
-            if (durationInCurrentStatus > 0)
-            {
-                rawScore += GetStatusWeight(currentStatusForCalc) * durationInCurrentStatus;
-                UpdateDurationForStatus(details, currentStatusForCalc, durationInCurrentStatus);
-            }
-            currentStatusForCalc = nextStatus;
-            currentTime = eventTime;
-        }
-
-        // Account for time from the last event to the session end (or current time if session not ended)
-        DateTime sessionEffectiveEndTime = session.EndTime ?? DateTime.UtcNow.AddHours(1);
-        if (sessionEffectiveEndTime > currentTime) // Ensure we only add duration if session end is after last event time
-        {
-            var durationAfterLastEvent = (sessionEffectiveEndTime - currentTime).TotalMinutes;
-            if (durationAfterLastEvent > 0)
-            {
-                // The status for this final period is the `currentStatusForCalc` (status of the last processed event)
-                rawScore += GetStatusWeight(currentStatusForCalc) * durationAfterLastEvent;
-                UpdateDurationForStatus(details, currentStatusForCalc, durationAfterLastEvent);
+                Console.WriteLine($"CalculateScore: {participantId} No events, {currentStatusForCalc} for {duration:F1} min, Weight={weight}, Score={rawScore:F1}");
             }
         }
-        
+
         double maxPossibleScore = 10 * totalSessionMinutes;
-        if (maxPossibleScore == 0) details.FinalScorePercentage = 0;
-        else details.FinalScorePercentage = Math.Clamp((rawScore / maxPossibleScore) * 100, 0, 100);
+        details.FinalScorePercentage = maxPossibleScore == 0 ? 0 : Math.Clamp((rawScore / maxPossibleScore) * 100, 0, 100);
+        Console.WriteLine($"CalculateScore: {participantId} Final: rawScore={rawScore:F1}, Max={maxPossibleScore:F1}, Percentage={details.FinalScorePercentage:F1}%");
 
         return details;
     }
-
     private void UpdateDurationForStatus(ParticipantScoreDetails details, Session.StudentStatus status, double duration)
     {
         switch (status)
@@ -327,15 +341,28 @@ public class SessionService
         }
     }
 
-    private int GetStatusWeight(Session.StudentStatus status)
+    private int GetStatusWeight(Session.StudentStatus currentStatus, Session.StudentStatus? statusOfImmediatelyPrecedingEvent)
     {
-        return status switch
+        if (statusOfImmediatelyPrecedingEvent.HasValue)
+        {
+            bool wasWarning = statusOfImmediatelyPrecedingEvent == Session.StudentStatus.BatteryLow ||
+                              statusOfImmediatelyPrecedingEvent == Session.StudentStatus.DataFinished;
+
+            if (wasWarning)
+            {
+                if (currentStatus == Session.StudentStatus.InActive) return -1; // Grace penalty for InActive after warning
+                if (currentStatus == Session.StudentStatus.Disconnected) return -2; // Grace penalty for Disconnected after warning
+            }
+        }
+
+        // Default weights if no grace applies or for states not covered by grace
+        return currentStatus switch
         {
             Session.StudentStatus.Active => 10,
-            Session.StudentStatus.InActive => -2,      // Was -5
-            Session.StudentStatus.BatteryLow => -3,    // Was -10
-            Session.StudentStatus.DataFinished => -5,  // Was -10
-            Session.StudentStatus.Disconnected => -10, // Was -20
+            Session.StudentStatus.InActive => -2,       // Standard InActive penalty
+            Session.StudentStatus.BatteryLow => 0,      // Warning state, not directly penalized; grace is applied to subsequent Inactive/Disconnected states
+            Session.StudentStatus.DataFinished => 0,    // Warning state, not directly penalized; grace is applied to subsequent Inactive/Disconnected states
+            Session.StudentStatus.Disconnected => -3,  // Standard Disconnected penalty
             _ => 0
         };
     }

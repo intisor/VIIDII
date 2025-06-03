@@ -58,13 +58,13 @@ namespace FutaMeetWeb.Pages
                 MostCommonPenaltyReason = "N/A";
             }
 
-            foreach (var (participantId, events) in Session.ParticipantEvents)
-            {
-                foreach (var (status, time) in events)
-                {
-                    TimelineEvents.Add((time, $"{participantId} changed to {status}"));
-                }
-            }
+            //foreach (var (participantId, events) in Session.ParticipantEvents)
+            //{
+            //    foreach (var (status, time) in events)
+            //    {
+            //        TimelineEvents.Add((time, $"{participantId} changed to {status}"));
+            //    }
+            //}
 
             var messages = _messageService.GetAllMessages(sessionId);
             foreach (var msg in messages)

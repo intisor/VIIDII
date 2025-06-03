@@ -66,7 +66,7 @@
             </div>
 
             <h4 class="modern-heading">Attendance Scores Chart</h4>
-            <canvas id="scoreChart" height="200"></canvas>
+            <canvas id="scoreChart" class="score-chart"></canvas>
         </div>
     </div>
 
@@ -117,46 +117,6 @@
 <link href="~/css/site.css" rel="stylesheet" />
 <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
-
-<script>
-    document.addEventListener('DOMContentLoaded', function () {
-        const scoresData = @Json.Serialize(Model.Scores);
-        if (scoresData && Object.keys(scoresData).length > 0) {
-            const participantNames = Object.values(scoresData).map(s => s.participantName || s.participantId);
-            const finalScores = Object.values(scoresData).map(s => s.finalScorePercentage);
-
-            const ctx = document.getElementById('scoreChart').getContext('2d');
-            new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: participantNames,
-                    datasets: [{
-                        label: 'Attendance Score (%)',
-                        data: finalScores,
-                        backgroundColor: 'rgba(75, 192, 192, 0.6)',
-                        borderColor: 'rgba(75, 192, 192, 1)',
-                        borderWidth: 1
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            max: 100
-                        }
-                    }
-                }
-            });
-        } else {
-            // Optional: Display a message if no chart data
-            const chartDiv = document.getElementById('scoreChart');
-            if(chartDiv) chartDiv.parentElement.innerHTML += "<p class='text-center'>No score data to display in chart.</p>";
-        }
-    });
-</script>
-
 <style>
     .timeline {
         list-style: none;
@@ -199,16 +159,13 @@
         border-radius: 5px;
         box-shadow: 0 2px 5px rgba(0,0,0,0.1);
     }
+
+    .score-chart {
+        max-height: 200px; /* Compact height */
+        width: 100%;
+    }
 </style>
-    </div>
-</div>
-
-<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" rel="stylesheet" />
-<link href="~/lib/bootstrap/dist/css/bootstrap.min.css" rel="stylesheet" />
-<link href="~/css/site.css" rel="stylesheet" />
-<script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
-
+ 
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         const scoresData = @Json.Serialize(Model.Scores);
@@ -231,7 +188,8 @@
                 },
                 options: {
                     responsive: true,
-                    maintainAspectRatio: false,
+                    maintainAspectRatio: true,
+                    AspectRatio : 2,
                     scales: {
                         y: {
                             beginAtZero: true,
@@ -248,46 +206,3 @@
     });
 </script>
 
-<style>
-    .timeline {
-        list-style: none;
-        padding: 20px 0;
-        position: relative;
-    }
-
-        .timeline:before {
-            content: '';
-            position: absolute;
-            top: 0;
-            bottom: 0;
-            width: 4px;
-            background: #ddd;
-            left: 30px;
-            margin: 0;
-        }
-
-    .timeline-item {
-        padding-left: 60px;
-        position: relative;
-        margin-bottom: 20px;
-    }
-
-    .timeline-badge {
-        position: absolute;
-        left: 15px;
-        top: 0;
-        width: 30px;
-        height: 30px;
-        border-radius: 50%;
-        background: #fff;
-        text-align: center;
-        line-height: 30px;
-    }
-
-    .timeline-panel {
-        background: #f8f9fa;
-        padding: 15px;
-        border-radius: 5px;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-    }
-</style>

@@ -84,6 +84,6 @@ public class LoginModel : PageModel
     {
         HttpContext.Session.Clear();
         Message = "Logged out!";
-        return Page();
+        return RedirectToPage("/Index");
     }
 }

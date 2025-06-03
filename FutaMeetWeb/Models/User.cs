@@ -39,7 +39,7 @@
             LecturerId = lecturerId;
         }
         public string LecturerId { get; }
-        public DateTime StartTime { get; set; } = DateTime.UtcNow.AddHours(1);
+        public DateTime StartTime { get; set; } = DateTime.UtcNow.AddHours(1); // Default to 1 hour from now
         public DateTime? EndTime { get; set; } = null;
         public string Title { get; set; }
         public List<User.Departments> AllowedDepartments { get; set; }
@@ -49,7 +49,7 @@
         public bool IsSessionStarted { get; set; } = false;
         public HashSet<string> ParticipantIds { get; } = new HashSet<string>(); // Fixed initialization
         public Dictionary<string, StudentStatus> ParticipantStatuses { get; } = new Dictionary<string, StudentStatus>(); // Fixed initialization
-        public Dictionary<string, List<(StudentStatus status, DateTime TimeStamp)>> ParticipantEvents { get; } = new Dictionary<string, List<(StudentStatus status, DateTime TimeStamp)>>(); // Fixed initialization
+        public Dictionary<string, List<(StudentStatus status, DateTime timeStamp)>> ParticipantEvents { get; } = new Dictionary<string, List<(StudentStatus status, DateTime timeStamp)>>(); // Fixed initialization
         public Dictionary<string, string> ParticipantConnectionIds { get; } = new Dictionary<string, string>(); // Fixed initialization
 
         public enum StudentStatus { Active, InActive, BatteryLow, DataFinished, Disconnected }
