@@ -103,7 +103,7 @@ public class SessionService
         }
 
         return (session, null);
-    }
+    }   
     public Session EndSession(string sessionId, string lecturerId)
     {
         if (!_sessions.TryGetValue(sessionId, out var session))
@@ -112,7 +112,8 @@ public class SessionService
             return null;
         session.Status = SessionStatus.Ended;
         session.EndTime = DateTime.UtcNow.AddHours(1);
-        session.ParticipantIds.Clear();
+        // Don't clear participant IDs so we can still calculate scores
+        // session.ParticipantIds.Clear();
         session.IsSessionStarted = false;
         return session;
     }
@@ -199,9 +200,7 @@ public class SessionService
     public List<Session> GetActiveSessions() =>
         _sessions.Values
             .Where(s => s.Status == SessionStatus.Active || s.Status == SessionStatus.Started)
-            .ToList();
-
-    public Dictionary<string, ParticipantScoreDetails> CalculateAttendanceScore(string sessionId)
+            .ToList();    public Dictionary<string, ParticipantScoreDetails> CalculateAttendanceScore(string sessionId)
     {
         if (!_sessions.TryGetValue(sessionId, out var session))
             return new Dictionary<string, ParticipantScoreDetails>();
@@ -213,7 +212,22 @@ public class SessionService
 
         var userDetails = MockApiService.GetUsers().ToDictionary(u => u.MatricNo, u => u.Name); // For fetching names
 
-        return session.ParticipantIds
+        // Get all participant IDs that have events, even if they're no longer in ParticipantIds
+        var allParticipantIds = new HashSet<string>(session.ParticipantIds);
+        
+        // Add any participants that have events but might not be in the current ParticipantIds
+        foreach (var participantId in session.ParticipantEvents.Keys)
+        {
+            allParticipantIds.Add(participantId);
+        }
+        
+        // Add participants that have status entries
+        foreach (var participantId in session.ParticipantStatuses.Keys)
+        {
+            allParticipantIds.Add(participantId);
+        }
+
+        return allParticipantIds
             .ToDictionary(participantId => participantId,
             participantId => CalculateScoreperParticipant(session, participantId, totalSessionMinutes, userDetails.GetValueOrDefault(participantId, "Unknown User")));
     }
