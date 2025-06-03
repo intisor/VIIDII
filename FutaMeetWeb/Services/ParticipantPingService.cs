@@ -14,7 +14,7 @@ namespace FutaMeetWeb.Services
         private readonly IHubContext<SessionHub> _hubContext;
         private readonly SessionService _sessionService;
         private readonly Random _rand = new();
-        private TimeSpan Interval => TimeSpan.FromMinutes(_rand.Next(5, 20));
+        private TimeSpan Interval => TimeSpan.FromMinutes(_rand.Next(2,5));
         private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(35);
 
         public ParticipantPingService(
