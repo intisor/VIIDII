@@ -191,11 +191,12 @@
         flex-direction: row;
         justify-content: space-between;
         width: 90vw;
-        height: 80vh; /* Adjust height to ensure it doesn't touch the top curve */
+        max-height: calc(100vh - 170px); /* Adjust height to ensure it doesn't touch the top curve, considering margin-top */
         margin-top: 150px; /* Fixed margin to prevent overlap with the top curve */
         padding: 10px;
         gap: 10px;
         box-sizing: border-box;
+        overflow-y: auto; /* Allow scrolling if content overflows */
     }
 
     .video-section {
@@ -219,17 +220,97 @@
         border-radius: 10px;
         margin-bottom: 10px;
         box-sizing: border-box;
-        flex: 1; /* Ensure they take up equal space within the container */
-        min-height: 0; /* Allow the sections to shrink if necessary */
+        flex: 1; /* Fill parent toggle-container */
+        min-height: 0; /* Allow shrinking */
+        display: flex; /* Layout children (h4, list, input) in a column */
+        flex-direction: column;
     }
 
     .participant-list, .message-list {
-        height: calc(100% - 30px);
+        flex: 1; /* Take remaining vertical space */
+        min-height: 0; /* Allow shrinking if needed */
         overflow-y: auto;
-        border: 1px solid #ccc;
         padding: 10px;
-        border-radius: 5px;
         box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .message-box {
+        margin-bottom: 10px;
+        max-width: 80%;
+        padding: 8px 12px;
+        border-radius: 15px;
+        word-wrap: break-word;
+    }
+
+    .message {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .lecturer-msg {
+        background-color: #DCF8C6; /* Green for posts */
+        align-self: flex-start; /* Left align posts */
+        border-bottom-left-radius: 0; /* Speech bubble effect */
+    }
+
+    .student-reply-msg, .lecturer-reply-msg, .self-reply-msg { /* Base for replies */
+        background-color: #E0E0E0; /* Contrasting color for replies */
+        align-self: flex-end;   /* Right align replies */
+        border-bottom-right-radius: 0; /* Speech bubble effect */
+    }
+    
+    .self-reply-msg {
+        background-color: #AED6F1; /* Different color for self-replies */
+    }
+
+    .lecturer-reply-msg {
+        background-color: #FADBD8; /* Different color for lecturer replies */
+    }
+
+    .username {
+        font-weight: bold;
+        font-size: 0.9em;
+        margin-bottom: 3px;
+        color: #555;
+    }
+
+    .content {
+        font-size: 1em;
+        color: #333;
+    }
+
+    .message-footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 0.8em;
+        color: #777;
+        margin-top: 5px;
+    }
+
+    .timestamp {
+        margin-right: 10px;
+    }
+
+    .reply-btn {
+        background: none;
+        border: none;
+        color: #007bff;
+        cursor: pointer;
+        font-size: 0.9em;
+        padding: 0;
+    }
+
+    #postInput {
+        flex-grow: 1;
+        margin-right: 5px;
+    }
+
+    .input-group.mt-2 {
+        display: flex; /* Make input and button align nicely */
+        align-items: center;
     }
 
     #startSessionForm, #endSessionForm {
@@ -261,6 +342,10 @@
 
     .toggle-container {
         width: 100%;
+        flex: 1;
+        min-height: 0; /* Allow shrinking */
+        display: flex; /* Make it a flex container for its child section */
+        flex-direction: column;
     }
 
 
@@ -518,7 +603,9 @@
             sessionId = Model.CurrentSessionId
         }));
     window.isSessionLecturer = @Json.Serialize(Model.IsSessionLecturer);
-    console.log("Session state set:", window.sessionState);
+    window.currentUserFullName = "@HttpContext.Session.GetString("FullName")";
+    window.currentUserId = "@HttpContext.Session.GetString("MatricNo")";
+    console.log("Session state set:", window.sessionState, "User:", window.currentUserFullName, "UserId:", window.currentUserId);
 
     function toggleAudio() {
         const stream = window.localStream;

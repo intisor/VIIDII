@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.Linq;
 using System.Collections.Generic;
@@ -10,6 +10,7 @@ namespace FutaMeetWeb.Services
         public string id { get; set; } = Guid.CreateVersion7().ToString();
         public string sessionId { get; set; }
         public string userId { get; set; }
+        public string UserName { get; set; } // Added UserName
         public string content { get; set; }
         public string parentId { get; set; }
         public bool isLecturerPost { get; set; }
@@ -21,7 +22,7 @@ namespace FutaMeetWeb.Services
     {
         private readonly ConcurrentBag<Message> _messages = new ConcurrentBag<Message>();
 
-        public Message CreatePost(string sessionId, string userId, string content, bool isLecturer)
+        public Message CreatePost(string sessionId, string userId, string userName, string content, bool isLecturer)
         {
             if (!isLecturer)
             {
@@ -32,6 +33,7 @@ namespace FutaMeetWeb.Services
             {
                 sessionId = sessionId,
                 userId = userId,
+                UserName = userName,
                 content = content,
                 isLecturerPost = true,
                 isComment = false,
@@ -41,14 +43,14 @@ namespace FutaMeetWeb.Services
             return message;
         }
 
-        public Message CreateComment(string sessionId, string userId, string content, string postId, bool isLecturer)
+        public Message CreateComment(string sessionId, string userId, string userName, string content, string postId, bool isLecturer)
         {
             var post = _messages.FirstOrDefault(m => m.id == postId && m.sessionId == sessionId);
             if (post == null)
             {
                 throw new InvalidOperationException("Post not found.");
             }
-            if (post.parentId != post.id || !post.isLecturerPost) // Fix: ParentId, IsLecturerPost, check ParentId == Id
+            if (post.parentId != post.id || !post.isLecturerPost)
             {
                 throw new InvalidOperationException("Can only reply to lecturer posts.");
             }
@@ -57,9 +59,10 @@ namespace FutaMeetWeb.Services
             {
                 sessionId = sessionId,
                 userId = userId,
+                UserName = userName,
                 content = content,
                 parentId = postId,
-                isLecturerPost = isLecturer,
+                isLecturerPost = isLecturer, // This indicates if the *commenter* is a lecturer
                 isComment = true,
             };
 

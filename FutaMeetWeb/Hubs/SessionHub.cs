@@ -1,4 +1,4 @@
-﻿using FutaMeetWeb.Models;
+using FutaMeetWeb.Models;
 using FutaMeetWeb.Services;
 using Microsoft.AspNetCore.SignalR;
 using System;
@@ -32,6 +32,16 @@ namespace FutaMeetWeb.Hubs
                 {
                     session.LecturerConnectionId = Context.ConnectionId;
                     Console.WriteLine($"Lecturer {matricNo} set LecturerConnectionId: {session.LecturerConnectionId}");
+
+                    // If session is already started, send current scores and statuses to lecturer
+                    if (session.Status == SessionStatus.Started)
+                    {
+                        var currentScores = _sessionService.CalculateAttendanceScore(sessionId);
+                        await Clients.Caller.SendAsync("ReceiveParticipantScoreDetails", currentScores);
+                        var currentStatuses = _sessionService.GetParticipantStatus(sessionId);
+                        await Clients.Caller.SendAsync("ReceiveParticipantStatuses", currentStatuses);
+                        Console.WriteLine($"Sent current scores/statuses to reconnected lecturer {matricNo} for started session {sessionId}");
+                    }
                 }
                 else
                 {
@@ -45,7 +55,8 @@ namespace FutaMeetWeb.Hubs
                 }
                 if (!string.IsNullOrEmpty(session.LecturerConnectionId))
                 {
-                    var participants = session.ParticipantIds.ToDictionary(id => id, id => id);
+                    // Send participant names instead of just IDs
+                    var participants = session.ParticipantIds.ToDictionary(id => id, id => MockApiService.GetUsers().FirstOrDefault(u => u.MatricNo == id)?.Name ?? id);
                     await Clients.Client(session.LecturerConnectionId).SendAsync("ReceiveParticipants", participants);
                     Console.WriteLine($"Sent participants to lecturer: {string.Join(", ", participants.Keys)}");
                 }
@@ -90,24 +101,46 @@ namespace FutaMeetWeb.Hubs
 
         public async Task SessionStarted(string sessionId)
         {
-            await Clients.Group(sessionId).SendAsync("SessionStarted", sessionId);
+            await Clients.Group(sessionId).SendAsync("SessionStarted", sessionId); // Inform everyone
+
+            var session = _sessionService.GetSessionById(sessionId);
+            if (session != null && !string.IsNullOrEmpty(session.LecturerConnectionId) && session.Status == SessionStatus.Started)
+            {
+                // Send initial scores to the lecturer
+                var scores = _sessionService.CalculateAttendanceScore(sessionId);
+                await Clients.Client(session.LecturerConnectionId).SendAsync("ReceiveParticipantScoreDetails", scores);
+                Console.WriteLine($"Sent initial scores to lecturer for session {sessionId}");
+
+                // Also send initial statuses
+                var statuses = _sessionService.GetParticipantStatus(sessionId);
+                await Clients.Client(session.LecturerConnectionId).SendAsync("ReceiveParticipantStatuses", statuses);
+                Console.WriteLine($"Sent initial statuses to lecturer for session {sessionId}");
+            }
         }
 
         public Task SendMessage(string user, string message) => Clients.Others.SendAsync("ReceiveMessage", user, message);
 
         public async Task CreatePost(string sessionId, string content)
         {
-            var matricNo = Context.GetHttpContext()?.Session.GetString("MatricNo");
-            var post = _messageService.CreatePost(sessionId, matricNo, content, true);
-            await Clients.Others.SendAsync("ReceivePost", post);
+            var httpContext = Context.GetHttpContext();
+            var matricNo = httpContext?.Session.GetString("MatricNo");
+            var userName = MockApiService.GetUsers().FirstOrDefault(s => s.MatricNo == matricNo).Name;
+            var post = _messageService.CreatePost(sessionId, matricNo, userName, content, true);
+            await Clients.Group(sessionId).SendAsync("ReceivePost", post); // Changed from Clients.Others to Clients.Group(sessionId)
+            // Optionally, PostCreated can still be sent if the caller needs specific confirmation beyond receiving the post itself.
+            // For now, let's assume ReceivePost is sufficient for the caller to see their own post.
+            // If specific UI updates are needed only for the caller upon their post creation (e.g. clearing input), PostCreated can be kept.
+            // Let's keep PostCreated for now, as it might be used for UI cues like clearing the input field or showing a 'sent' status.
             await Clients.Caller.SendAsync("PostCreated", post.id);
         }
 
         public async Task CreateComment(string sessionId, string postId, string content)
         {
-            var matricNo = Context.GetHttpContext()?.Session.GetString("MatricNo");
+            var httpContext = Context.GetHttpContext();
+            var matricNo = httpContext?.Session.GetString("MatricNo");
+            var userName = MockApiService.GetUsers().FirstOrDefault(s => s.MatricNo == matricNo).Name;
             var isLecturer = IsSessionLecturer(sessionId, matricNo);
-            var comment = _messageService.CreateComment(sessionId, matricNo, content, postId, isLecturer);
+            var comment = _messageService.CreateComment(sessionId, matricNo, userName, content, postId, isLecturer);
             await Clients.Group(sessionId).SendAsync("ReceiveComment", comment);
         }
 
@@ -136,10 +169,15 @@ namespace FutaMeetWeb.Hubs
                 var status = isActive ? Session.StudentStatus.Active : Session.StudentStatus.InActive;
                 if (_sessionService.UpdateParticipantStatus(session.SessionId, matricNo, status))
                 {
-                    if (session.LecturerConnectionId != null)
+                    if (!string.IsNullOrEmpty(session.LecturerConnectionId))
                     {
                         var statuses = _sessionService.GetParticipantStatus(session.SessionId);
                         await Clients.Client(session.LecturerConnectionId).SendAsync("ReceiveParticipantStatuses", statuses);
+
+                        // Also send updated scores
+                        var scores = _sessionService.CalculateAttendanceScore(session.SessionId);
+                        await Clients.Client(session.LecturerConnectionId).SendAsync("ReceiveParticipantScoreDetails", scores);
+                        Console.WriteLine($"Sent updated scores to lecturer after {matricNo} status changed to {status}");
                     }
                 }
             }
@@ -152,11 +190,18 @@ namespace FutaMeetWeb.Hubs
             if (session is not null && !IsSessionLecturer(session.SessionId, matricNo) && session.IsSessionStarted)
             {
                 var status = issue == "BatteryLow" ? Session.StudentStatus.BatteryLow : Session.StudentStatus.DataFinished;
-                _sessionService.UpdateParticipantStatus(session.SessionId, matricNo, status);
-                if (session.LecturerConnectionId != null)
+                if (_sessionService.UpdateParticipantStatus(session.SessionId, matricNo, status))
                 {
-                    var statuses = _sessionService.GetParticipantStatus(session.SessionId);
-                    await Clients.Client(session.LecturerConnectionId).SendAsync("ReceiveParticipantStatuses", statuses);
+                    if (!string.IsNullOrEmpty(session.LecturerConnectionId))
+                    {
+                        var statuses = _sessionService.GetParticipantStatus(session.SessionId);
+                        await Clients.Client(session.LecturerConnectionId).SendAsync("ReceiveParticipantStatuses", statuses);
+
+                        // Also send updated scores
+                        var scores = _sessionService.CalculateAttendanceScore(session.SessionId);
+                        await Clients.Client(session.LecturerConnectionId).SendAsync("ReceiveParticipantScoreDetails", scores);
+                        Console.WriteLine($"Sent updated scores to lecturer after {matricNo} flagged {issue}");
+                    }
                 }
             }
         }
@@ -168,11 +213,19 @@ namespace FutaMeetWeb.Hubs
             if (session is not null && !IsSessionLecturer(session.SessionId, matricNo) && session.IsSessionStarted)
             {
                 _lastSeen[matricNo] = DateTime.UtcNow;
-                _sessionService.UpdateParticipantStatus(session.SessionId, matricNo, Session.StudentStatus.Active);
-                if (session.LecturerConnectionId != null)
+                if (_sessionService.UpdateParticipantStatus(session.SessionId, matricNo, Session.StudentStatus.Active))
                 {
-                    var statuses = _sessionService.GetParticipantStatus(session.SessionId);
-                    await Clients.Client(session.LecturerConnectionId).SendAsync("ReceiveParticipantStatuses", statuses);
+                    _lastSeen[matricNo] = DateTime.UtcNow; // Keep this logic for ConfirmActive
+                    if (!string.IsNullOrEmpty(session.LecturerConnectionId))
+                    {
+                        var statuses = _sessionService.GetParticipantStatus(session.SessionId);
+                        await Clients.Client(session.LecturerConnectionId).SendAsync("ReceiveParticipantStatuses", statuses);
+
+                        // Also send updated scores
+                        var scores = _sessionService.CalculateAttendanceScore(session.SessionId);
+                        await Clients.Client(session.LecturerConnectionId).SendAsync("ReceiveParticipantScoreDetails", scores);
+                        Console.WriteLine($"Sent updated scores to lecturer after {matricNo} confirmed active");
+                    }
                 }
             }
         }
@@ -185,11 +238,18 @@ namespace FutaMeetWeb.Hubs
                 var session = _sessionService.GetSessionByParticipant(matricNo);
                 if (session is not null && !IsSessionLecturer(session.SessionId, matricNo))
                 {
-                    _sessionService.UpdateParticipantStatus(session.SessionId, matricNo, Session.StudentStatus.Disconnected);
-                    if (session.LecturerConnectionId != null)
+                    if (_sessionService.UpdateParticipantStatus(session.SessionId, matricNo, Session.StudentStatus.Disconnected))
                     {
-                        var statuses = _sessionService.GetParticipantStatus(session.SessionId);
-                        await Clients.Client(session.LecturerConnectionId).SendAsync("ReceiveParticipantStatuses", statuses);
+                        if (!string.IsNullOrEmpty(session.LecturerConnectionId))
+                        {
+                            var statuses = _sessionService.GetParticipantStatus(session.SessionId);
+                            await Clients.Client(session.LecturerConnectionId).SendAsync("ReceiveParticipantStatuses", statuses);
+
+                            // Also send updated scores
+                            var scores = _sessionService.CalculateAttendanceScore(session.SessionId);
+                            await Clients.Client(session.LecturerConnectionId).SendAsync("ReceiveParticipantScoreDetails", scores);
+                            Console.WriteLine($"Sent updated scores to lecturer after {matricNo} disconnected");
+                        }
                     }
                 }
             }

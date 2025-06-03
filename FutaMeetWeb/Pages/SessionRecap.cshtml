@@ -1,8 +1,9 @@
-﻿@page
+@page
 @using FutaMeetWeb.Models
 @model FutaMeetWeb.Pages.SessionRecapModel
 @{
     ViewData["Title"] = "Session Recap - FutaMeet";
+    Layout = null;
 }
 <div class="container mt-4">
     <h2 class="text-center mb-4 modern-heading">Session Recap: @Model.Session?.Title</h2>
@@ -10,6 +11,20 @@
         <div class="col-md-6">
             <h4 class="modern-heading">Timeline</h4>
             <ul class="timeline">
+                @if (Model.Session?.StartTime != null)
+                {
+                    <li class="timeline-item timeline-item-special">
+                        <div class="timeline-badge"><i class="fas fa-flag-checkered"></i></div>
+                        <div class="timeline-panel">
+                            <div class="timeline-heading">
+                                <h6 class="timeline-title">@Model.Session.StartTime.ToString("hh:mm tt")</h6>
+                            </div>
+                            <div class="timeline-body">
+                                <p><strong>Session Started</strong></p>
+                            </div>
+                        </div>
+                    </li>
+                }
                 @foreach (var evt in Model.TimelineEvents)
                 {
                     <li class="timeline-item">
@@ -24,11 +39,75 @@
                         </div>
                     </li>
                 }
+                @if (Model.Session?.EndTime != null)
+                {
+                    <li class="timeline-item timeline-item-special">
+                        <div class="timeline-badge"><i class="fas fa-flag-checkered"></i></div>
+                        <div class="timeline-panel">
+                            <div class="timeline-heading">
+                                <h6 class="timeline-title">@Model.Session.EndTime.Value.ToString("hh:mm tt")</h6>
+                            </div>
+                            <div class="timeline-body">
+                                <p><strong>Session Ended</strong></p>
+                            </div>
+                        </div>
+                    </li>
+                }
             </ul>
         </div>
         <div class="col-md-6">
-            <h4 class="modern-heading">Attendance Scores</h4>
+            <h4 class="modern-heading">Session Statistics</h4>
+            <div class="card mb-3">
+                <div class="card-body">
+                    <p class="card-text"><strong>Average Attendance Score:</strong> @Model.AverageAttendanceScore.ToString("F1")%</p>
+                    <p class="card-text"><strong>Participants with >= 70% Score:</strong> @Model.ParticipantsAbove70Percent</p>
+                    <p class="card-text"><strong>Most Common Penalty Reason:</strong> @Model.MostCommonPenaltyReason</p>
+                </div>
+            </div>
+
+            <h4 class="modern-heading">Attendance Scores Chart</h4>
             <canvas id="scoreChart" height="200"></canvas>
+        </div>
+    </div>
+
+    <div class="row mt-4">
+        <div class="col-12">
+            <h4 class="modern-heading">Detailed Attendance Breakdown</h4>
+            @if (Model.Scores != null && Model.Scores.Any())
+            {
+                <table class="table table-striped table-hover">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Participant</th>
+                            <th>Score (%)</th>
+                            <th>Active (min)</th>
+                            <th>Inactive (min)</th>
+                            <th>Battery Low (min)</th>
+                            <th>Data Low (min)</th>
+                            <th>Disconnected (min)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var scoreEntry in Model.Scores.OrderByDescending(s => s.Value.FinalScorePercentage))
+                        {
+                            var details = scoreEntry.Value;
+                            <tr>
+                                <td>@details.ParticipantName (@details.ParticipantId)</td>
+                                <td>@details.FinalScorePercentage.ToString("F1")</td>
+                                <td>@details.TimeActiveMinutes.ToString("F1")</td>
+                                <td>@details.TimeInactiveMinutes.ToString("F1")</td>
+                                <td>@details.TimeBatteryLowMinutes.ToString("F1")</td>
+                                <td>@details.TimeDataFinishedMinutes.ToString("F1")</td>
+                                <td>@details.TimeDisconnectedMinutes.ToString("F1")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+            else
+            {
+                <p>No attendance data available for this session.</p>
+            }
         </div>
     </div>
 </div>
@@ -39,29 +118,135 @@
 <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
 
-@section Scripts {
-    <script>
-        const ctx = document.getElementById("scoreChart").getContext("2d");
-        new Chart(ctx, {
-            type: "bar",
-            data: {
-                labels: @Html.Raw(Json.Serialize(Model.Scores.Keys)),
-                datasets: [{
-                    label: "Attendance Score",
-                    data: @Html.Raw(Json.Serialize(Model.Scores.Values)),
-                    backgroundColor: "rgba(54, 162, 235, 0.6)",
-                    borderColor: "rgba(54, 162, 235, 1)",
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                scales: {
-                    y: { beginAtZero: true, max: 100 }
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const scoresData = @Json.Serialize(Model.Scores);
+        if (scoresData && Object.keys(scoresData).length > 0) {
+            const participantNames = Object.values(scoresData).map(s => s.participantName || s.participantId);
+            const finalScores = Object.values(scoresData).map(s => s.finalScorePercentage);
+
+            const ctx = document.getElementById('scoreChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: participantNames,
+                    datasets: [{
+                        label: 'Attendance Score (%)',
+                        data: finalScores,
+                        backgroundColor: 'rgba(75, 192, 192, 0.6)',
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 100
+                        }
+                    }
                 }
-            }
-        });
-    </script>
-}
+            });
+        } else {
+            // Optional: Display a message if no chart data
+            const chartDiv = document.getElementById('scoreChart');
+            if(chartDiv) chartDiv.parentElement.innerHTML += "<p class='text-center'>No score data to display in chart.</p>";
+        }
+    });
+</script>
+
+<style>
+    .timeline {
+        list-style: none;
+        padding: 20px 0;
+        position: relative;
+    }
+
+        .timeline:before {
+            content: '';
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 4px;
+            background: #ddd;
+            left: 30px;
+            margin: 0;
+        }
+
+    .timeline-item {
+        padding-left: 60px;
+        position: relative;
+        margin-bottom: 20px;
+    }
+
+    .timeline-badge {
+        position: absolute;
+        left: 15px;
+        top: 0;
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        background: #fff;
+        text-align: center;
+        line-height: 30px;
+    }
+
+    .timeline-panel {
+        background: #f8f9fa;
+        padding: 15px;
+        border-radius: 5px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+</style>
+    </div>
+</div>
+
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" rel="stylesheet" />
+<link href="~/lib/bootstrap/dist/css/bootstrap.min.css" rel="stylesheet" />
+<link href="~/css/site.css" rel="stylesheet" />
+<script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const scoresData = @Json.Serialize(Model.Scores);
+        if (scoresData && Object.keys(scoresData).length > 0) {
+            const participantNames = Object.values(scoresData).map(s => s.participantName || s.participantId);
+            const finalScores = Object.values(scoresData).map(s => s.finalScorePercentage);
+
+            const ctx = document.getElementById('scoreChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: participantNames,
+                    datasets: [{
+                        label: 'Attendance Score (%)',
+                        data: finalScores,
+                        backgroundColor: 'rgba(75, 192, 192, 0.6)',
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 100
+                        }
+                    }
+                }
+            });
+        } else {
+            // Optional: Display a message if no chart data
+            const chartDiv = document.getElementById('scoreChart');
+            if(chartDiv) chartDiv.parentElement.innerHTML += "<p class='text-center'>No score data to display in chart.</p>";
+        }
+    });
+</script>
 
 <style>
     .timeline {

@@ -1,4 +1,4 @@
-﻿@page
+@page
 @using FutaMeetWeb.Models
 @model FutaMeetWeb.Pages.JoinSessionModel
 @{
@@ -144,7 +144,7 @@
         .btn-skeuo:active,
         .btn-skeuo:focus,
         .btn-skeuo:hover {
-            background: rgba(255, 255, 255, 0.12);
+            background: linear-gradient(135deg, #3A86FF,#8338EC);
             color: #FFFFFF;
         }
 
@@ -182,12 +182,89 @@
 
     .message-list {
         flex-grow: 1;
-        max-height: calc(100% - 150px); /* Adjust for heading and input */
+        max-height: calc(100% - 100px); /* Adjusted for heading and reply area */
         overflow-y: auto;
-        border: 1px solid #ccc;
         padding: 10px;
-        border-radius: 5px;
         box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .message-box {
+        margin-bottom: 10px;
+        max-width: 80%;
+        padding: 8px 12px;
+        border-radius: 15px;
+        word-wrap: break-word;
+    }
+
+    .message {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .lecturer-msg {
+        background-color: #DCF8C6; /* Green for posts */
+        align-self: flex-start; /* Left align posts */
+        border-bottom-left-radius: 0;
+    }
+
+    .student-reply-msg, .lecturer-reply-msg, .self-reply-msg {
+        background-color: #E0E0E0; /* Contrasting color for replies */
+        align-self: flex-end;   /* Right align replies */
+        border-bottom-right-radius: 0;
+    }
+
+    .self-reply-msg {
+        background-color: #AED6F1; /* Different color for self-replies */
+    }
+
+    .lecturer-reply-msg {
+        background-color: #FADBD8; /* Different color for lecturer replies */
+    }
+
+    .username {
+        font-weight: bold;
+        font-size: 0.9em;
+        margin-bottom: 3px;
+        color: #555;
+    }
+
+    .content {
+        font-size: 1em;
+        color: #333;
+    }
+
+    .message-footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 0.8em;
+        color: #777;
+        margin-top: 5px;
+    }
+
+    .timestamp {
+        margin-right: 10px;
+    }
+
+    .reply-btn {
+        background: none;
+        border: none;
+        color: #007bff;
+        cursor: pointer;
+        font-size: 0.9em;
+        padding: 0;
+    }
+
+    #replyInput {
+        flex-grow: 1;
+        margin-right: 5px;
+    }
+
+    #replyArea.input-group {
+        display: flex; /* Make input and button align nicely */
+        align-items: center;
     }
 
     .session-controls {
@@ -321,7 +398,7 @@ else if (Model.Session?.Status != SessionStatus.Ended)
     <div class="session-container">
         <div class="video-section">
             <div class="modern-heading">Session Live</div>
-            <video id="sessionVideo" data-session-id="@Model.CurrentSessionId" muted class="modern-video" style="width: 100%; max-height: 400px; background: black; border-radius: 12px;"></video>
+            <video id="sessionVideo" data-session-id="@Model.CurrentSessionId" controls muted class="modern-video" style="width: 100%; max-height: 400px; background: black; border-radius: 12px;"></video>
             <div class="session-controls">
                 <button id="flagBatteryLow" class="btn btn-warning flex-fill" type="button">
                     <i class="fas fa-battery-quarter"></i> Battery Low
@@ -380,6 +457,9 @@ else if (Model.Session?.Status != SessionStatus.Ended)
         sessionId = Model.CurrentSessionId
     }));
     window.isSessionLecturer = false;
+    window.currentUserFullName = "@HttpContext.Session.GetString("FullName")";
+    window.currentUserId = "@HttpContext.Session.GetString("MatricNo")";
+    console.log("Session state set for student:", window.sessionState, "User:", window.currentUserFullName, "UserId:", window.currentUserId);
 
     document.addEventListener("DOMContentLoaded", () => {
         const sessionVideo = document.getElementById("sessionVideo");
