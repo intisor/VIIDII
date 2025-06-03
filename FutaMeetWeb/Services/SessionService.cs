@@ -247,7 +247,7 @@ public class SessionService
                 }
             }
             // The status of the first event becomes the current status for calculation from its timestamp.
-            currentStatusForCalc = firstEvent.Status;
+            currentStatusForCalc = firstEvent.status;
             currentTime = firstEvent.TimeStamp;
         }
         else // No events at all for this participant
