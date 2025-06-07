@@ -5,6 +5,10 @@ let attachedStreamId = null;
 let hasJoinedSession = false;
 let lastTabStatusUpdate = 0;
 const tabStatusThrottle = 50000; // 50 seconds
+let studentPeers = []; // Track student peer IDs
+const studentConnections = new Map(); // Track open data channels
+const fileChunks = new Map(); // Moved: Persist chunks across retries
+
 
 const connection = new signalR.HubConnectionBuilder()
     .withUrl("/sessionHub")
@@ -59,6 +63,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (window.isSessionLecturer) {
         document.getElementById("postInput").style.display = "block";
         document.getElementById("createPost").style.display = "block";
+        document.getElementById("fileInput").style.display = "inline-block";
     }
 });
 
@@ -141,11 +146,24 @@ connection.on("StartSession", (sessionId) => {
                             console.warn("Invalid student peer ID, skipping call");
                             return;
                         }
+                        studentConnections.set(conn.peer, conn); // Store connection
+
                         const call = peer.call(conn.peer, localStream);
                         call.on("open", () => console.log("Call to student opened:", conn.peer));
                         call.on("error", (err) => console.error("Call error:", err));
                     });
-                    conn.on("data", (data) => console.log("Received student data:", data));
+                    conn.on("data", (data) => {
+                        console.log("Received student data:", data);
+                        if (data.type === "studentReady" && !studentPeers.includes(data.studentId)) {
+                            console.log(`Adding student peer ID: ${data.studentId}`);
+                            studentPeers.push(data.studentId);
+                        }
+                    });
+                    conn.on("close", () => {
+                        console.log("Student connection closed:", conn.peer);
+                        studentConnections.delete(conn.peer);
+                        studentPeers = studentPeers.filter(id => id !== conn.peer);
+                    });
                 });
                 peer.on("error", (err) => {
                     console.error("Peer error:", err);
@@ -183,6 +201,7 @@ function setupStudentPeer(sessionId, video) {
     });
     peer.on("open", (id) => {
         console.log("Student peer open:", id);
+        connection.invoke("SendPeerId", sessionId, id).catch(err => console.error("Failed to send peer ID:", err));
         tryConnect(sessionId);
     });
     peer.on("call", (call) => {
@@ -207,6 +226,7 @@ function setupStudentPeer(sessionId, video) {
         });
         call.on("error", (err) => console.error("Call error:", err));
     });
+   
     peer.on("error", (err) => {
         console.error("Peer error:", err);
         if (err.type === "peer-unavailable") {
@@ -228,9 +248,52 @@ function tryConnect(sessionId, attempt = 1, maxAttempts = 15) {
         return;
     }
     const conn = peer.connect(sessionId);
+
     conn.on("open", () => {
         console.log("Connected to lecturer:", sessionId);
         conn.send("Student peer ready: " + peer.id);
+    });
+    conn.on("data", (data) => {
+        console.log("Received data from lecturer:", data);
+        if (data.type === "fileChunk") {
+            console.log(`Received chunk ${data.index + 1}/${data.total} for ${data.fileName}, size: ${data.chunk.size} bytes`);
+            const fileKey = `${data.fileName}-${data.messageId}`;
+            if (!fileChunks.has(fileKey)) {
+                console.log(`Initializing chunk array for ${fileKey}, expecting ${data.total} chunks`);
+                fileChunks.set(fileKey, new Array(data.total));
+            }
+            fileChunks.get(fileKey)[data.index] = data.chunk;
+            console.log(`Stored chunk ${data.index + 1} for ${fileKey}, received chunks: ${fileChunks.get(fileKey).filter(Boolean).length}/${data.total}`);
+
+            if (fileChunks.get(fileKey).filter(Boolean).length === data.total) {
+                console.log(`All chunks received for ${fileKey}, reassembling file`);
+                const blob = new Blob(fileChunks.get(fileKey));
+                console.log(`File ${data.fileName} reassembled, size: ${blob.size} bytes`);
+                const url = URL.createObjectURL(blob);
+                console.log(`Created Blob URL: ${url}`);
+
+                const downloadLink = document.querySelector(`.file-download[data-file-id="${data.messageId}"]`);
+                if (downloadLink) {
+                    console.log(`Updating download link for ${data.messageId}`);
+                    downloadLink.href = url;
+                    downloadLink.download = data.fileName;
+                    downloadLink.textContent = "Download";
+                } else {
+                    console.warn(`Download link not found for messageId: ${data.messageId}`);
+                }
+
+                console.log(`Triggering auto-download for ${data.fileName}`);
+                const tempLink = document.createElement("a");
+                tempLink.href = url;
+                tempLink.download = data.fileName;
+                document.body.appendChild(tempLink);
+                tempLink.click();
+                document.body.removeChild(tempLink);
+
+                console.log(`Cleaning up chunks for ${fileKey}`);
+                fileChunks.delete(fileKey);
+            }
+        }
     });
     conn.on("error", (err) => {
         console.error("Connection error:", err);
@@ -253,15 +316,69 @@ connection.on("SessionStarted", (sessionId) => {
 // === Messaging Logic ===
 document.getElementById("createPost")?.addEventListener("click", () => {
     const input = document.getElementById("postInput");
+    const fileInput = document.getElementById("fileInput");
     const discussion = document.getElementById("discussion");
     const sessionId = discussion?.getAttribute("data-session-id");
     console.log("Attempting to create post with sessionId:", sessionId);
-    if (input && sessionId && window.isSessionLecturer) {
+    if (fileInput?.files.length > 0 && sessionId && window.isSessionLecturer) {
+        const file = fileInput.files[0];
+        console.log(`Selected file: ${file.name}, size: ${file.size} bytes`);
+        if (file.size > 50 * 1024 * 1024) {
+            console.error("File too large (max 50MB)");
+            alert("File too large (max 50MB).");
+            return;
+        }
+        if (studentPeers.length === 0) {
+            console.warn("No students connected to send file to");
+            alert("No students connected.");
+            return;
+        }
+        const fileMessageContent = `File: ${file.name}`;
+        console.log(`Creating file message: ${fileMessageContent}`);
+        connection.invoke("CreatePost", sessionId, fileMessageContent, true)
+            .then(() => console.log("File message created successfully"))
+            .catch(err => {
+                console.error("Failed to create file message:", err);
+                alert("Failed to send file.");
+            });
+
+        const chunkSize = 1024 * 1024; // 1MB
+        const chunks = [];
+        for (let start = 0; start < file.size; start += chunkSize) {
+            chunks.push(file.slice(start, start + chunkSize));
+        }
+        console.log(`Created ${chunks.length} chunks for ${file.name}, chunk size: ${chunkSize} bytes`);
+
+        for (const studentId of studentPeers) {
+            const conn = studentConnections.get(studentId);
+            if (!conn) {
+                console.warn(`No open connection for student: ${studentId}, skipping`);
+                continue;
+            }
+            console.log(`Sending ${chunks.length} chunks to student: ${studentId}`);
+            chunks.forEach((chunk, index) => {
+                console.log(`Sending chunk ${index + 1}/${chunks.length} for ${file.name} to ${studentId}, size: ${chunk.size} bytes`);
+                conn.send({
+                    type: "fileChunk",
+                    fileName: file.name,
+                    chunk,
+                    index,
+                    total: chunks.length,
+                    messageId: fileMessageContent
+                });
+            });
+            conn.on("error", (err) => console.error(`Failed to send to ${studentId}:`, err));
+        }
+        console.log(`Cleared inputs after sending file: ${file.name}`);
+        fileInput.value = "";
+        input.value = "";
+    }
+    else if (input && sessionId && window.isSessionLecturer) {
         const messageContent = input.value.trim();
         if (messageContent) {
             // Client-side rendering of the post is removed.
             // The server will send the post back via ReceivePost, which will handle rendering.
-            connection.invoke("CreatePost", sessionId, messageContent)
+            connection.invoke("CreatePost", sessionId, messageContent, false)
                 .catch(err => console.error("CreatePost Hub error:", err));
             // Input is cleared in PostCreated handler now, or could be cleared here if preferred.
         }
@@ -276,9 +393,17 @@ connection.on("ReceivePost", (message) => {
         const messageDiv = document.createElement("div");
         messageDiv.className = "message lecturer-msg"; // Added 'message' class
         messageDiv.setAttribute("data-post-id", message.id);
+
+        let contentHtml = message.content;
+        let isFileMessage = message.content.startsWith("File:");
+        if (isFileMessage && !window.isSessionLecturer) {
+            const fileName = message.content.replace("File: ", "");
+            contentHtml = `${fileName} <a href="#" class="file-download" data-file-id="${message.content}">Download</a>`;
+        }
+
         messageDiv.innerHTML = `
             <div class="username">${message.userName || "Lecturer"}</div>
-            <div class="content">${message.content}</div>
+            <div class="content">${contentHtml}</div>
             <div class="message-footer">
                 <div class="timestamp">${getTimestamp()}</div>
                 <button class="reply-btn">Reply</button>
@@ -287,6 +412,7 @@ connection.on("ReceivePost", (message) => {
         messageBox.appendChild(messageDiv);
         discussion.appendChild(messageBox);
         discussion.scrollTop = discussion.scrollHeight;
+
         messageDiv.querySelector(".reply-btn").addEventListener("click", () => {
             const replyArea = document.getElementById("replyArea");
             const replyInput = document.getElementById("replyInput");
@@ -536,6 +662,14 @@ document.getElementById("flagDataFinished")?.addEventListener("click", () => {
         .catch(err => console.error("Failed to flag data issue:", err));
 });
 
+connection.on("ReceivePeerId", (userId, peerId) => {
+    console.log(`Received peer ID: ${peerId} for user: ${userId}`);
+    if (!window.isSessionLecturer) return;
+    if (!studentPeers.includes(peerId)) {
+        console.log(`Adding student peer ID: ${peerId}`);
+        studentPeers.push(peerId);
+    }
+});
 connection.on("ReceiveParticipants", (participants) => {
     const panel = document.getElementById("participantPanel");
     if (panel) {

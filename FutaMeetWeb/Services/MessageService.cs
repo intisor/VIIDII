@@ -5,6 +5,7 @@ using System.Collections.Generic;
 
 namespace FutaMeetWeb.Services
 {
+    public enum MessageType { File, Text }
     public class Message
     {
         public string id { get; set; } = Guid.CreateVersion7().ToString();
@@ -15,6 +16,7 @@ namespace FutaMeetWeb.Services
         public string parentId { get; set; }
         public bool isLecturerPost { get; set; }
         public bool isComment { get; set; } // Unused but kept for future-proofing
+        public MessageType messageType { get; set; } = MessageType.Text;
         public DateTime createdAt { get; set; } = DateTime.UtcNow;
     }
 
@@ -22,7 +24,7 @@ namespace FutaMeetWeb.Services
     {
         private readonly ConcurrentBag<Message> _messages = new ConcurrentBag<Message>();
 
-        public Message CreatePost(string sessionId, string userId, string userName, string content, bool isLecturer)
+        public Message CreatePost(string sessionId, string userId, string userName, string content, bool isLecturer, bool isFile = false)
         {
             if (!isLecturer)
             {
@@ -37,6 +39,7 @@ namespace FutaMeetWeb.Services
                 content = content,
                 isLecturerPost = true,
                 isComment = false,
+                messageType = isFile ? MessageType.File : MessageType.Text
             };
             message.parentId = message.id; // Set ParentId to itself for posts
             _messages.Add(message);

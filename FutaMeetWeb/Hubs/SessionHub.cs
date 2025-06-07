@@ -119,13 +119,19 @@ namespace FutaMeetWeb.Hubs
         }
 
         public Task SendMessage(string user, string message) => Clients.Others.SendAsync("ReceiveMessage", user, message);
+        public async Task SendPeerId(string sessionId, string peerId)
+        {
+            var userId = Context.GetHttpContext()?.Session.GetString("MatricNo");
 
-        public async Task CreatePost(string sessionId, string content)
+            await Clients.Group(sessionId).SendAsync("ReceivePeerId", userId, peerId);
+        }
+
+        public async Task CreatePost(string sessionId, string content, bool isFile)
         {
             var httpContext = Context.GetHttpContext();
             var matricNo = httpContext?.Session.GetString("MatricNo");
             var userName = MockApiService.GetUsers().FirstOrDefault(s => s.MatricNo == matricNo).Name;
-            var post = _messageService.CreatePost(sessionId, matricNo, userName, content, true);
+            var post = _messageService.CreatePost(sessionId, matricNo, userName, content, true,isFile);
             await Clients.Group(sessionId).SendAsync("ReceivePost", post); // Changed from Clients.Others to Clients.Group(sessionId)
             // Optionally, PostCreated can still be sent if the caller needs specific confirmation beyond receiving the post itself.
             // For now, let's assume ReceivePost is sufficient for the caller to see their own post.
