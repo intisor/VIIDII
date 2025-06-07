@@ -70,7 +70,41 @@
         .message-popup.show {
             opacity: 1;
         }
-    
+
+    .top-action-btn {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-width: 120px;
+        height: 48px;
+        font-size: 1.1rem;
+        font-weight: 600;
+        border-radius: 20px;
+        color: #fff !important;
+        text-decoration: none;
+        border: none;
+        outline: none;
+        margin: 0 0 0 12px;
+        padding: 0 24px;
+        box-shadow: 0 4px 16px rgba(58,134,255,0.10);
+        transition: background 0.2s, color 0.2s;
+        cursor: pointer;
+    }
+
+        .top-action-btn.home {
+            background: linear-gradient(135deg, #3A86FF 0%, #6DD5FA 100%);
+        }
+
+        .top-action-btn.logout {
+            background: linear-gradient(135deg, #8338EC 0%, #C19BF5 100%);
+        }
+
+        .top-action-btn:active,
+        .top-action-btn:focus,
+        .top-action-btn:hover {
+            opacity: 0.92;
+            color: #fff !important;
+        }
     .container {
         position: relative;
         padding: 1rem; /* Adjust padding as needed */
@@ -313,12 +347,12 @@
         align-items: center;
     }
 
-    #startSessionForm, #endSessionForm {
+    #startSessionForm, #SessionControlForm {
         width: 100%;
         text-align: center; /* Center the button text */
     }
 
-        #startSession, #endSessionForm button {
+        #startSession, #SessionControlForm button {
             padding: 12px;
             background: linear-gradient(135deg, #8338EC, #3A86FF);
             color: white;
@@ -476,6 +510,12 @@
     <div class="top-curve-rect-1"></div>
     <div class="top-curve-rect-2"></div>
 </div>
+<div style="position:fixed;top:24px;right:32px;z-index:100;display:flex;gap:12px;">
+    <a asp-page="/Login" class="top-action-btn home">Home</a>
+    <form method="post" asp-page-handler="Logout" style="display:inline;">
+        <button type="submit" class="top-action-btn logout">Sign Out</button>
+    </form>
+</div>
  @if (string.IsNullOrEmpty(Model.CurrentSessionId))
 {
     <div class="container mt-4">
@@ -525,34 +565,48 @@
 }
 @if (!string.IsNullOrEmpty(Model.Message) && (Model.CurrentSessionId != null) && Model.Session?.Status != SessionStatus.Ended)
 {
-    <div class="session-container">
-            <div class="video-section">
-                <video id="sessionVideo" data-session-id="@Model.CurrentSessionId" autoplay muted class="video" style="width: 100%; max-height: 400px; background: black;"></video>
-                <div class="session-controls">
-                    @if (!Model.IsSessionStarted)
-                    {
-                        <form id="startSessionForm" method="post" asp-page-handler="StartSession" class="w-100">
-                            <input type="hidden" name="sessionId" value="@Model.CurrentSessionId" />
-                            <button id="startSession" class="btn btn-skeuo flex-fill" type="submit">
-                                <i class="fas fa-play"></i> Start Session
-                            </button>
-                        </form>
-                    }
-                    else
-                    {
-                        <form id="endSessionForm" method="post" asp-page-handler="EndSession" class="d-flex gap-2 mt-2">
-                            <input type="hidden" name="sessionId" value="@Model.CurrentSessionId" />
-                            <button type="submit" class="btn btn-skeuo flex-fill">
-                                <i class="fas fa-stop"></i> End Session
-                            </button>
-                            <button id="toggleAudio" class="btn btn-skeuo flex-fill" type="button" onclick="toggleAudio()">
-                                <i class="fas fa-microphone-slash"></i> Mute
-                            </button>
-                        </form>
-                    }
-                </div>
+    <div class="row mt-md-5 ms-5" style="height: 450px;">
+        <div class="col-md-6 col-lg-8">
+            <video id="sessionVideo" data-session-id="@Model.CurrentSessionId" autoplay muted class="vstack pb-md-0 mb-md-4" style="height: 350px;width: 100%; max-height: 400px; background: black;"></video>
+            <div class="vstack" style="height: 100px;">
+                @if (!Model.IsSessionStarted)
+                {
+                    <form id="startSessionForm" method="post" asp-page-handler="StartSession" class="w-100">
+                        <input type="hidden" name="sessionId" value="@Model.CurrentSessionId" />
+                        <button id="startSession" class="btn btn-skeuo flex-fill" type="submit">
+                            <i class="fas fa-play"></i> Start Session
+                        </button>
+                    </form>
+                }
+                else
+                {
+                    <div class="container" id="SessionControlForm" style="height:100px;">
+                        <div class="row">
+                            <div class="col-auto">
+                                <form method="post" asp-page-handler="EndSession" class="d-flex align-items-center w-100">
+                                    <input type="hidden" name="sessionId" value="@Model.CurrentSessionId" />
+                                    <button type="submit" class="btn btn-skeuo flex-fill">
+                                        <i class="fas fa-stop"></i> End Session
+                                    </button>
+                                </form>
+                            </div>
+                            <div class="col-auto">
+                                <button id="toggleAudio" class="btn btn-skeuo flex-fill" type="button" onclick="toggleAudio()">
+                                    <i class="fas fa-microphone-slash"></i> Mute
+                                </button>
+                            </div>
+                            <div class="col-auto">
+                                <button id="shareScreen" class="btn btn-skeuo flex-fill" type="button">
+                                    <i class="fas fa-desktop"></i> Share Screen
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                }
             </div>
-            <div class="participants-messages-section">
+        </div>
+        <div class="col-md-6 col-lg-3 ms-3" style="width:200px;">
+              <div class="participants-messages-section"> 
                 <button id="toggleView" class="btn btn-toggle">
                     Show Discussion
                 </button>
@@ -571,7 +625,7 @@
                             <!-- Messages will be dynamically added here -->
                         </div>
                         <div class="input-group mt-2">
-                            <textarea id="postInput" rows="2" class="modern-input" placeholder="Create Post..."></textarea>
+                            <input type="text" id="postInput" rows="2" class="modern-input" placeholder="Create Post...">
                             <button id="createPost" class="btn btn-skeuo">
                                 <i class="fas fa-paper-plane"></i> Post
                             </button>
@@ -579,8 +633,8 @@
                     </div>
                 </div>
             </div>
+        </div>
     </div>
-
 }
 <div id="messagePopup" class="message-popup">
     @if (!string.IsNullOrEmpty(Model.Message))
@@ -622,6 +676,15 @@
             }
         }
     }
+       document.getElementById('shareScreen').addEventListener('click', () => {
+        if (window.startScreenShare) {
+            window.startScreenShare();
+        } else {
+            console.error("startScreenShare function not found.");
+            alert("Screen sharing is not available.");
+        }
+    });
+
 
     document.addEventListener('DOMContentLoaded', () => {
         const sessionVideo = document.getElementById("sessionVideo");

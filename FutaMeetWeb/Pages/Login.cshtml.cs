@@ -11,8 +11,6 @@ public class LoginModel : PageModel
 {
     private readonly SessionService _sessionService;
     private readonly PasswordHasher<User> _passwordHasher;
-
-
     public LoginModel(SessionService sessionService,PasswordHasher<User> passwordHasher)
     {
         _sessionService = sessionService;
@@ -48,6 +46,7 @@ public class LoginModel : PageModel
         {
             var user = MockApiService.GetUsers().FirstOrDefault(u => u.MatricNo == matricNo);
             Role = user.Role.ToString() ?? "";
+            UserName = user.Name ?? "";
         }
         return Page(); // Explicit render
     }   

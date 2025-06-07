@@ -79,6 +79,34 @@ connection.on("StartSession", (sessionId) => {
 
     if (window.isSessionLecturer) {
         console.log("Setting up lecturer stream.");
+
+        window.startScreenShare = async function () {
+            try {
+                const screenStream = await navigator.mediaDevices.getDisplayMedia({
+                    audio: false,
+                    video: true,
+                });
+                console.log("Screen captured:", screenStream);
+                if (video) {
+                    video.srcObject = screenStream;
+                }
+
+                // Handle screen sharing stop
+                screenStream.getVideoTracks()[0].addEventListener('ended', () => {
+                    console.log("Screen sharing stopped.");
+                    alert("Screen sharing stopped.");
+                    if (localStream && video) {
+                        console.log("Reverting to local stream.");
+                        video.srcObject = localStream; // Revert to original webcam stream
+                    } else {
+                        console.warn("No localStream or video element available to revert to.");
+                    }
+                });
+            } catch (error) {
+                console.error("Error sharing screen:", error);
+                alert("Failed to share screen. Please check permissions.");
+            }
+        };
         if (localStream && video && !video.srcObject) {
             console.log("Attaching existing stream to video element.");
             video.srcObject = localStream;
