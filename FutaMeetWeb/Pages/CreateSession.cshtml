@@ -167,6 +167,10 @@
         font-family: 'Poppins', sans-serif;
     }
 
+        input::placeholder, select::placeholder {
+            color: white; /* Placeholder color */
+        }
+
     button {
         display: inline-block;
         width: 100%;
@@ -396,13 +400,16 @@
         }
 
         .input-group button {
-            padding: 10px;
-            background-color: #8338EC;
+            padding: 1px;
+            background-color: transparent;
             color: white;
             border: none;
             border-radius: 5px;
             cursor: pointer;
         }
+    .send-btn{
+        background:transparent;
+    }
 
     /* Mobile Design */
     @@media only screen and (max-width: 480px) {
@@ -601,11 +608,11 @@
                                 </button>
                             </div>
                         </div>
-                    </div>
+                    </div>           
                 }
             </div>
         </div>
-        <div class="col-md-6 col-lg-3 ms-3" style="width:200px;">
+        <div class="col-md-6 col-lg-3 ms-3" style="width:220px;">
               <div class="participants-messages-section"> 
                 <button id="toggleView" class="btn btn-toggle">
                     Show Discussion
@@ -624,13 +631,18 @@
                         <div id="discussion" class="message-list" data-session-id="@Model.CurrentSessionId">
                             <!-- Messages will be dynamically added here -->
                         </div>
-                        <div class="input-group mt-2">
-                            <input type="text" id="postInput" rows="2" class="modern-input" placeholder="Create Post..."/>
-                            <input type="file"  id="fileInput" />
-                            <button id="createPost" class="btn btn-skeuo">
-                                <i class="fas fa-paper-plane"></i> Post
+                        <div class="post-container" style="background: linear-gradient(to right, #6b48ff, #1e90ff); padding: 5px; border-radius: 10px; display: flex; align-items: center; height: 35px;">
+                            <label for="fileInput" class="attach-btn" style="margin-right: 8px; cursor: pointer;">
+                                <i class="fas fa-paperclip" style="font-size: 0.8em; color: white;"></i>
+                            </label>
+                            <input type="text" id="postInput" class="modern-input flex-grow-1" placeholder="Create Post..."
+                                   style="background: none; border: none; outline: none; color: white; height: 100%; font-size: 0.9em; padding: 0 8px;" />
+                            <button id="createPost" class="send-btn" style="margin-left: 8px; cursor: pointer; padding: 1px; width: 20px; height: 20px;">
+                                <i class="fas fa-paper-plane" style="font-size: 0.8em; color: white;"></i>
                             </button>
+                            <input type="file" id="fileInput" class="d-none" />
                         </div>
+
                     </div>
                 </div>
             </div>
@@ -677,14 +689,18 @@
             }
         }
     }
-       document.getElementById('shareScreen').addEventListener('click', () => {
-        if (window.startScreenShare) {
-            window.startScreenShare();
-        } else {
-            console.error("startScreenShare function not found.");
-            alert("Screen sharing is not available.");
-        }
-    });
+    const shareScreenBtn = document.getElementById('shareScreen');
+    if (shareScreenBtn) {
+        shareScreenBtn.addEventListener('click', () => {
+            if (window.startScreenShare) {
+                window.startScreenShare();
+            } else {
+                console.error("startScreenShare function not found.");
+                alert("Screen sharing is not available.");
+            }
+        });
+    }
+
 
 
     document.addEventListener('DOMContentLoaded', () => {
