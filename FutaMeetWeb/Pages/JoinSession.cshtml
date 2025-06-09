@@ -5,475 +5,541 @@
     ViewData["Title"] = "Join Session - FutaMeet";
     Layout = null;
 }
-
-<style>
-    body {
-        margin: 0;
-        padding: 0;
-        background: #F9FAFB;
-        font-family: 'Poppins', sans-serif;
-        color: #333;
-        position: relative;
-        overflow: hidden;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        min-height: 100vh;
-    }
-
-    .top-curve-wrapper {
-        position: absolute;
-        top: -100px;
-        left: -100px;
-        z-index: 0;
-        width: 300px;
-        height: 300px;
-    }
-
-    .top-curve-rect-1 {
-        position: absolute;
-        width: 245px;
-        height: 245px;
-        background: linear-gradient(128.97deg, #8338EC 2.4%, #C19BF5 85.87%);
-        border-radius: 50%;
-        top: 0;
-        left: 0;
-        filter: blur(2.5px);
-        z-index: 1;
-    }
-
-    .top-curve-rect-2 {
-        position: absolute;
-        width: 140px;
-        height: 140px;
-        background: linear-gradient(151.12deg, #3A86FF 29.33%, #9CC3FF 86.49%);
-        border-radius: 50%;
-        top: 30px;
-        left: 30px;
-        filter: blur(2.5px);
-        z-index: 2;
-    }
-
-    .message-popup {
-        position: fixed;
-        bottom: 20px;
-        right: 20px;
-        background-color: #333;
-        color: #fff;
-        padding: 15px;
-        border-radius: 5px;
-        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-        opacity: 0;
-        transition: opacity 0.5s ease-in-out;
-        z-index: 1000;
-    }
-
-        .message-popup.show {
-            opacity: 1;
-        }
-
-    .centered-form {
-        max-width: 400px;
-        width: 100%;
-        z-index: 1;
-        margin: 0 auto;
-    }
-
-    .login-container {
-        text-align: center;
-        background: white;
-        padding: 2rem;
-        border-radius: 20px;
-        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
-        width: 100%;
-        z-index: 1;
-    }
-
-    .modern-heading {
-        font-size: 2rem;
-        margin-bottom: 1.5rem;
-        color: #FFFFFF;
-        text-align: center;
-        background: linear-gradient(135deg, #8338EC, #3A86FF);
-        padding: 1rem;
-        border-radius: 12px 12px 0 0;
-    }
-
-    .mb-3 {
-        margin-bottom: 1rem;
-        text-align: left;
-        padding: 0 1rem;
-    }
-
-    .modern-label {
-        display: block;
-        margin-bottom: 0.5rem;
-        color: #565D68;
-    }
-
-    .modern-input, .modern-select {
-        width: 100%;
-        padding: 0.75rem;
-        border: 1px solid #A26AF1;
-        border-radius: 8px;
-        box-sizing: border-box;
-        font-family: 'Poppins', sans-serif;
-        background: rgba(255, 255, 255, 0.9);
-        color: #333;
-    }
-
-    .btn-skeuo {
-        display: inline-block;
-        width: 100%;
-        padding: 12px;
-        background: linear-gradient(135deg, #8338EC, #3A86FF);
-        color: white;
-        border: none;
-        border-radius: 24px;
-        font-size: 1rem;
-        cursor: pointer;
-        margin-top: 1rem;
-        text-decoration: none;
-        transition: background 0.2s, color 0.2s;
-        border: 2.5px solid #FFFFFF;
-        max-width: 333px;
-        justify-content: center;
-        align-items: center;
-    }
-
-        .btn-skeuo:active,
-        .btn-skeuo:focus,
-        .btn-skeuo:hover {
-            background: linear-gradient(135deg, #3A86FF,#8338EC);
-            color: #FFFFFF;
-        }
-
-    .session-container {
-        display: flex;
-        flex-direction: row;
-        justify-content: space-between;
-        width: 90vw;
-        max-height: calc(100vh - 70px); /* Account for margin-top and padding */
-        margin-top: 50px; /* Reduced to clear top curve */
-        padding: 10px;
-        gap: 10px;
-        box-sizing: border-box;
-        overflow-y: auto; /* Allow scrolling if content overflows */
-    }
-
-    .video-section {
-        flex: 3;
-        display: flex;
-        flex-direction: column;
-        height: 100%;
-        margin-bottom: 10px;
-    }
-
-    .messages-section {
-        flex: 1;
-        background-color: #e3f2fd;
-        padding: 10px;
-        border-radius: 10px;
-        box-sizing: border-box;
-        height: 100%;
-        display: flex;
-        flex-direction: column;
-    }
-
-    .message-list {
-        flex-grow: 1;
-        max-height: calc(100% - 100px); /* Adjusted for heading and reply area */
-        overflow-y: auto;
-        padding: 10px;
-        box-sizing: border-box;
-        display: flex;
-        flex-direction: column;
-    }
-
-    .message-box {
-        margin-bottom: 10px;
-        max-width: 80%;
-        padding: 8px 12px;
-        border-radius: 15px;
-        word-wrap: break-word;
-    }
-
-    .message {
-        display: flex;
-        flex-direction: column;
-    }
-
-    .lecturer-msg {
-        background-color: #DCF8C6; /* Green for posts */
-        align-self: flex-start; /* Left align posts */
-        border-bottom-left-radius: 0;
-    }
-
-    .student-reply-msg, .lecturer-reply-msg, .self-reply-msg {
-        background-color: #E0E0E0; /* Contrasting color for replies */
-        align-self: flex-end;   /* Right align replies */
-        border-bottom-right-radius: 0;
-    }
-
-    .self-reply-msg {
-        background-color: #AED6F1; /* Different color for self-replies */
-    }
-
-    .lecturer-reply-msg {
-        background-color: #FADBD8; /* Different color for lecturer replies */
-    }
-
-    .username {
-        font-weight: bold;
-        font-size: 0.9em;
-        margin-bottom: 3px;
-        color: #555;
-    }
-
-    .content {
-        font-size: 1em;
-        color: #333;
-    }
-
-    .message-footer {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        font-size: 0.8em;
-        color: #777;
-        margin-top: 5px;
-    }
-
-    .timestamp {
-        margin-right: 10px;
-    }
-
-    .reply-btn {
-        background: none;
-        border: none;
-        color: #007bff;
-        cursor: pointer;
-        font-size: 0.9em;
-        padding: 0;
-    }
-
-    #replyInput {
-        flex-grow: 1;
-        margin-right: 5px;
-    }
-
-    #replyArea.input-group {
-        display: flex; /* Make input and button align nicely */
-        align-items: center;
-    }
-
-    .session-controls {
-        display: flex;
-        gap: 10px;
-        margin-top: 10px;
-    }
-
-    .input-group {
-        margin-top: 10px;
-    }
-
-        .input-group textarea {
-            margin-bottom: 10px;
-            padding: 10px;
-            border-radius: 5px;
-            border: 1px solid #ccc;
-        }
-
-    @@media only screen and (max-width: 480px) {
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Welcome to VIIDII</title>
+    <link rel="icon" type="image/x-icon" href="~/favicon.ico" />
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700&display=swap" rel="stylesheet">
+    <style>
         body {
-            justify-content: flex-start;
-            padding-top: 0;
-            min-height: 100vh;
             margin: 0;
+            padding: 0;
+            background: #F9FAFB;
+            font-family: 'Poppins', sans-serif;
+            color: #333;
+            position: relative;
+            overflow: hidden;
             display: flex;
-            flex-direction: column;
+            justify-content: center;
             align-items: center;
+            min-height: 100vh;
         }
 
-        .gradient-bg {
+        .top-curve-wrapper {
             position: absolute;
-            width: 100%;
-            height: 426px;
-            left: 0;
-            bottom: 0;
-            background: linear-gradient(306.91deg, #3A86FF 13.83%, #9CC3FF 108.03%);
-            box-shadow: 0px -10px 20px rgba(58, 134, 255, 0.25);
-            border-radius: 50px 50px 0px 0px;
+            top: -100px;
+            left: -100px;
             z-index: 0;
+            width: 300px;
+            height: 300px;
         }
 
-        .centered-form {
+        .top-curve-rect-1 {
             position: absolute;
-            bottom: 10%;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 100%;
-            max-width: 333px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            margin-bottom: 0;
+            width: 245px;
+            height: 245px;
+            background: linear-gradient(128.97deg, #8338EC 2.4%, #C19BF5 85.87%);
+            border-radius: 50%;
+            top: 0;
+            left: 0;
+            filter: blur(2.5px);
             z-index: 1;
         }
 
-        .login-container {
-            background: none;
-            box-shadow: none;
-            border-radius: 0;
-            padding: 0;
+        .top-curve-rect-2 {
+            position: absolute;
+            width: 140px;
+            height: 140px;
+            background: linear-gradient(151.12deg, #3A86FF 29.33%, #9CC3FF 86.49%);
+            border-radius: 50%;
+            top: 30px;
+            left: 30px;
+            filter: blur(2.5px);
+            z-index: 2;
+        }
+
+        .message-popup {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background-color: #333;
+            color: #fff;
+            padding: 15px;
+            border-radius: 5px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            opacity: 0;
+            transition: opacity 0.5s ease-in-out;
+            z-index: 1000;
+        }
+
+            .message-popup.show {
+                opacity: 1;
+            }
+
+        .centered-form {
+            max-width: 400px;
             width: 100%;
-            max-width: 333px;
+            z-index: 1;
+            margin: 0 auto;
+        }
+
+        .login-container {
+            text-align: center;
+            background: white;
+            padding: 2rem;
+            border-radius: 20px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+            width: 100%;
+            z-index: 1;
         }
 
         .modern-heading {
-            font-size: 2.1rem;
-            margin-top: 2rem;
-            margin-bottom: 0.5rem;
-            width: 100%;
-            max-width: 333px;
+            font-size: 2rem;
+            margin-bottom: 1.5rem;
+            color: #FFFFFF;
+            text-align: center;
+            background: linear-gradient(135deg, #8338EC, #3A86FF);
+            padding: 1rem;
+            border-radius: 12px 12px 0 0;
         }
 
         .mb-3 {
-            width: 100%;
-            max-width: 333px;
-            position: relative;
+            margin-bottom: 1rem;
+            text-align: left;
+            padding: 0 1rem;
         }
+
+        .modern-label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: #565D68;
+        }
+
+        .modern-input, .modern-select {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #A26AF1;
+            border-radius: 8px;
+            box-sizing: border-box;
+            font-family: 'Poppins', sans-serif;
+            background: rgba(255, 255, 255, 0.9);
+            color: #333;
+        }
+
+        .btn-skeuo {
+            display: inline-block;
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, #8338EC, #3A86FF);
+            color: white;
+            border: none;
+            border-radius: 24px;
+            font-size: 1rem;
+            cursor: pointer;
+            margin-top: 1rem;
+            text-decoration: none;
+            transition: background 0.2s, color 0.2s;
+            border: 2.5px solid #FFFFFF;
+            max-width: 333px;
+            justify-content: center;
+            align-items: center;
+        }
+
+            .btn-skeuo:active,
+            .btn-skeuo:focus,
+            .btn-skeuo:hover {
+                background: linear-gradient(135deg, #3A86FF,#8338EC);
+                color: #FFFFFF;
+            }
 
         .session-container {
-            flex-direction: column;
-            width: 100%;
-            max-height: calc(100vh - 50px); /* Adjust for mobile */
-            margin-top: 50px;
-            padding: 5px;
-            overflow-y: auto;
+            display: flex;
+            flex-direction: row;
+            justify-content: space-between;
+            width: 90vw;
+            max-height: calc(100vh - 70px); /* Account for margin-top and padding */
+            margin-top: 50px; /* Reduced to clear top curve */
+            padding: 10px;
+            gap: 10px;
+            box-sizing: border-box;
+            overflow-y: auto; /* Allow scrolling if content overflows */
         }
 
-        .video-section, .messages-section {
-            flex: none;
-            width: 100%;
-            height: auto;
+        .video-section {
+            flex: 3;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            margin-bottom: 10px;
+        }
+        .modern-video{
+             width: 100%; 
+             max-height: 350px;
+             background: black;
+             border-radius: 12px;
+        }
+
+        .toggle-messages-btn {
+            display: none;
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: linear-gradient(135deg, #8338EC, #3A86FF);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            font-size: 1.5rem;
+            cursor: pointer;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        .messages-section {
+            flex: 1;
+            background-color: #e3f2fd;
+            padding: 10px;
+            border-radius: 10px;
+            box-sizing: border-box;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
         }
 
         .message-list {
-            max-height: 200px; /* Fixed height for mobile */
+            flex-grow: 1;
+            max-height: calc(100% - 100px); /* Adjusted for heading and reply area */
+            overflow-y: auto;
+            padding: 10px;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
         }
-    }
-</style>
 
-<div class="top-curve-wrapper">
-    <div class="top-curve-rect-1"></div>
-    <div class="top-curve-rect-2"></div>
-</div>
+        .message-box {
+            margin-bottom: 10px;
+            max-width: 80%;
+            padding: 8px 12px;
+            border-radius: 15px;
+            word-wrap: break-word;
+        }
 
-@if (string.IsNullOrEmpty(Model.CurrentSessionId))
-{
-    <div class="centered-form">
-        <div class="login-container">
-            <div class="modern-heading">Join a Session</div>
-            <form method="post" id="joinSessionForm">
-                <div class="mb-3">
-                    <label asp-for="SessionId" class="modern-label">Available Sessions</label>
-                    <select asp-for="SessionId" asp-items="Model.AvailableSessions" class="modern-select" required>
-                        <option value="">-- Select a session --</option>
-                    </select>
-                </div>
-                <button type="submit" class="btn-skeuo">
-                    <i class="fas fa-sign-in-alt"></i> Join Session
-                </button>
-            </form>
-            @if (!string.IsNullOrEmpty(Model.Message))
-            {
-                <p class="mt-3 text-center modern-status" id="statusMessage">@Model.Message</p>
+        .message {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .lecturer-msg {
+            background-color: #DCF8C6; /* Green for posts */
+            align-self: flex-start; /* Left align posts */
+            border-bottom-left-radius: 0;
+        }
+
+        .student-reply-msg, .lecturer-reply-msg, .self-reply-msg {
+            background-color: #E0E0E0; /* Contrasting color for replies */
+            align-self: flex-end;   /* Right align replies */
+            border-bottom-right-radius: 0;
+        }
+
+        .self-reply-msg {
+            background-color: #AED6F1; /* Different color for self-replies */
+        }
+
+        .lecturer-reply-msg {
+            background-color: #FADBD8; /* Different color for lecturer replies */
+        }
+
+        .username {
+            font-weight: bold;
+            font-size: 0.9em;
+            margin-bottom: 3px;
+            color: #555;
+        }
+
+        .content {
+            font-size: 1em;
+            color: #333;
+        }
+
+        .message-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.8em;
+            color: #777;
+            margin-top: 5px;
+        }
+
+        .timestamp {
+            margin-right: 10px;
+        }
+
+        .reply-btn {
+            background: none;
+            border: none;
+            color: #007bff;
+            cursor: pointer;
+            font-size: 0.9em;
+            padding: 0;
+        }
+
+        #replyInput {
+            flex-grow: 1;
+            margin-right: 5px;
+        }
+
+        #replyArea.input-group {
+            display: flex; /* Make input and button align nicely */
+            align-items: center;
+        }
+
+        .session-controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .input-group {
+            margin-top: 10px;
+        }
+
+            .input-group textarea {
+                margin-bottom: 10px;
+                padding: 10px;
+                border-radius: 5px;
+                border: 1px solid #ccc;
             }
-        </div>
-    </div>
-}
-else if (Model.Session?.Status != SessionStatus.Ended)
-{
-    <div class="session-container">
-        <div class="video-section">
-            <div class="modern-heading">Session Live</div>
-            <video id="sessionVideo" data-session-id="@Model.CurrentSessionId" controls muted class="modern-video" style="width: 100%; max-height: 400px; background: black; border-radius: 12px;"></video>
-            <div class="session-controls">
-                <button id="flagBatteryLow" class="btn btn-warning flex-fill" type="button">
-                    <i class="fas fa-battery-quarter"></i> Battery Low
-                </button>
-                <button id="flagDataFinished" class="btn btn-danger flex-fill" type="button">
-                    <i class="fas fa-signal"></i> Data Finished
-                </button>
-            </div>
-        </div>
-        <div class="messages-section">
-            <h4 class="modern-heading" style="font-size: 1.2rem; background: #f9fafb; color: #333;">Discussion</h4>
-            <div id="discussion" class="message-list" data-session-id="@Model.CurrentSessionId">
-                <!-- Messages will be dynamically added here -->
-            </div>
-            <div id="replyArea" class="input-group" style="display: none;">
-                <textarea id="replyInput" rows="2" class="modern-input" placeholder="Write a reply..."></textarea>
-                <button id="sendReply" class="btn btn-skeuo">
-                    <i class="fas fa-paper-plane"></i> Send Reply
-                </button>
-            </div>
-        </div>
-    </div>
-    <div class="modal fade modern-modal" id="activityModal" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Are you still there?</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <p>Please confirm you're active.</p>
-                    <button id="confirmActive" class="btn btn-primary">I'm Here</button>
-                </div>
-            </div>
-        </div>
-    </div>
-}
 
-<div id="messagePopup" class="message-popup">
-    @if (!string.IsNullOrEmpty(Model.Message))
+        @@media only screen and (max-width: 480px) {
+            body {
+        
+                justify-content: flex-start;
+                padding-top: 0;
+                height:100%;
+                margin: 0;
+                display: flex;
+                flex-direction: column;
+                align-items: stretch; /* Stretch to full width */
+            }
+            .session-container {
+                display: flex;
+                flex-direction: column;
+                justify-content: space-between;
+                width: 100vw;
+                padding: 10px;
+                gap: 10px;
+                height:80vh;
+                margin-top:15vh;
+                max-height:none;
+            }
+
+            .video-section {
+                position: relative;
+                width: 100%;
+                padding: 10px;
+            }
+            
+            .modern-heading{
+                padding:0px;
+            }
+
+            .modern-video {
+                width: 100%;
+                height: 100%; 
+                max-width:none;
+                max-height:none;
+                margin: 0 0 20px 0; 
+                background: black;
+                border-radius: 12px;
+            }
+
+            .session-controls {
+                display: flex;
+                gap: 0.5rem;
+                width: 100%;
+            }
+
+
+                .session-controls .btn {
+                    flex: 1; /* same width for each button */
+                }
+
+            .messages-section {
+                display: none; /* hidden by default */
+                position: fixed;
+                bottom: 0;
+                left: 0;
+                width: 100%;
+                height: 50vh; /* half of viewport height */
+                background: rgba(0, 0, 0, 0.8);
+                box-sizing: border-box;
+                padding: 1rem;
+                border-top-left-radius: 12px;
+                border-top-right-radius: 12px;
+                overflow-y: auto;
+                z-index: 1000;
+                transition: transform 0.3s ease;
+                transform: translateY(100%); /* start off-screen */
+            }
+
+                .messages-section.show {
+                    display: block;
+                    transform: translateY(0);
+                }
+
+            .toggle-messages-btn {
+                display: flex; /* show it */
+                position: static; /* no more fixed overlay */
+                width: auto; /* let flex decide */
+                height: auto;
+                padding: 0.5rem;
+                border-radius: 50%;
+                background: linear-gradient(135deg, #8338EC, #3A86FF);
+                align-items: center;
+                justify-content: center;
+                font-size: 1.25rem;
+                box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            }
+            .mb-3 {
+                width: 100%;
+                max-width: 333px;
+                position: relative;
+            }
+
+            .message-list {
+                max-height: 200px; /* Fixed height for mobile */
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="top-curve-wrapper">
+        <div class="top-curve-rect-1"></div>
+        <div class="top-curve-rect-2"></div>
+    </div>
+
+    @if (string.IsNullOrEmpty(Model.CurrentSessionId))
     {
-        <p>@Model.Message</p>
+        <div class="centered-form">
+            <div class="login-container">
+                <div class="modern-heading">Join a Session</div>
+                <form method="post" id="joinSessionForm">
+                    <div class="mb-3">
+                        <label asp-for="SessionId" class="modern-label">Available Sessions</label>
+                        <select asp-for="SessionId" asp-items="Model.AvailableSessions" class="modern-select" required>
+                            <option value="">-- Select a session --</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn-skeuo">
+                        <i class="fas fa-sign-in-alt"></i> Join Session
+                    </button>
+                </form>
+                @if (!string.IsNullOrEmpty(Model.Message))
+                {
+                    <p class="mt-3 text-center modern-status" id="statusMessage">@Model.Message</p>
+                }
+            </div>
+        </div>
     }
-</div>
-
-<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" rel="stylesheet" />
-<link href="~/lib/bootstrap/dist/css/bootstrap.min.css" rel="stylesheet" />
-<script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
-<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.7/signalr.min.js"></script>
-<script src="~/js/session.js"></script>
-<script>
-    window.sessionState = @Html.Raw(Json.Serialize(new
+    else if (Model.Session?.Status != SessionStatus.Ended)
     {
-        isSessionStarted = Model.IsSessionStarted,
-        sessionId = Model.CurrentSessionId
-    }));
-    window.isSessionLecturer = false;
-    window.currentUserFullName = "@HttpContext.Session.GetString("FullName")";
-    window.currentUserId = "@HttpContext.Session.GetString("MatricNo")";
-    console.log("Session state set for student:", window.sessionState, "User:", window.currentUserFullName, "UserId:", window.currentUserId);
+        <div class="session-container">
+            <div class="video-section">
+                <div class="modern-heading">Session Live</div>
+                <video id="sessionVideo" data-session-id="@Model.CurrentSessionId" controls muted class="modern-video"></video>
+                <div class="session-controls">
+                    <button id="flagBatteryLow" class="btn btn-warning flex-fill" type="button">
+                        <i class="fas fa-battery-quarter"></i> Battery Low
+                    </button>
+                    <button id="flagDataFinished" class="btn btn-danger flex-fill" type="button">
+                        <i class="fas fa-signal"></i> Data Finished
+                    </button>
+                    <button id="toggleMessages" class="toggle-messages-btn" type="button">
+                        <i class="fas fa-comments"></i>
+                     </button>
+                </div>
+            </div>
+            <div class="messages-section">
+                <h4 class="modern-heading" style="font-size: 1.2rem; background: #f9fafb; color: #333;">Discussion</h4>
+                <div id="discussion" class="message-list" data-session-id="@Model.CurrentSessionId">
+                    <!-- Messages will be dynamically added here -->
+                </div>
+                <div id="replyArea" class="input-group" style="display: none;">
+                    <textarea id="replyInput" rows="2" class="modern-input" placeholder="Write a reply..."></textarea>
+                    <button id="sendReply" class="btn btn-skeuo">
+                        <i class="fas fa-paper-plane"></i> Send Reply
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="modal fade modern-modal" id="activityModal" tabindex="-1">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Are you still there?</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p>Please confirm you're active.</p>
+                        <button id="confirmActive" class="btn btn-primary">I'm Here</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
 
-    document.addEventListener("DOMContentLoaded", () => {
-        const sessionVideo = document.getElementById("sessionVideo");
-        if (sessionVideo) {
-            sessionVideo.onloadedmetadata = () => {
-                console.log("Metadata loaded. Stream:", sessionVideo.srcObject);
-                sessionVideo.play().catch(err => console.error("Auto-play failed:", err));
-            };
+    <div id="messagePopup" class="message-popup">
+        @if (!string.IsNullOrEmpty(Model.Message))
+        {
+            <p>@Model.Message</p>
         }
+    </div>
 
-        const messagePopup = document.getElementById("messagePopup");
-        if (messagePopup && messagePopup.innerText.trim()) {
-            messagePopup.classList.add("show");
-            setTimeout(() => messagePopup.classList.remove("show"), 5000);
-        }
-    });
-</script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" rel="stylesheet" />
+    <link href="~/lib/bootstrap/dist/css/bootstrap.min.css" rel="stylesheet" />
+    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.7/signalr.min.js"></script>
+    <script src="~/js/session.js"></script>
+    <script>
+        window.sessionState = @Html.Raw(Json.Serialize(new
+        {
+            isSessionStarted = Model.IsSessionStarted,
+            sessionId = Model.CurrentSessionId
+        }));
+        window.isSessionLecturer = false;
+        window.currentUserFullName = "@HttpContext.Session.GetString("FullName")";
+        window.currentUserId = "@HttpContext.Session.GetString("MatricNo")";
+        console.log("Session state set for student:", window.sessionState, "User:", window.currentUserFullName, "UserId:", window.currentUserId);
+
+        document.addEventListener("DOMContentLoaded", () => {
+            const sessionVideo = document.getElementById("sessionVideo");
+            if (sessionVideo) {
+                sessionVideo.onloadedmetadata = () => {
+                    console.log("Metadata loaded. Stream:", sessionVideo.srcObject);
+                    sessionVideo.play().catch(err => console.error("Auto-play failed:", err));
+                };
+            }
+
+            const messagePopup = document.getElementById("messagePopup");
+            if (messagePopup && messagePopup.innerText.trim()) {
+                messagePopup.classList.add("show");
+                setTimeout(() => messagePopup.classList.remove("show"), 5000);
+            }
+
+            const toggleMessagesBtn = document.getElementById("toggleMessages");
+            const messagesSection = document.querySelector(".messages-section");
+            if (toggleMessagesBtn && messagesSection) {
+                toggleMessagesBtn.addEventListener("click", () => {
+                    messagesSection.classList.toggle("show");
+                });
+            }
+        });
+    </script>
+</body>
+</html>

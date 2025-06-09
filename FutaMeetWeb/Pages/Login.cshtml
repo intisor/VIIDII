@@ -299,21 +299,21 @@
 
             .login-container {
                 position: absolute;
-                bottom: 18vh;
+                top: 30vh;
                 left: 50%;
                 transform: translateX(-50%);
-                width: 90%;
+                width: 80%;
                 max-width: 333px;
                 background: none;
                 box-shadow: none;
                 border-radius: 0;
-                padding: 0;
                 z-index: 4;
+            }
             }
 
             .input-group {
                 margin-bottom: 1rem;
-                width: 100%;
+                width: 90%;
                 position: relative;
                 z-index: 5;
             }
@@ -324,6 +324,7 @@
                 margin-bottom: 1rem;
                 z-index: 5;
                 padding-left: 0; /* Reset any extra padding */
+                width:100%;
             }
 
             select, input {
@@ -402,7 +403,7 @@
                 max-width: 400px;
                 margin-left: auto;
                 margin-right: auto;
-                margin-bottom: 40vh; /* Use viewport height for responsive spacing */
+                margin-bottom: 30vh; /* Use viewport height for responsive spacing */
             }
             }
         }
@@ -420,7 +421,7 @@
         <h2 style="color:white">Sign in</h2>
     </div>
         @if (!Model.IsLoggedIn)
-        {
+        {                                            
         <div class="login-container">
             <h1>Sign in</h1>
             <form method="post">
