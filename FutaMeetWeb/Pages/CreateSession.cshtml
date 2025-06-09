@@ -5,19 +5,27 @@
     ViewData["Title"] = "Create Session - FutaMeet";
     Layout = null;
 }
-<style>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Welcome to VIIDII</title>
+    <link rel="icon" type="image/x-icon" href="~/favicon.ico" />
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700&display=swap" rel="stylesheet">
+    <style>
     body {
-        margin: 0;
-        padding: 0;
-        background: #F9FAFB;
-        font-family: 'Poppins', sans-serif;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        height: 100vh;
-        color: #333;
-        position: relative;
-        overflow: hidden;
+            margin: 0;
+            padding: 0;
+            background: #F9FAFB;
+            font-family: 'Poppins', sans-serif;
+            color: #333;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
     }
 
     .top-curve-wrapper {
@@ -229,13 +237,19 @@
         flex-direction: row;
         justify-content: space-between;
         width: 90vw;
-        max-height: calc(100vh - 170px); /* Adjust height to ensure it doesn't touch the top curve, considering margin-top */
+        height: calc(100vh - 170px); /* Adjust height to ensure it doesn't touch the top curve, considering margin-top */
         margin-top: 150px; /* Fixed margin to prevent overlap with the top curve */
         padding: 10px;
         gap: 10px;
         box-sizing: border-box;
-        overflow-y: auto; /* Allow scrolling if content overflows */
-    }
+
+        }
+
+        .session-controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
 
     .video-section {
         flex: 3;
@@ -250,7 +264,9 @@
         display: flex;
         flex-direction: column;
         height: 100%;
-    }
+        overflow-y: auto; /* Enable scroll for this section */
+        min-height:0;
+        }
 
     .participants-section, .messages-section {
         background-color: #e3f2fd;
@@ -260,8 +276,11 @@
         box-sizing: border-box;
         flex: 1; /* Fill parent toggle-container */
         min-height: 0; /* Allow shrinking */
-        display: flex; /* Layout children (h4, list, input) in a column */
+        display: flex;
         flex-direction: column;
+        overflow-y: auto; /* Ensure internal scroll */
+        max-height: 100%; /* Limit to parent height */
+        min-height:0;
     }
 
     .participant-list, .message-list {
@@ -272,6 +291,7 @@
         box-sizing: border-box;
         display: flex;
         flex-direction: column;
+        min-height:0;
     }
 
     .message-box {
@@ -513,256 +533,252 @@
 
     }
 </style>
-<div class="top-curve-wrapper">
-    <div class="top-curve-rect-1"></div>
-    <div class="top-curve-rect-2"></div>
-</div>
-<div style="position:fixed;top:24px;right:32px;z-index:100;display:flex;gap:12px;">
-    <a asp-page="/Login" class="top-action-btn home">Home</a>
-    <form method="post" asp-page-handler="Logout" style="display:inline;">
-        <button type="submit" class="top-action-btn logout">Sign Out</button>
-    </form>
-</div>
- @if (string.IsNullOrEmpty(Model.CurrentSessionId))
-{
-    <div class="container mt-4">
-        <h2 class="text-center mb-4 modern-heading">Create a Session </h2>
-        <div id="main-content">
-       
-            <form method="post" class="modern-form p-4 mb-4">
-                <div class="mb-3">
-                    <label asp-for="Title" class="form-label modern-label">Session Title</label>
-                    <input asp-for="Title" class="form-control modern-input" required />
-                </div>
-                <div class="mb-3">
-                    <details>
-                        <summary>Allowed Departments</summary>
-                        @foreach (var department in Model.DepartmentOptions)
-                        {
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="AllowedDepartments" value="@department.Value" id="@($"chkDepartment{department.Value}")">
-                                <label class="form-check-label" for="@($"chkDepartment{department.Value}")">
-                                    @department.Text
-                                </label>
-                            </div>
-                        }
-                    </details>
-                </div>
-
-                <div class="mb-3">
-                    <details>
-                        <summary>Allowed Levels</summary>
-                        @foreach (var level in Model.LevelOptions)
-                        {
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="AllowedLevels" value="@level.Value" id="@($"chkLevel{level.Value}")">
-                                <label class="form-check-label" for="@($"chkLevel{level.Value}")">
-                                    @level.Text
-                                </label>
-                            </div>
-                        }
-                    </details>
-                </div>
-                <button type="submit" class="btn btn-skeuo w-100">
-                    <i class="fas fa-plus-circle"></i> Create Session
-                </button>
-            </form>
-        </div>
+</head>
+<body>
+    <div class="top-curve-wrapper">
+        <div class="top-curve-rect-1"></div>
+        <div class="top-curve-rect-2"></div>
     </div>
-}
-@if (!string.IsNullOrEmpty(Model.Message) && (Model.CurrentSessionId != null) && Model.Session?.Status != SessionStatus.Ended)
-{
-    <div class="row mt-md-5 ms-5" style="height: 450px;">
-        <div class="col-md-6 col-lg-8">
-            <video id="sessionVideo" data-session-id="@Model.CurrentSessionId" autoplay muted class="vstack pb-md-0 mb-md-4" style="height: 350px;width: 100%; max-height: 400px; background: black;"></video>
-            <div class="vstack" style="height: 100px;">
-                @if (!Model.IsSessionStarted)
-                {
-                    <form id="startSessionForm" method="post" asp-page-handler="StartSession" class="w-100">
-                        <input type="hidden" name="sessionId" value="@Model.CurrentSessionId" />
-                        <button id="startSession" class="btn btn-skeuo flex-fill" type="submit">
-                            <i class="fas fa-play"></i> Start Session
-                        </button>
-                    </form>
-                }
-                else
-                {
-                    <div class="container" id="SessionControlForm" style="height:100px;">
-                        <div class="row">
-                            <div class="col-auto">
+    <div style="position:fixed;top:24px;right:32px;z-index:100;display:flex;gap:12px;">
+        <a asp-page="/Login" class="top-action-btn home">Home</a>
+        <form method="post" asp-page-handler="Logout" style="display:inline;">
+            <button type="submit" class="top-action-btn logout">Sign Out</button>
+        </form>
+    </div>
+     @if (string.IsNullOrEmpty(Model.CurrentSessionId))
+    {
+        <div class="container mt-4">
+            <h2 class="text-center mb-4 modern-heading">Create a Session </h2>
+            <div id="main-content">
+       
+                <form method="post" class="modern-form p-4 mb-4">
+                    <div class="mb-3">
+                        <label asp-for="Title" class="form-label modern-label">Session Title</label>
+                        <input asp-for="Title" class="form-control modern-input" required />
+                    </div>
+                    <div class="mb-3">
+                        <details>
+                            <summary>Allowed Departments</summary>
+                            @foreach (var department in Model.DepartmentOptions)
+                            {
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="AllowedDepartments" value="@department.Value" id="@($"chkDepartment{department.Value}")">
+                                    <label class="form-check-label" for="@($"chkDepartment{department.Value}")">
+                                        @department.Text
+                                    </label>
+                                </div>
+                            }
+                        </details>
+                    </div>
+
+                    <div class="mb-3">
+                        <details>
+                            <summary>Allowed Levels</summary>
+                            @foreach (var level in Model.LevelOptions)
+                            {
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="AllowedLevels" value="@level.Value" id="@($"chkLevel{level.Value}")">
+                                    <label class="form-check-label" for="@($"chkLevel{level.Value}")">
+                                        @level.Text
+                                    </label>
+                                </div>
+                            }
+                        </details>
+                    </div>
+                    <button type="submit" class="btn btn-skeuo w-100">
+                        <i class="fas fa-plus-circle"></i> Create Session
+                    </button>
+                </form>
+            </div>
+        </div>
+    }
+    @if (!string.IsNullOrEmpty(Model.Message) && (Model.CurrentSessionId != null) && Model.Session?.Status != SessionStatus.Ended)
+    {
+        <div class="session-container">
+            <div class="video-section">
+                <video id="sessionVideo" data-session-id="@Model.CurrentSessionId" autoplay muted class="vstack pb-md-0 mb-md-4" style="height: 350px;width: 100%; max-height: 400px; background: black;"></video>
+                <div class="vstack" style="height: 100px;">
+                    @if (!Model.IsSessionStarted)
+                    {
+                        <form id="startSessionForm" method="post" asp-page-handler="StartSession" class="w-100">
+                            <input type="hidden" name="sessionId" value="@Model.CurrentSessionId" />
+                            <button id="startSession" class="btn btn-skeuo flex-fill" type="submit">
+                                <i class="fas fa-play"></i> Start Session
+                            </button>
+                        </form>
+                    }
+                    else
+                    {
+                        <div id="SessionControlForm" style="height:100px;">
+                            <div class="session-controls">
                                 <form method="post" asp-page-handler="EndSession" class="d-flex align-items-center w-100">
                                     <input type="hidden" name="sessionId" value="@Model.CurrentSessionId" />
                                     <button type="submit" class="btn btn-skeuo flex-fill">
                                         <i class="fas fa-stop"></i> End Session
                                     </button>
                                 </form>
-                            </div>
-                            <div class="col-auto">
                                 <button id="toggleAudio" class="btn btn-skeuo flex-fill" type="button" onclick="toggleAudio()">
                                     <i class="fas fa-microphone-slash"></i> Mute
                                 </button>
-                            </div>
-                            <div class="col-auto">
                                 <button id="shareScreen" class="btn btn-skeuo flex-fill" type="button">
                                     <i class="fas fa-desktop"></i> Share Screen
                                 </button>
                             </div>
                         </div>
-                    </div>           
-                }
+                    }
+                </div>
             </div>
-        </div>
-        <div class="col-md-6 col-lg-3 ms-3" style="width:220px;">
-              <div class="participants-messages-section"> 
-                <button id="toggleView" class="btn btn-toggle">
-                    Show Discussion
-                </button>
-                <div id="participantsContainer" class="toggle-container">
-                    <div class="participants-section">
-                        <h4>Participants</h4>
-                        <div id="participantPanel" class="participant-list">
-                            <!-- Participant list will be dynamically added here -->
+                <div class="participants-messages-section"> 
+                    <button id="toggleView" class="btn btn-toggle">
+                        Show Discussion
+                    </button>
+                    <div id="participantsContainer" class="toggle-container">
+                        <div class="participants-section">
+                            <h4>Participants</h4>
+                            <div id="participantPanel" class="participant-list">
+                                <!-- Participant list will be dynamically added here -->
+                            </div>
                         </div>
                     </div>
-                </div>
-                <div id="discussionContainer" class="toggle-container" style="display: none;">
-                    <div class="messages-section">
-                        <h4>Messages</h4>
-                        <div id="discussion" class="message-list" data-session-id="@Model.CurrentSessionId">
-                            <!-- Messages will be dynamically added here -->
-                        </div>
-                        <div class="post-container" style="background: linear-gradient(to right, #6b48ff, #1e90ff); padding: 5px; border-radius: 10px; display: flex; align-items: center; height: 35px;">
-                            <label for="fileInput" class="attach-btn" style="margin-right: 8px; cursor: pointer;">
-                                <i class="fas fa-paperclip" style="font-size: 0.8em; color: white;"></i>
-                            </label>
-                            <input type="text" id="postInput" class="modern-input flex-grow-1" placeholder="Create Post..."
-                                   style="background: none; border: none; outline: none; color: white; height: 100%; font-size: 0.9em; padding: 0 8px;" />
-                            <button id="createPost" class="send-btn" style="margin-left: 8px; cursor: pointer; padding: 1px; width: 20px; height: 20px;">
-                                <i class="fas fa-paper-plane" style="font-size: 0.8em; color: white;"></i>
-                            </button>
-                            <input type="file" id="fileInput" class="d-none" />
-                        </div>
+                    <div id="discussionContainer" class="toggle-container" style="display: none;">
+                        <div class="messages-section">
+                            <h4>Messages</h4>
+                            <div id="discussion" class="message-list" data-session-id="@Model.CurrentSessionId">
+                                <!-- Messages will be dynamically added here -->
+                            </div>
+                            <div class="post-container" style="background: linear-gradient(to right, #6b48ff, #1e90ff); padding: 5px; border-radius: 10px; display: flex; align-items: center; height: 35px;">
+                                <label for="fileInput" class="attach-btn" style="margin-right: 8px; cursor: pointer;">
+                                    <i class="fas fa-paperclip" style="font-size: 0.8em; color: white;"></i>
+                                </label>
+                                <input type="text" id="postInput" class="modern-input flex-grow-1" placeholder="Create Post..."
+                                       style="background: none; border: none; outline: none; color: white; height: 100%; font-size: 0.9em; padding: 0 8px;" />
+                                <button id="createPost" class="send-btn" style="margin-left: 8px; cursor: pointer; padding: 1px; width: 20px; height: 20px;">
+                                    <i class="fas fa-paper-plane" style="font-size: 0.8em; color: white;"></i>
+                                </button>
+                                <input type="file" id="fileInput" class="d-none" />
+                            </div>
 
+                        </div>
                     </div>
                 </div>
-            </div>
         </div>
-    </div>
-}
-<div id="messagePopup" class="message-popup">
-    @if (!string.IsNullOrEmpty(Model.Message))
-    {
-        <p>@Model.Message</p>
     }
-</div>
-
-<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" rel="stylesheet" />
-<link href="~/lib/bootstrap/dist/css/bootstrap.min.css" rel="stylesheet" />
-@* <link href="~/css/site.css" rel="stylesheet" /> *@
-<script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
-<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.7/signalr.min.js"></script>
-<script src="~/js/session.js"></script>
-<script>
-    window.sessionState = @Html.Raw(Json.Serialize(new
+    <div id="messagePopup" class="message-popup">
+        @if (!string.IsNullOrEmpty(Model.Message))
         {
-            isSessionStarted = Model.IsSessionStarted,
-            sessionId = Model.CurrentSessionId
-        }));
-    window.isSessionLecturer = @Json.Serialize(Model.IsSessionLecturer);
-    window.currentUserFullName = "@HttpContext.Session.GetString("FullName")";
-    window.currentUserId = "@HttpContext.Session.GetString("MatricNo")";
-    console.log("Session state set:", window.sessionState, "User:", window.currentUserFullName, "UserId:", window.currentUserId);
+            <p>@Model.Message</p>
+        }
+    </div>
 
-    function toggleAudio() {
-        const stream = window.localStream;
-        if (stream) {
-            const audioTracks = stream.getAudioTracks();
-            for (const track of audioTracks) {
-                track.enabled = !track.enabled;
-                const button = document.getElementById("toggleAudio");
-                if (button) {
-                    button.innerHTML = track.enabled
-                        ? '<i class="fas fa-microphone-slash"></i> Mute'
-                        : '<i class="fas fa-microphone"></i> Unmute';
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" rel="stylesheet" />
+    <link href="~/lib/bootstrap/dist/css/bootstrap.min.css" rel="stylesheet" />
+    @* <link href="~/css/site.css" rel="stylesheet" /> *@
+    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.7/signalr.min.js"></script>
+    <script src="~/js/session.js"></script>
+    <script>
+        window.sessionState = @Html.Raw(Json.Serialize(new
+            {
+                isSessionStarted = Model.IsSessionStarted,
+                sessionId = Model.CurrentSessionId
+            }));
+        window.isSessionLecturer = @Json.Serialize(Model.IsSessionLecturer);
+        window.currentUserFullName = "@HttpContext.Session.GetString("FullName")";
+        window.currentUserId = "@HttpContext.Session.GetString("MatricNo")";
+        console.log("Session state set:", window.sessionState, "User:", window.currentUserFullName, "UserId:", window.currentUserId);
+
+        function toggleAudio() {
+            const stream = window.localStream;
+            if (stream) {
+                const audioTracks = stream.getAudioTracks();
+                for (const track of audioTracks) {
+                    track.enabled = !track.enabled;
+                    const button = document.getElementById("toggleAudio");
+                    if (button) {
+                        button.innerHTML = track.enabled
+                            ? '<i class="fas fa-microphone-slash"></i> Mute'
+                            : '<i class="fas fa-microphone"></i> Unmute';
+                    }
                 }
             }
         }
-    }
-    const shareScreenBtn = document.getElementById('shareScreen');
-    if (shareScreenBtn) {
-        shareScreenBtn.addEventListener('click', () => {
-            if (window.startScreenShare) {
-                window.startScreenShare();
-            } else {
-                console.error("startScreenShare function not found.");
-                alert("Screen sharing is not available.");
+        const shareScreenBtn = document.getElementById('shareScreen');
+        if (shareScreenBtn) {
+            shareScreenBtn.addEventListener('click', () => {
+                if (window.startScreenShare) {
+                    window.startScreenShare();
+                } else {
+                    console.error("startScreenShare function not found.");
+                    alert("Screen sharing is not available.");
+                }
+            });
+        }
+
+
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const sessionVideo = document.getElementById("sessionVideo");
+            if (sessionVideo) {
+                sessionVideo.onloadedmetadata = () => {
+                    console.log("Metadata loaded. Stream:", sessionVideo.srcObject);
+                };
             }
-        });
-    }
 
+            if (window.sessionState?.sessionId && window.isSessionLecturer && typeof connection !== 'undefined') {
+                connection.invoke("StartSession", window.sessionState.sessionId)
+                    .catch(err => console.error("StartSession failed:", err));
+            }
 
+            const handleCheckboxGroup = (checkboxName, anyValue) => {
+                const checkboxes = Array.from(document.querySelectorAll(`input[name="${checkboxName}"]`));
+                const anyCheckbox = checkboxes.find(cb => cb.value === anyValue);
 
-    document.addEventListener('DOMContentLoaded', () => {
-        const sessionVideo = document.getElementById("sessionVideo");
-        if (sessionVideo) {
-            sessionVideo.onloadedmetadata = () => {
-                console.log("Metadata loaded. Stream:", sessionVideo.srcObject);
+                checkboxes.forEach(checkbox => {
+                    checkbox.addEventListener('change', () => {
+                        if (checkbox.value === anyValue) {
+                            const isAnyChecked = checkbox.checked;
+                            checkboxes.forEach(cb => {
+                                if (cb.value !== anyValue) {
+                                    cb.disabled = isAnyChecked;
+                                    if (isAnyChecked) cb.checked = false;
+                                }
+                            });
+                        } else if (checkbox.checked && anyCheckbox) {
+                            anyCheckbox.checked = false;
+                        }
+                    });
+                });
             };
-        }
 
-        if (window.sessionState?.sessionId && window.isSessionLecturer && typeof connection !== 'undefined') {
-            connection.invoke("StartSession", window.sessionState.sessionId)
-                .catch(err => console.error("StartSession failed:", err));
-        }
+            handleCheckboxGroup('AllowedDepartments', 'Any');
+            handleCheckboxGroup('AllowedLevels', 'Any');
 
-        const handleCheckboxGroup = (checkboxName, anyValue) => {
-            const checkboxes = Array.from(document.querySelectorAll(`input[name="${checkboxName}"]`));
-            const anyCheckbox = checkboxes.find(cb => cb.value === anyValue);
+            const messagePopup = document.getElementById('messagePopup');
+            if (messagePopup && messagePopup.innerText.trim() !== "") {
+                messagePopup.classList.add('show');
+                setTimeout(() => {
+                    messagePopup.classList.remove('show');
+                }, 5000);
+            }
 
-            checkboxes.forEach(checkbox => {
-                checkbox.addEventListener('change', () => {
-                    if (checkbox.value === anyValue) {
-                        const isAnyChecked = checkbox.checked;
-                        checkboxes.forEach(cb => {
-                            if (cb.value !== anyValue) {
-                                cb.disabled = isAnyChecked;
-                                if (isAnyChecked) cb.checked = false;
-                            }
-                        });
-                    } else if (checkbox.checked && anyCheckbox) {
-                        anyCheckbox.checked = false;
+            const toggleView = document.getElementById('toggleView');
+            if (toggleView) {
+                toggleView.addEventListener('click', () => {
+                    const participantsContainer = document.getElementById('participantsContainer');
+                    const discussionContainer = document.getElementById('discussionContainer');
+                    if (participantsContainer.style.display === 'none') {
+                        participantsContainer.style.display = 'block';
+                        discussionContainer.style.display = 'none';
+                        toggleView.textContent = 'Show Discussion';
+                    } else {
+                        participantsContainer.style.display = 'none';
+                        discussionContainer.style.display = 'block';
+                        toggleView.textContent = 'Show Participants';
                     }
                 });
-            });
-        };
-
-        handleCheckboxGroup('AllowedDepartments', 'Any');
-        handleCheckboxGroup('AllowedLevels', 'Any');
-
-        const messagePopup = document.getElementById('messagePopup');
-        if (messagePopup && messagePopup.innerText.trim() !== "") {
-            messagePopup.classList.add('show');
-            setTimeout(() => {
-                messagePopup.classList.remove('show');
-            }, 5000);
-        }
-
-        const toggleView = document.getElementById('toggleView');
-        if (toggleView) {
-            toggleView.addEventListener('click', () => {
-                const participantsContainer = document.getElementById('participantsContainer');
-                const discussionContainer = document.getElementById('discussionContainer');
-                if (participantsContainer.style.display === 'none') {
-                    participantsContainer.style.display = 'block';
-                    discussionContainer.style.display = 'none';
-                    toggleView.textContent = 'Show Discussion';
-                } else {
-                    participantsContainer.style.display = 'none';
-                    discussionContainer.style.display = 'block';
-                    toggleView.textContent = 'Show Participants';
-                }
-            });
-        }
-    });
-</script>
+            }
+        });
+    </script>
+</body>
+</html>
