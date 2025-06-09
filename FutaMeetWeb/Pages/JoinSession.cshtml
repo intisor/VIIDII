@@ -371,7 +371,7 @@
 
             .messages-section {
                 display: none; /* hidden by default */
-                position: fixed;
+                position:fixed;
                 bottom: 0;
                 left: 0;
                 width: 100%;
@@ -382,7 +382,7 @@
                 border-top-left-radius: 12px;
                 border-top-right-radius: 12px;
                 overflow-y: auto;
-                z-index: 1000;
+                z-index: 100;
                 transition: transform 0.3s ease;
                 transform: translateY(100%); /* start off-screen */
             }
@@ -411,8 +411,11 @@
                 position: relative;
             }
 
-            .message-list {
-                max-height: 200px; /* Fixed height for mobile */
+            .messages-section .message-list {
+                background: #fff; /* Light background for content */
+                color: #333; /* Readable text */
+                max-height: calc(50vh - 60px); /* Adjust for heading and padding */
+                overflow-y: auto;
             }
         }
     </style>
@@ -464,6 +467,7 @@
                      </button>
                 </div>
             </div>
+
             <div class="messages-section">
                 <h4 class="modern-heading" style="font-size: 1.2rem; background: #f9fafb; color: #333;">Discussion</h4>
                 <div id="discussion" class="message-list" data-session-id="@Model.CurrentSessionId">
