@@ -715,9 +715,7 @@ document.getElementById("flagBatteryLow")?.addEventListener("click", () => {
             }
         });
     } else {
-        connection.invoke("FlagIssue", "BatteryLow")
-            .catch(err => console.error("Failed to flag battery issue:", err));
-        console.log("Battery API not supported, flagging issue anyway.");
+        console.log("Battery API not supported, use a good browser.");
     }
 });
 
