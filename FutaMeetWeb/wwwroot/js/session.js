@@ -658,6 +658,7 @@ connection.on("PostCreated", (postId) => {
     // those can be handled here. For example, temporarily disabling the post button until confirmation.
 });
 
+// Engagement Tracking
 connection.on("AreYouThere", () => {
     if (window.isSessionLecturer) return;
     const activityModal = document.getElementById("activityModal");

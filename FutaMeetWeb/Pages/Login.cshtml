@@ -462,7 +462,6 @@
                 <p> <b>Department:</b> @Model.Department</p>
                 <p> <b>Level:</b> @Model.Level</p>
             }
-            <p><strong>Classes are ongoing. You dont want to miss out!</strong></p>
 
             <nav>
                 <ul style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 20px; width: 100%; max-width: 400px;">
@@ -475,12 +474,16 @@
                     }
                     @if (Model.Role == "Lecturer")
                     {
+                        <p><strong>Your students are waiting!</strong></p>
+
                         <li class="nav-item">
                             <a asp-page="/CreateSession" class="nav-link big-nav-btn">Create Session</a>
                         </li>
                     }
                     @if (Model.Role == "Student")
                     {
+                        <p><strong>Classes are ongoing. You dont want to miss out!</strong></p>
+
                         <li class="nav-item">
                             <a asp-page="/JoinSession" class="nav-link big-nav-btn">Join Session</a>
                         </li>
