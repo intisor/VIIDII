@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.Mvc.Rendering;
+using static FutaMeetWeb.Models.User;
 
 namespace FutaMeetWeb.Pages;
 
@@ -28,6 +29,8 @@ public class LoginModel : PageModel
 
     public bool IsLoggedIn => !string.IsNullOrEmpty(HttpContext.Session.GetString("MatricNo"));
     public string Role { get; set; }
+    public Departments? Department { get; set; }
+    public Levels? Level { get; set; }
 
     public IEnumerable<SelectListItem> UserOptions { get; set; }
 
@@ -47,6 +50,9 @@ public class LoginModel : PageModel
             var user = MockApiService.GetUsers().FirstOrDefault(u => u.MatricNo == matricNo);
             Role = user.Role.ToString() ?? "";
             UserName = user.Name ?? "";
+            Department = user.Department;
+            Level = user.Level;
+
         }
         return Page(); // Explicit render
     }   
@@ -67,6 +73,8 @@ public class LoginModel : PageModel
         var user = MockApiService.GetUsers().FirstOrDefault(u => u.MatricNo == MatricNo);
         Role = user.Role.ToString() ?? "";
         UserName = user?.Name ?? "";
+        Department = user.Department;
+        Level = user.Level;
 
         if (user == null || _passwordHasher.VerifyHashedPassword(user,user.Password,Password) == PasswordVerificationResult.Failed)
         {

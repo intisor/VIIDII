@@ -457,6 +457,11 @@
         <div class="logged-in-actions" style="text-align:center;">
             <h1>Already Signed In</h1>
             <p>Hey,<strong>@Model.UserName</strong></p>
+            @if (Model.Department != null && Model.Level != null)
+            {
+                <p> <b>Department:</b> @Model.Department</p>
+                <p> <b>Level:</b> @Model.Level</p>
+            }
             <p><strong>Classes are ongoing. You dont want to miss out!</strong></p>
 
             <nav>
