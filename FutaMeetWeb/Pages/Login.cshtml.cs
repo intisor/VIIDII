@@ -91,12 +91,12 @@ public class LoginModel : PageModel
 
         if (MockApiService.IsUserLoggedIn(MatricNo))
         {
-            Message = $"User {user.Name} is already logged in from another session. Please try again later or contact admin.";
+            Message = $"{user.Name} is already logged in";
             return Page();
         }
         if (!MockApiService.TryLoginUser(MatricNo))
         {
-            Message = "Unable to login. User may already be logged in.";
+            Message = "Unable to login";
             return Page();
         }
 
