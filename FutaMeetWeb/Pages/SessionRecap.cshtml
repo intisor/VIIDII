@@ -5,112 +5,128 @@
     ViewData["Title"] = "Session Recap - FutaMeet";
     Layout = null;
 }
-<div class="container mt-4">
-    <h2 class="text-center mb-4 modern-heading">Session Recap: @Model.Session?.Title</h2>
-    <div class="row">
-        <div class="col-md-6">
-            <h4 class="modern-heading">Timeline</h4>
-            <ul class="timeline">
-                @if (Model.Session?.StartTime != null)
-                {
-                    <li class="timeline-item timeline-item-special">
-                        <div class="timeline-badge"><i class="fas fa-flag-checkered"></i></div>
-                        <div class="timeline-panel">
-                            <div class="timeline-heading">
-                                <h6 class="timeline-title">@Model.Session.StartTime.ToString("hh:mm tt")</h6>
-                            </div>
-                            <div class="timeline-body">
-                                <p><strong>Session Started</strong></p>
-                            </div>
-                        </div>
-                    </li>
-                }
-                @foreach (var evt in Model.TimelineEvents)
-                {
-                    <li class="timeline-item">
-                        <div class="timeline-badge"><i class="fas fa-circle"></i></div>
-                        <div class="timeline-panel">
-                            <div class="timeline-heading">
-                                <h6 class="timeline-title">@evt.Timestamp.ToString("hh:mm tt")</h6>
-                            </div>
-                            <div class="timeline-body">
-                                <p>@evt.Description</p>
-                            </div>
-                        </div>
-                    </li>
-                }
-                @if (Model.Session?.EndTime != null)
-                {
-                    <li class="timeline-item timeline-item-special">
-                        <div class="timeline-badge"><i class="fas fa-flag-checkered"></i></div>
-                        <div class="timeline-panel">
-                            <div class="timeline-heading">
-                                <h6 class="timeline-title">@Model.Session.EndTime.Value.ToString("hh:mm tt")</h6>
-                            </div>
-                            <div class="timeline-body">
-                                <p><strong>Session Ended</strong></p>
-                            </div>
-                        </div>
-                    </li>
-                }
-            </ul>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Welcome to VIIDII</title>
+</head>
+<body>
+    <div class="logged-in-content">
+        <div style="position:fixed;top:24px;right:32px;z-index:100;display:flex;gap:12px;">
+            <a asp-page="/Index" class="book-top home">Home</a>
+            <form method="post" asp-page-handler="Logout" style="display:inline;">
+                <button type="submit" class="book-top logout">Sign Out</button>
+            </form>
         </div>
-        <div class="col-md-6">
-            <h4 class="modern-heading">Session Statistics</h4>
-            <div class="card mb-3">
-                <div class="card-body">
-                    <p class="card-text"><strong>Average Attendance Score:</strong> @Model.AverageAttendanceScore.ToString("F1")%</p>
-                    <p class="card-text"><strong>Participants with >= 70% Score:</strong> @Model.ParticipantsAbove70Percent</p>
-                    @* <p class="card-text"><strong>Most Common Penalty Reason:</strong> @Model.MostCommonPenaltyReason</p> *@
-                </div>
+    </div>
+    <div class="container mt-4">
+        <h2 class="text-center mb-4 modern-heading">Session Recap: @Model.Session?.Title</h2>
+        <div class="row">
+            <div class="col-md-6">
+                <h4 class="modern-heading">Timeline</h4>
+                <ul class="timeline">
+                    @if (Model.Session?.StartTime != null)
+                    {
+                        <li class="timeline-item timeline-item-special">
+                            <div class="timeline-badge"><i class="fas fa-flag-checkered"></i></div>
+                            <div class="timeline-panel">
+                                <div class="timeline-heading">
+                                    <h6 class="timeline-title">@Model.Session.StartTime.ToString("hh:mm tt")</h6>
+                                </div>
+                                <div class="timeline-body">
+                                    <p><strong>Session Started</strong></p>
+                                </div>
+                            </div>
+                        </li>
+                    }
+                    @foreach (var evt in Model.TimelineEvents)
+                    {
+                        <li class="timeline-item">
+                            <div class="timeline-badge"><i class="fas fa-circle"></i></div>
+                            <div class="timeline-panel">
+                                <div class="timeline-heading">
+                                    <h6 class="timeline-title">@evt.Timestamp.ToString("hh:mm tt")</h6>
+                                </div>
+                                <div class="timeline-body">
+                                    <p>@evt.Description</p>
+                                </div>
+                            </div>
+                        </li>
+                    }
+                    @if (Model.Session?.EndTime != null)
+                    {
+                        <li class="timeline-item timeline-item-special">
+                            <div class="timeline-badge"><i class="fas fa-flag-checkered"></i></div>
+                            <div class="timeline-panel">
+                                <div class="timeline-heading">
+                                    <h6 class="timeline-title">@Model.Session.EndTime.Value.ToString("hh:mm tt")</h6>
+                                </div>
+                                <div class="timeline-body">
+                                    <p><strong>Session Ended</strong></p>
+                                </div>
+                            </div>
+                        </li>
+                    }
+                </ul>
             </div>
+            <div class="col-md-6">
+                <h4 class="modern-heading">Session Statistics</h4>
+                <div class="card mb-3">
+                    <div class="card-body">
+                        <p class="card-text"><strong>Average Attendance Score:</strong> @Model.AverageAttendanceScore.ToString("F1")%</p>
+                        <p class="card-text"><strong>Participants with >= 70% Score:</strong> @Model.ParticipantsAbove70Percent</p>
+                        @* <p class="card-text"><strong>Most Common Penalty Reason:</strong> @Model.MostCommonPenaltyReason</p> *@
+                    </div>
+                </div>
 
-            <h4 class="modern-heading">Attendance Scores Chart</h4>
-            <canvas id="scoreChart" class="score-chart"></canvas>
+                <h4 class="modern-heading">Attendance Scores Chart</h4>
+                <canvas id="scoreChart" class="score-chart"></canvas>
+            </div>
         </div>
-    </div>
 
-    <div class="row mt-4">
-        <div class="col-12">
-            <h4 class="modern-heading">Detailed Attendance Breakdown</h4>
-            @if (Model.Scores != null && Model.Scores.Any())
-            {
-                <table class="table table-striped table-hover">
-                    <thead class="table-dark">
-                        <tr>
-                            <th>Participant</th>
-                            <th>Score (%)</th>
-                            <th>Active (min)</th>
-                            <th>Inactive (min)</th>
-                            <th>Battery Low (min)</th>
-                            <th>Data Low (min)</th>
-                            <th>Disconnected (min)</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var scoreEntry in Model.Scores.OrderByDescending(s => s.Value.FinalScorePercentage))
-                        {
-                            var details = scoreEntry.Value;
+        <div class="row mt-4">
+            <div class="col-12">
+                <h4 class="modern-heading">Detailed Attendance Breakdown</h4>
+                @if (Model.Scores != null && Model.Scores.Any())
+                {
+                    <table class="table table-striped table-hover">
+                        <thead class="table-dark">
                             <tr>
-                                <td>@details.ParticipantName (@details.ParticipantId)</td>
-                                <td>@details.FinalScorePercentage.ToString("F1")</td>
-                                <td>@details.TimeActiveMinutes.ToString("F1")</td>
-                                <td>@details.TimeInactiveMinutes.ToString("F1")</td>
-                                <td>@details.TimeBatteryLowMinutes.ToString("F1")</td>
-                                <td>@details.TimeDataFinishedMinutes.ToString("F1")</td>
-                                <td>@details.TimeDisconnectedMinutes.ToString("F1")</td>
+                                <th>Participant</th>
+                                <th>Score (%)</th>
+                                <th>Active (min)</th>
+                                <th>Inactive (min)</th>
+                                <th>Battery Low (min)</th>
+                                <th>Data Low (min)</th>
+                                <th>Disconnected (min)</th>
                             </tr>
-                        }
-                    </tbody>
-                </table>
-            }
-            else
-            {
-                <p>No attendance data available for this session.</p>
-            }
+                        </thead>
+                        <tbody>
+                            @foreach (var scoreEntry in Model.Scores.OrderByDescending(s => s.Value.FinalScorePercentage))
+                            {
+                                var details = scoreEntry.Value;
+                                <tr>
+                                    <td>@details.ParticipantName (@details.ParticipantId)</td>
+                                    <td>@details.FinalScorePercentage.ToString("F1")</td>
+                                    <td>@details.TimeActiveMinutes.ToString("F1")</td>
+                                    <td>@details.TimeInactiveMinutes.ToString("F1")</td>
+                                    <td>@details.TimeBatteryLowMinutes.ToString("F1")</td>
+                                    <td>@details.TimeDataFinishedMinutes.ToString("F1")</td>
+                                    <td>@details.TimeDisconnectedMinutes.ToString("F1")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+                else
+                {
+                    <p>No attendance data available for this session.</p>
+                }
+            </div>
         </div>
     </div>
-</div>
 
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" rel="stylesheet" />
 <link href="~/lib/bootstrap/dist/css/bootstrap.min.css" rel="stylesheet" />
@@ -118,6 +134,56 @@
 <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
 <style>
+        body{
+            display: flex;
+            flex-direction: column-reverse;
+            min-height: 100vh;
+        }
+        .logged-in-actions {
+            margin-top: auto; /* Move down further */
+            text-align: center;
+            width: 70%;
+            max-width: 400px;
+            margin-left: auto;
+            margin-right: auto;
+            margin-bottom: 30vh; /* Use viewport height for responsive spacing */
+            box-sizing:revert;
+        }
+        .book-top {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-width: 120px;
+            height: 48px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            border-radius: 20px;
+            color: #fff !important;
+            text-decoration: none;
+            border: none;
+            outline: none;
+            margin: 0 0 0 12px;
+            padding: 0 24px;
+            box-shadow: 0 4px 16px rgba(58,134,255,0.10);
+            transition: background 0.2s, color 0.2s;
+            cursor: pointer;
+            box-sizing: revert;
+        }
+
+            .book-top.home {
+                background: linear-gradient(135deg, #3A86FF 0%, #6DD5FA 100%);
+            }
+
+            .book-top.logout {
+                background: linear-gradient(135deg, #8338EC 0%, #C19BF5 100%);
+            }
+
+            .book-top:active,
+            .book-top:focus,
+            .book-top:hover {
+                opacity: 0.92;
+                color: #fff !important;
+            }
     .timeline {
         list-style: none;
         padding: 20px 0;
@@ -205,4 +271,5 @@
         }
     });
 </script>
-
+</body>
+</html>

@@ -8,6 +8,7 @@ const tabStatusThrottle = 50000; // 50 seconds
 let studentPeers = []; // Track student peer IDs
 const studentConnections = new Map(); // Track open data channels
 const fileChunks = new Map(); // Moved: Persist chunks across retries
+let originalStream = null; // Store original webcam stream
 
 
 const connection = new signalR.HubConnectionBuilder()
@@ -92,19 +93,57 @@ connection.on("StartSession", (sessionId) => {
                     video: true,
                 });
                 console.log("Screen captured:", screenStream);
+
+                if (!originalStream) {
+                    originalStream = localStream;
+                }
+                localStream = screenStream;
                 if (video) {
                     video.srcObject = screenStream;
                 }
 
+                // Notify students of stream change
+                await connection.invoke("NotifyStreamChange", sessionId, "screenshare")
+                    .catch(err => console.error("Failed to notify stream change:", err));
+
+                // Restart calls with webcam stream
+                for (const studentId of studentPeers) {
+                    const conn = studentConnections.get(studentId);
+                    if (conn) {
+                        console.log(`Restarting call for student: ${studentId}`);
+                        const call = peer.call(studentId, localStream);
+                        call.on("open", () => console.log(`Call restarted for ${studentId}`));
+                        call.on("error", (err) => console.error(`Call error for ${studentId}:`, err));
+                    }
+                }
+                const notifyAndRestartCalls = async (newStream, streamType) => {
+                    localStream = newStream;
+                    if (video) {
+                        video.srcObject = localStream;
+                        console.log(`Set ${streamType} stream.`);
+                    }
+                    await connection.invoke("NotifyStreamChange", sessionId, streamType)
+                        .catch(err => console.error("Failed to notify stream change:", err));
+                    for (const studentId of studentPeers) {
+                        const conn = studentConnections.get(studentId);
+                        if (conn) {
+                            console.log(`Restarting call for student: ${studentId}`);
+                            const call = peer.call(studentId, localStream);
+                            call.on("open", () => console.log(`Call restarted for ${studentId}`));
+                            call.on("error", (err) => console.error(`Call error for ${studentId}:`, err));
+                        }
+                    }
+                };
                 // Handle screen sharing stop
-                screenStream.getVideoTracks()[0].addEventListener('ended', () => {
+                screenStream.getVideoTracks()[0].addEventListener('ended', async () => {
                     console.log("Screen sharing stopped.");
                     alert("Screen sharing stopped.");
-                    if (localStream && video) {
-                        console.log("Reverting to local stream.");
-                        video.srcObject = localStream; // Revert to original webcam stream
-                    } else {
-                        console.warn("No localStream or video element available to revert to.");
+                    try {
+                        const webcamStream = originalStream || await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                        await notifyAndRestartCalls(webcamStream, "webcam");
+                    } catch (err) {
+                        console.error("Failed to revert to webcam:", err);
+                        alert("Failed to revert to webcam. Check permissions.");
                     }
                 });
             } catch (error) {
@@ -224,7 +263,18 @@ function setupStudentPeer(sessionId, video) {
                 video.srcObject = remoteStream;
             }
         });
+        call.on("close", () => {
+            console.log("Call closed.");
+            window.currentCall = null;
+            isStreamAttached = false;
+            attachedStreamId = null;
+            if (video) {
+                video.srcObject = null;
+            }
+        });
         call.on("error", (err) => console.error("Call error:", err));
+        // Store call for stream change handling
+        window.currentCall = call;
     });
    
     peer.on("error", (err) => {
@@ -237,7 +287,21 @@ function setupStudentPeer(sessionId, video) {
             peer.reconnect();
         }
     });
+
+    // Handle stream change
+    connection.on("ReceiveStreamChange", (streamType) => {
+        console.log(`Received stream change: ${streamType}`);
+        if (window.currentCall) {
+            isStreamAttached = false;
+            attachedStreamId = null;
+            if (video) {
+                console.log("Clearing video for new stream.");
+                video.srcObject = null;
+            }
+        }
+    });
 }
+
 
 function tryConnect(sessionId, attempt = 1, maxAttempts = 15) {
     console.log(`Attempting to connect to lecturer, attempt ${attempt}/${maxAttempts}`);
@@ -251,7 +315,7 @@ function tryConnect(sessionId, attempt = 1, maxAttempts = 15) {
 
     conn.on("open", () => {
         console.log("Connected to lecturer:", sessionId);
-        conn.send("Student peer ready: " + peer.id);
+        conn.send({ type: "studentReady", studentId: peer.id });
     });
     conn.on("data", (data) => {
         console.log("Received data from lecturer:", data);

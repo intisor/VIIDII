@@ -117,7 +117,19 @@ namespace FutaMeetWeb.Hubs
                 Console.WriteLine($"Sent initial statuses to lecturer for session {sessionId}");
             }
         }
-
+        public async Task NotifyStreamChange(string sessionId, string streamType)
+        {
+            var matricNo = Context.GetHttpContext()?.Session.GetString("MatricNo");
+            if (IsSessionLecturer(sessionId, matricNo))
+            {
+                await Clients.Group(sessionId).SendAsync("ReceiveStreamChange", streamType);
+                Console.WriteLine($"Notified stream change ({streamType}) to session {sessionId}");
+            }
+            else
+            {
+                Console.WriteLine($"Unauthorized stream change attempt by {matricNo} in session {sessionId}");
+            }
+        }
         public Task SendMessage(string user, string message) => Clients.Others.SendAsync("ReceiveMessage", user, message);
         public async Task SendPeerId(string sessionId, string peerId)
         {
