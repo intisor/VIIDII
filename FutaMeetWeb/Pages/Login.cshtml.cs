@@ -76,9 +76,27 @@ public class LoginModel : PageModel
         Department = user.Department;
         Level = user.Level;
 
-        if (user == null || _passwordHasher.VerifyHashedPassword(user,user.Password,Password) == PasswordVerificationResult.Failed)
+        if (user == null)
         {
-            Message = "Invalid Matric No. or Password!";
+            Message = "Invalid Matric No.!";
+            return Page();
+        }
+
+        // Check if password is correct first
+        if (_passwordHasher.VerifyHashedPassword(user, user.Password, Password) == PasswordVerificationResult.Failed)
+        {
+            Message = "Invalid Password!";
+            return Page();
+        }
+
+        if (MockApiService.IsUserLoggedIn(MatricNo))
+        {
+            Message = $"User {user.Name} is already logged in from another session. Please try again later or contact admin.";
+            return Page();
+        }
+        if (!MockApiService.TryLoginUser(MatricNo))
+        {
+            Message = "Unable to login. User may already be logged in.";
             return Page();
         }
 
@@ -89,6 +107,11 @@ public class LoginModel : PageModel
 
     public IActionResult OnPostLogout()
     {
+        var matricNo = HttpContext.Session.GetString("MatricNo");
+        if (!string.IsNullOrEmpty(matricNo))
+        {
+            MockApiService.LogoutUser(matricNo);
+        }
         HttpContext.Session.Clear();
         Message = "Logged out!";
         return RedirectToPage("/Index");

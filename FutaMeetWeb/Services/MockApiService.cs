@@ -5,6 +5,8 @@ namespace FutaMeetWeb.Services
     public class MockApiService
     {
         private static readonly PasswordHasher<User> _passwordHasher = new();
+        private static readonly HashSet<string> _loggedInUsers = new();
+
 
         private static readonly List<User> _users =
         [
@@ -41,5 +43,37 @@ namespace FutaMeetWeb.Services
             => _users
                 .GroupBy(keySelector)
                 .ToDictionary(group => group.Key, group => group.ToList());
+
+        // logged in 
+        public static bool IsUserLoggedIn(string matricNo)
+        {
+            return _loggedInUsers.Contains(matricNo);
+        }
+
+        public static bool TryLoginUser(string matricNo)
+        {
+            if (_loggedInUsers.Contains(matricNo))
+            {
+                return false; // User already logged in
+            }
+
+            _loggedInUsers.Add(matricNo);
+            return true; // Successfully added to logged-in users
+        }
+
+        public static void LogoutUser(string matricNo)
+        {
+            _loggedInUsers.Remove(matricNo);
+        }
+
+        public static HashSet<string> GetLoggedInUsers()
+        {
+            return new HashSet<string>(_loggedInUsers); // Return a copy to prevent external modification
+        }
+
+        public static int GetLoggedInUsersCount()
+        {
+            return _loggedInUsers.Count;
+        }
     }
 }
