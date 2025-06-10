@@ -17,7 +17,7 @@ namespace FutaMeetWeb.Services
         public bool isLecturerPost { get; set; }
         public bool isComment { get; set; } // Unused but kept for future-proofing
         public MessageType messageType { get; set; } = MessageType.Text;
-        public DateTime createdAt { get; set; } = DateTime.UtcNow;
+        public DateTime createdAt { get; set; } = DateTime.UtcNow.AddHours(1);
     }
 
     public class MessageService
