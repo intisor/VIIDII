@@ -66,6 +66,30 @@ document.addEventListener("DOMContentLoaded", () => {
         document.getElementById("createPost").style.display = "block";
         document.getElementById("fileInput").style.display = "inline-block";
     }
+
+    const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    const sessionVideo = document.getElementById("sessionVideo");
+
+    if (sessionVideo && isMobile) {
+        const playOverlay = document.createElement('div');
+        playOverlay.innerHTML = '▶ Start Video';
+        playOverlay.style.cssText = `
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.8); color: white; padding: 15px 30px;
+            border-radius: 25px; cursor: pointer; z-index: 10; font-size: 16px;
+        `;
+        sessionVideo.parentNode.style.position = 'relative';
+        sessionVideo.parentNode.appendChild(playOverlay);
+
+        playOverlay.onclick = () => {
+            sessionVideo.play().then(() => {
+                playOverlay.remove();
+            }).catch(err => {
+                console.error("Play failed:", err);
+                alert("Unable to play video. Please check your connection.");
+            });
+        };
+    }
 });
 
 connection.on("StartSession", (sessionId) => {
@@ -156,7 +180,7 @@ connection.on("StartSession", (sessionId) => {
             video.srcObject = localStream;
             return;
         }
-        navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+        navigator.mediaDevices.getUserMedia({video: { width: { ideal: 1280 }, height: { ideal: 720 } }, audio: true })
             .then(stream => {
                 console.log("Successfully obtained local stream:", stream);
                 localStream = stream;
@@ -169,7 +193,17 @@ connection.on("StartSession", (sessionId) => {
                     config: {
                         iceServers: [
                             { urls: "stun:stun.l.google.com:19302" },
-                            { urls: "turn:turn.bistri.com:80", username: "homeo", credential: "homeo" }
+                            { urls: "stun:freestun.net:3478" },
+                            {
+                                urls: ["turn:openrelay.metered.ca:80", "turn:openrelay.metered.ca:443"],
+                                username: "openrelayproject",
+                                credential: "openrelayproject"
+                            },
+                            {
+                                urls: "turn:freestun.net:3478",
+                                username: "free",
+                                credential: "free"
+                            }
                         ]
                     }
                 });
@@ -234,7 +268,17 @@ function setupStudentPeer(sessionId, video) {
         config: {
             iceServers: [
                 { urls: "stun:stun.l.google.com:19302" },
-                { urls: "turn:turn.bistri.com:80", username: "homeo", credential: "homeo" }
+                { urls: "stun:freestun.net:3478" },
+                {
+                    urls: ["turn:openrelay.metered.ca:80", "turn:openrelay.metered.ca:443"],
+                    username: "openrelayproject",
+                    credential: "openrelayproject"
+                },
+                {
+                    urls: "turn:freestun.net:3478",
+                    username: "free",
+                    credential: "free"
+                }
             ]
         }
     });
@@ -246,7 +290,15 @@ function setupStudentPeer(sessionId, video) {
     peer.on("call", (call) => {
         console.log("Received lecturer call:", call.peer);
         call.answer();
+        let streamTimeout = setTimeout(() => {
+            if (!isStreamAttached) {
+                console.warn("No stream received after 10s, retrying...");
+                call.close();
+                tryConnect(sessionId);
+            }
+        }, 10000);
         call.on("stream", (remoteStream) => {
+            clearTimeout(streamTimeout);
             console.log("Received lecturer stream:", remoteStream);
             if (remoteStream.id === attachedStreamId) {
                 console.log("Ignoring duplicate stream, ID:", remoteStream.id);
@@ -261,6 +313,15 @@ function setupStudentPeer(sessionId, video) {
             if (video) {
                 console.log("Attaching remote stream to video element.");
                 video.srcObject = remoteStream;
+                video.play().catch(err => {
+                    console.error("Playback failed:", err.message);
+                    if (isMobile) {
+                        // Rely on play overlay for mobile
+                        console.log("Mobile playback failed, waiting for user interaction.");
+                    } else {
+                        alert("Failed to play video. Please check your connection.");
+                    }
+                });
             }
         });
         call.on("close", () => {
@@ -366,6 +427,7 @@ function tryConnect(sessionId, attempt = 1, maxAttempts = 15) {
             setTimeout(() => tryConnect(sessionId, attempt + 1, maxAttempts), 3000);
         } else {
             console.error("Max connection attempts reached or fatal error:", err);
+            alert("Unable to connect to the session video. Please check your network and try again.");
         }
     });
 }

@@ -543,12 +543,13 @@
 
             .modern-video {
                 width: 100%;
-                height: 100%; 
-                max-width:none;
-                max-height:none;
-                margin: 0 0 20px 0; 
-                background: black;
+                height: auto;
+                min-height: 200px;
+                max-height: 40vh;
+                object-fit: contain;
+                background: transparent;
                 border-radius: 12px;
+                margin: 0 0 20px 0;
             }
 
             .session-controls {
@@ -665,7 +666,17 @@
         <div class="session-container">
             <div class="video-section">
                 <div class="modern-heading">@Model.Session.Title  by @Model.LecturerName</div>
-                <video id="sessionVideo" data-session-id="@Model.CurrentSessionId" controls muted class="modern-video"></video>
+                <video id="sessionVideo"
+                       data-session-id="@Model.CurrentSessionId"
+                       controls
+                       muted
+                       playsinline
+                       preload="metadata"
+                       webkit-playsinline
+                       x5-playsinline
+                       class="modern-video">
+                    Your browser does not support the video tag.
+                </video>
                 <div class="session-controls">
                     <button id="flagBatteryLow" class="btn btn-warning flex-fill" type="button">
                         <i class="fas fa-battery-quarter"></i> Battery Low
