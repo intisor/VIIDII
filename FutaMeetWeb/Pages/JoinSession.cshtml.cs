@@ -20,7 +20,8 @@ namespace FutaMeetWeb.Pages
         public string CurrentSessionId { get; set; }
         public Session Session { get; set; }
         public string Message { get; set; }
-      
+        public string LecturerName { get; set; }
+
 
         public List<SelectListItem> AvailableSessions { get; set; } = [];
         public bool IsSessionStarted { get; set; }
@@ -63,7 +64,7 @@ namespace FutaMeetWeb.Pages
                     }
                 }
             }
-
+            LecturerName = MockApiService.GetLecturers().Where(s => s.MatricNo == Session.LecturerId).FirstOrDefault().Name;
             return Page();
         }
 
@@ -91,9 +92,11 @@ namespace FutaMeetWeb.Pages
             CurrentSessionId = SessionId;
             IsSessionStarted = Session.IsSessionStarted;
             IsSessionLecturer = Session.LecturerId == matricNo;
+            LecturerName = MockApiService.GetLecturers().Where(s => s.MatricNo == Session.LecturerId).FirstOrDefault().Name;
             Message = $"Joined session {SessionId}";
             HttpContext.Session.SetString("CurrentSessionId", CurrentSessionId);
             HttpContext.Session.SetString("SessionMessage", Message);
+            HttpContext.Session.SetString("FullName", MockApiService.GetStudents().Where(s => s.MatricNo == matricNo).FirstOrDefault().Name);
             return RedirectToPage();
         }
         private void LoadAvailableSessions()

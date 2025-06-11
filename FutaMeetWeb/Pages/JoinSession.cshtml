@@ -63,6 +63,15 @@
             z-index: 2;
         }
 
+        .logo-top{
+            position: fixed;
+            top: 1vh;
+            left: 1vw;
+        }
+
+        .logo-img{
+           width:15vw;
+        }
         .message-popup {
             position: fixed;
             bottom: 20px;
@@ -297,30 +306,57 @@
         }
 
         .lecturer-msg {
-            background-color: #DCF8C6; /* Green for posts */
-            align-self: flex-start; /* Left align posts */
-            border-bottom-left-radius: 0;
+            background-color: #E0CDFA;
+            box-shadow: 0px -4.80561px 19.2224px rgba(193, 155, 245, 0.25);
+            border-radius: 0px 30px 30px 30px;
+            margin-left: auto;
+            max-width: 443px;
+            padding: 10px;
+            text-align: left;
+            align-self: flex-start;
         }
 
-        .student-reply-msg, .lecturer-reply-msg, .self-reply-msg {
-            background-color: #E0E0E0; /* Contrasting color for replies */
-            align-self: flex-end;   /* Right align replies */
-            border-bottom-right-radius: 0;
+        .student-reply-msg, .lecturer-reply-msg {
+            background-color: #E0CDFA;
+            box-shadow: 0px -4.80561px 19.2224px rgba(193, 155, 245, 0.25);
+            border-radius: 0px 30px 30px 30px;
+            margin-left: auto;
+            max-width: 443px;
+            padding: 10px;
+            text-align: left;
+            align-self: flex-start;
         }
 
         .self-reply-msg {
-            background-color: #AED6F1; /* Different color for self-replies */
+            background-color: #E0CDFA;
+            box-shadow: 0px -4.80561px 19.2224px rgba(193, 155, 245, 0.25);
+            border-radius: 30px 30px 0px 30px;
+            margin-left: auto;
+            max-width: 443px;
+            padding: 10px;
+            text-align: right;
+            align-self: flex-end;
         }
 
         .lecturer-reply-msg {
-            background-color: #FADBD8; /* Different color for lecturer replies */
+            background-color: #E0CDFA;
+            box-shadow: 0px -4.80561px 19.2224px rgba(193, 155, 245, 0.25);
+            border-radius: 0px 30px 30px 30px;
+            margin-left: auto;
+            max-width: 443px;
+            padding: 10px;
+            text-align: left;
+            align-self: flex-start;
         }
 
         .username {
+            font-family: 'DM Sans', sans-serif;
             font-weight: bold;
-            font-size: 0.9em;
-            margin-bottom: 3px;
-            color: #555;
+            font-size: 1em;
+            line-height: 36px;
+            color: #6B7280;
+            position: relative;
+            text-align: right;
         }
 
         .content {
@@ -566,9 +602,12 @@
 </head>
 <body>
    
-    <div class="top-curve-wrapper">
-        <div class="top-curve-rect-1"></div>
-        <div class="top-curve-rect-2"></div>
+    @* <div class="top-curve-wrapper"> *@
+    @*     <div class="top-curve-rect-1"></div> *@
+    @*     <div class="top-curve-rect-2"></div> *@
+    @* </div> *@
+    <div class="logo-top">
+        <img src="~/images/viidii-top.webp" alt="Viidii Logo" class="logo-img" />
     </div>
 
     @if (string.IsNullOrEmpty(Model.CurrentSessionId))
@@ -610,7 +649,7 @@
     {
         <div class="session-container">
             <div class="video-section">
-                <div class="modern-heading">Session Live</div>
+                <div class="modern-heading">@Model.Session.Title  by @Model.LecturerName</div>
                 <video id="sessionVideo" data-session-id="@Model.CurrentSessionId" controls muted class="modern-video"></video>
                 <div class="session-controls">
                     <button id="flagBatteryLow" class="btn btn-warning flex-fill" type="button">

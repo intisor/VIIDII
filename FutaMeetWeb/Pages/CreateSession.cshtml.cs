@@ -24,6 +24,7 @@ namespace FutaMeetWeb.Pages
         public bool IsSessionStarted { get; set; }
         public string Message { get; set; }
         public Session Session { get; set; }
+        public string LecturerName { get; set; }
         public bool IsSessionLecturer { get; set; } // Fixed: Changed from method group to property
 
         [BindProperty]
@@ -72,19 +73,20 @@ namespace FutaMeetWeb.Pages
                 AllowedLevels.Add(Models.User.Levels.Any);
             }
 
-            var session = _sessionService.CreateSession(lecturerId, Title, AllowedDepartments, AllowedLevels, replaceExisting);
-            if (!replaceExisting && session.Status == SessionStatus.Started)
+            Session = _sessionService.CreateSession(lecturerId, Title, AllowedDepartments, AllowedLevels, replaceExisting);
+            if (!replaceExisting && Session.Status == SessionStatus.Started)
             {
                 ShowReplacePrompt = true;
-                ExistingSessionId = session.SessionId;
-                Message = $"Created session. Kept existing session: {session.SessionId}";
+                ExistingSessionId = Session.SessionId;
+                Message = $"Created session. Kept existing session: {Session.SessionId}";
                 CurrentSessionId = _sessionService.GetSessionsByLecturer(lecturerId).FirstOrDefault().SessionId;
                 return Page();
             }
-            CurrentSessionId = session.SessionId;
-            Message =  $"session: {session.SessionId}";
-            IsSessionStarted = session.IsSessionStarted;
-            IsSessionLecturer = session.LecturerId == lecturerId; // No conflict now
+            CurrentSessionId = Session.SessionId;
+            LecturerName = MockApiService.GetLecturers().Where(s => s.MatricNo == lecturerId).FirstOrDefault().Name;
+            Message =  $"session: {Session.SessionId}";
+            IsSessionStarted = Session.IsSessionStarted;
+            IsSessionLecturer = Session.LecturerId == lecturerId; // No conflict now
             HttpContext.Session.SetString("SessionMessage", Message);
             HttpContext.Session.SetString("CurrentSessionId", CurrentSessionId);
             return Page();

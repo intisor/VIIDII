@@ -23,7 +23,7 @@ function getTimestamp() {
         minute: '2-digit',
         hour12: true
     };
-    return `${new Date().toLocaleTimeString('en-US', options)} WAT`;
+    return `${new Date().toLocaleTimeString('en-US', options)}`;
 }
 
 connection.onclose((error) => {
@@ -454,9 +454,9 @@ connection.on("ReceivePost", (message) => {
     if (discussion) {
         const messageBox = document.createElement("div");
         messageBox.className = "message-box";
-        const messageDiv = document.createElement("div");
-        messageDiv.className = "message lecturer-msg"; // Added 'message' class
-        messageDiv.setAttribute("data-post-id", message.id);
+        //const messageDiv = document.createElement("div");
+        //messageDiv.className = "message lecturer-msg"; // Added 'message' class
+        //messageDiv.setAttribute("data-post-id", message.id);
 
         let contentHtml = message.content;
         let isFileMessage = message.content.startsWith("File:");
@@ -464,20 +464,20 @@ connection.on("ReceivePost", (message) => {
             const fileName = message.content.replace("File: ", "");
             contentHtml = `${fileName} <a href="#" class="file-download" data-file-id="${message.content}">Download</a>`;
         }
-
-        messageDiv.innerHTML = `
+        messageBox.innerHTML = `
             <div class="username">${message.userName || "Lecturer"}</div>
-            <div class="content">${contentHtml}</div>
-            <div class="message-footer">
-                <div class="timestamp">${getTimestamp()}</div>
-                <button class="reply-btn">Reply</button>
+            <div class="message lecturer-msg" data-post-id="${message.id}">
+                <div class="content">${contentHtml}</div>
+                <div class="message-footer">
+                    <div class="timestamp">${getTimestamp()}</div>
+                    <button class="reply-btn">Reply</button>
+                </div>
             </div>
         `;
-        messageBox.appendChild(messageDiv);
         discussion.appendChild(messageBox);
         discussion.scrollTop = discussion.scrollHeight;
 
-        messageDiv.querySelector(".reply-btn").addEventListener("click", () => {
+        messageBox.querySelector(".reply-btn").addEventListener("click", () => {
             const replyArea = document.getElementById("replyArea");
             const replyInput = document.getElementById("replyInput");
             if (replyArea && replyInput) {
@@ -495,7 +495,7 @@ connection.on("ReceiveComment", (comment) => {
         if (parentMessage) {
             const messageBox = document.createElement("div");
             messageBox.className = "message-box";
-            const messageDiv = document.createElement("div");
+            //const messageDiv = document.createElement("div");
             // Determine if the comment is from the current user or another student/lecturer
             let messageClass = "message student-msg";
             if (comment.userId === window.currentUserId) {
@@ -505,15 +505,16 @@ connection.on("ReceiveComment", (comment) => {
             } else {
                 messageClass = "message student-reply-msg";
             }
-            messageDiv.className = messageClass;
-            messageDiv.innerHTML = `
+            //messageDiv.className = messageClass;
+            messageBox.innerHTML = `
                 <div class="username">${comment.userName || "User"}</div>
-                <div class="content">${comment.content}</div>
-                <div class="message-footer">
-                    <div class="timestamp">${getTimestamp()}</div>
+                <div class="${messageClass}" data-post-id="${comment.id}">
+                    <div class="content">${comment.content}</div>
+                    <div class="message-footer">
+                        <div class="timestamp">${getTimestamp()}</div>
+                    </div>
                 </div>
             `;
-            messageBox.appendChild(messageDiv);
             parentMessage.parentNode.insertAdjacentElement("afterend", messageBox);
             discussion.scrollTop = discussion.scrollHeight;
         } else {
@@ -549,22 +550,23 @@ connection.on("ReceiveMessages", (messages) => {
         messages.filter(m => m.isLecturerPost && m.parentId === m.id).forEach(message => {
             const messageBox = document.createElement("div");
             messageBox.className = "message-box";
-            const messageDiv = document.createElement("div");
-            messageDiv.className = "message lecturer-msg";
-            messageDiv.setAttribute("data-post-id", message.id);
-            messageDiv.innerHTML = `
+            //const messageDiv = document.createElement("div");
+            //messageDiv.className = "message lecturer-msg";
+            //messageDiv.setAttribute("data-post-id", message.id);
+            messageBox.innerHTML = `
                 <div class="username">${message.userName || "Lecturer"}</div>
-                <div class="content">${message.content}</div>
-                <div class="message-footer">
-                    <div class="timestamp">${getTimestamp()}</div>
-                    <button class="reply-btn">Reply</button>
+                <div class="message lecturer-msg" data-post-id="${message.id}">
+                    <div class="content">${message.content}</div>
+                    <div class="message-footer">
+                        <div class="timestamp">${getTimestamp()}</div>
+                        <button class="reply-btn">Reply</button>
+                    </div>
                 </div>
             `;
-            messageBox.appendChild(messageDiv);
             discussion.appendChild(messageBox);
             postElements[message.id] = messageBox; // Store the messageBox which is the parent for insertAdjacentElement
 
-            messageDiv.querySelector(".reply-btn").addEventListener("click", () => {
+            messageBox.querySelector(".reply-btn").addEventListener("click", () => {
                 const replyArea = document.getElementById("replyArea");
                 const replyInput = document.getElementById("replyInput");
                 if (replyArea && replyInput) {
@@ -584,7 +586,7 @@ connection.on("ReceiveMessages", (messages) => {
             if (parentPostBox) {
                 const messageBox = document.createElement("div");
                 messageBox.className = "message-box";
-                const messageDiv = document.createElement("div");
+                //const messageDiv = document.createElement("div");
                 
                 let messageClass = "message student-msg"; // Default
                 if (comment.userId === window.currentUserId) {
@@ -594,15 +596,16 @@ connection.on("ReceiveMessages", (messages) => {
                 } else { // Another student's reply
                     messageClass = "message student-reply-msg";
                 }
-                messageDiv.className = messageClass;
-                messageDiv.innerHTML = `
+                //messageDiv.className = messageClass;
+                messageBox.innerHTML = `
                     <div class="username">${comment.userName || "User"}</div>
-                    <div class="content">${comment.content}</div>
-                    <div class="message-footer">
-                        <div class="timestamp">${getTimestamp()}</div>
+                    <div class="${messageClass}" data-post-id="${comment.id}">
+                        <div class="content">${comment.content}</div>
+                        <div class="message-footer">
+                            <div class="timestamp">${getTimestamp()}</div>
+                        </div>
                     </div>
                 `;
-                messageBox.appendChild(messageDiv);
                 // Insert the new comment messageBox after the parentPostBox or after the last reply to parentPostBox
                 // To ensure replies are ordered correctly under a post, find the last reply to parentPostBox
                 let lastReplyToParent = parentPostBox;
@@ -622,7 +625,7 @@ connection.on("ReceiveMessages", (messages) => {
                 console.warn(`ReceiveMessages: Parent post with ID ${comment.parentId} not found for comment. Appending to end of discussion as orphan.`);
                 const messageBox = document.createElement("div");
                 messageBox.className = "message-box";
-                const messageDiv = document.createElement("div");
+                //const messageDiv = document.createElement("div");
                 // Determine class for orphaned comment
                 let orphanMessageClass = "message student-reply-msg"; // Default
                 if (comment.userId === window.currentUserId) {
@@ -630,15 +633,15 @@ connection.on("ReceiveMessages", (messages) => {
                 } else if (comment.isLecturerPost) {
                     orphanMessageClass = "message lecturer-reply-msg";
                 }
-                messageDiv.className = orphanMessageClass;
-                messageDiv.innerHTML = `
+                messageBox.innerHTML = `
                     <div class="username">${comment.userName || "User"}</div>
-                    <div class="content">${comment.content} (Orphaned: Parent post not found)</div>
-                    <div class="message-footer">
-                        <div class="timestamp">${getTimestamp()}</div>
+                    <div class="${orphanMessageClass}" data-post-id="${comment.id}">
+                        <div class="content">${comment.content} (Orphaned: Parent post not found)</div>
+                        <div class="message-footer">
+                            <div class="timestamp">${getTimestamp()}</div>
+                        </div>
                     </div>
                 `;
-                messageBox.appendChild(messageDiv);
                 discussion.appendChild(messageBox);
             }
         });
