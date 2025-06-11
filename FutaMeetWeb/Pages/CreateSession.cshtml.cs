@@ -4,16 +4,20 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Rendering;
+using FutaMeetWeb.Hubs;
+using Microsoft.AspNetCore.SignalR;
 
 namespace FutaMeetWeb.Pages
 {
     public class CreateSessionModel : PageModel
     {
         private readonly SessionService _sessionService;
+        private readonly IHubContext<SessionHub> _hubContext;
 
-        public CreateSessionModel(SessionService sessionService)
+        public CreateSessionModel(SessionService sessionService, IHubContext<SessionHub> hubContext)
         {
             _sessionService = sessionService;
+            _hubContext = hubContext;
         }
 
         [BindProperty]
@@ -119,7 +123,7 @@ namespace FutaMeetWeb.Pages
             return RedirectToPage("/CreateSession", new { sessionId = CurrentSessionId });
         }
 
-        public IActionResult OnPostEndSession()
+        public  IActionResult OnPostEndSession()
         {
             var lecturerId = HttpContext.Session.GetString("MatricNo");
             var sessionId = HttpContext.Session.GetString("CurrentSessionId");
@@ -131,6 +135,8 @@ namespace FutaMeetWeb.Pages
                 return Page();
             }
             _sessionService.EndSession(Session.SessionId, Session.LecturerId);
+            // Notify all clients in the session via SignalR
+            _hubContext.Clients.Group(Session.SessionId).SendAsync("SessionEnded", Session.SessionId);
             CurrentSessionId = Session.SessionId;
             IsSessionStarted = Session.IsSessionStarted;
             IsSessionLecturer = Session.LecturerId == lecturerId; // No conflict now

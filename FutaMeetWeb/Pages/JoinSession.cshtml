@@ -618,7 +618,7 @@
     </div>
 
 
-    <div class="logo-top">
+    <div class="logo-top" @(string.IsNullOrEmpty(Model.CurrentSessionId) ? "style=display:none;" : "")>
         <img src="~/images/viidii-top.webp" alt="Viidii Logo" class="logo-img" />
     </div>
 
