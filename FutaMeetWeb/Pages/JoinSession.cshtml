@@ -434,6 +434,7 @@
                 width: 35vw;
             }
             .top-curve-wrapper {
+                /* display:block !important; */
                 position: absolute;
                 top: -2px;
                 left: -200px;
@@ -610,11 +611,13 @@
     </style>
 </head>
 <body>
-   
-    @* <div class="top-curve-wrapper"> *@
-    @*     <div class="top-curve-rect-1"></div> *@
-    @*     <div class="top-curve-rect-2"></div> *@
-    @* </div> *@
+
+    <div class="top-curve-wrapper" @(string.IsNullOrEmpty(Model.CurrentSessionId) ? "" : "style=display:none;")>
+        <div class="top-curve-rect-1"></div>
+        <div class="top-curve-rect-2"></div>
+    </div>
+
+
     <div class="logo-top">
         <img src="~/images/viidii-top.webp" alt="Viidii Logo" class="logo-img" />
     </div>

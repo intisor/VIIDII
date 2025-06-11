@@ -101,6 +101,13 @@ namespace FutaMeetWeb.Pages
                 Message = "Session not found.";
                 return Page();
             }
+            if (Session?.Status == SessionStatus.Ended)
+            {
+                // Clear current session ID since it's ended
+                HttpContext.Session.Remove("CurrentSessionId");
+                Message = "Session has ended.";
+                return RedirectToPage("/Login"); // Redirect to Index
+            }
 
             CurrentSessionId = SessionId;
             IsSessionStarted = Session.IsSessionStarted;

@@ -67,11 +67,12 @@ namespace FutaMeetWeb.Hubs
         {
             var matricNo = Context.GetHttpContext()?.Session.GetString("MatricNo");
             var session = _sessionService.GetSessionById(sessionId);
-            if (session == null)
+            if (session == null || session.Status == SessionStatus.Ended)
             {
                 Console.WriteLine($"JoinSession failed: Session {sessionId} not found.");
                 return;
             }
+
 
             await Groups.AddToGroupAsync(Context.ConnectionId, sessionId);
             if (!IsSessionLecturer(sessionId, matricNo))
