@@ -33,7 +33,17 @@ namespace FutaMeetWeb.Pages
             var matricNo = HttpContext.Session.GetString("MatricNo");
             if (string.IsNullOrEmpty(matricNo))
             {
-                return RedirectToPage("/Login");
+                // Save the intended URL so Login can redirect back
+                var returnUrl = Url.Page("/JoinSession", null, new { sessionId }, Request.Scheme);
+                return RedirectToPage("/Login", new { ReturnUrl = returnUrl });
+            }
+
+            if (Session?.Status == SessionStatus.Ended)
+            {
+                // Clear current session ID since it's ended
+                HttpContext.Session.Remove("CurrentSessionId");
+                Message = "Session has ended.";
+                return RedirectToPage("/Login"); // Redirect to Index
             }
 
             if (!string.IsNullOrEmpty(sessionId))
@@ -47,6 +57,7 @@ namespace FutaMeetWeb.Pages
                 CurrentSessionId = sessionId;
                 IsSessionStarted = Session.IsSessionStarted;
                 IsSessionLecturer = Session.LecturerId == matricNo;
+                LecturerName = MockApiService.GetLecturers().Where(s => s.MatricNo == Session.LecturerId).FirstOrDefault().Name;
                 Message = $"Joined session {sessionId}";
                 HttpContext.Session.SetString("CurrentSessionId", CurrentSessionId);
             }
@@ -61,19 +72,21 @@ namespace FutaMeetWeb.Pages
                         IsSessionStarted = Session.IsSessionStarted;
                         IsSessionLecturer = Session.LecturerId == matricNo;
                         Message = HttpContext.Session.GetString("SessionMessage");
+                        LecturerName = MockApiService.GetLecturers().Where(s => s.MatricNo == Session.LecturerId).FirstOrDefault().Name;
                     }
                 }
             }
-            LecturerName = MockApiService.GetLecturers().Where(s => s.MatricNo == Session.LecturerId).FirstOrDefault().Name;
             return Page();
         }
 
-        public IActionResult OnPost()
+        public IActionResult OnPost(string returnUrl = null)
         {
             var matricNo = HttpContext.Session.GetString("MatricNo");
             if (string.IsNullOrEmpty(matricNo))
             {
-                return RedirectToPage("/Login");
+                // If not logged in, redirect to login with ReturnUrl set to this page and selected session
+                var joinUrl = Url.Page("/JoinSession", null, new { sessionId = SessionId }, Request.Scheme);
+                return RedirectToPage("/Login", new { ReturnUrl = joinUrl });
             }
 
             if (string.IsNullOrEmpty(SessionId))
@@ -97,6 +110,11 @@ namespace FutaMeetWeb.Pages
             HttpContext.Session.SetString("CurrentSessionId", CurrentSessionId);
             HttpContext.Session.SetString("SessionMessage", Message);
             HttpContext.Session.SetString("FullName", MockApiService.GetStudents().Where(s => s.MatricNo == matricNo).FirstOrDefault().Name);
+
+            if (!string.IsNullOrEmpty(returnUrl) && Url.IsLocalUrl(returnUrl))
+            {
+                return Redirect(returnUrl);
+            }
             return RedirectToPage();
         }
         private void LoadAvailableSessions()

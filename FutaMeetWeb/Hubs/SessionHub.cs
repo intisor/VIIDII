@@ -99,6 +99,20 @@ namespace FutaMeetWeb.Hubs
             }
         }
 
+        public async Task EndSession(string sessionId)
+        {
+            var matricNo = Context.GetHttpContext()?.Session.GetString("MatricNo");
+            var session = _sessionService.GetSessionById(sessionId);
+
+            if (session != null && IsSessionLecturer(sessionId, matricNo))
+            {
+                _sessionService.EndSession(sessionId, matricNo);
+                // Notify all clients in the session that it has ended
+                await Clients.Group(sessionId).SendAsync("SessionEnded", sessionId);
+                Console.WriteLine($"Session {sessionId} ended by lecturer {matricNo}");
+            }
+        }
+
         public async Task SessionStarted(string sessionId)
         {
             await Clients.Group(sessionId).SendAsync("SessionStarted", sessionId); // Inform everyone

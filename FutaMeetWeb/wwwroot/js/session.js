@@ -377,6 +377,64 @@ connection.on("SessionStarted", (sessionId) => {
     }
 });
 
+// Add this to your existing connection.on handlers
+connection.on("SessionEnded", (sessionId) => {
+    console.log("Session ended:", sessionId);
+
+    // Clear video stream if any
+    const video = document.getElementById("sessionVideo");
+    if (video) {
+        video.srcObject = null;
+    }
+
+    // Clean up PeerJS connections
+    if (peer) {
+        peer.destroy();
+        peer = null;
+    }
+
+    // Clean up local stream
+    if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+        localStream = null;
+    }
+
+    // Show message to user
+    const messagePopup = document.getElementById("messagePopup");
+    if (messagePopup) {
+        messagePopup.innerHTML = "<p>Session has ended</p>";
+        messagePopup.classList.add("show");
+    }
+
+    // Redirect after a short delay
+    setTimeout(() => {
+        if (!window.isSessionLecturer) {
+            window.location.href = '/Login';
+        } else {
+            window.location.href = `/SessionRecap?sessionId=${sessionId}`;
+        }
+    }, 2000);
+});
+
+// Add this to handle clean disconnection when the page is closed/navigated away
+window.addEventListener('beforeunload', () => {
+    if (peer) {
+        peer.destroy();
+    }
+    if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+    }
+});
+
+// Update the connection error handling to check for session end
+connection.onclose((error) => {
+    console.error("SignalR connection closed.", error);
+    // Only show reconnection message if session hasn't ended
+    if (!sessionHasEnded) {
+        alert("Session connection lost. Please refresh or try again.");
+    }
+});
+
 // === Messaging Logic ===
 document.getElementById("createPost")?.addEventListener("click", () => {
     const input = document.getElementById("postInput");

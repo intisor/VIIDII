@@ -57,7 +57,7 @@ public class LoginModel : PageModel
         return Page(); // Explicit render
     }   
 
-    public IActionResult OnPost(string matricNo)
+    public IActionResult OnPost(string matricNo, string returnUrl = null)
     {
         if (string.IsNullOrEmpty(MatricNo))
         {
@@ -102,6 +102,11 @@ public class LoginModel : PageModel
 
         HttpContext.Session.SetString("MatricNo", matricNo);   
         Message = $"Logged in as {UserName}";
+
+        if (!string.IsNullOrEmpty(returnUrl) && Url.IsLocalUrl(returnUrl))
+        {
+            return Redirect(returnUrl);
+        }
         return Page();
     }
 

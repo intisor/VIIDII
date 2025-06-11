@@ -428,6 +428,7 @@
         <div class="login-container">
             <h1>Sign in</h1>
             <form method="post">
+                <input type="hidden" name="returnUrl" value="@(Request.Query["ReturnUrl"])" />
                 <div class="input-group">
                     <label for="MatricNo">Matric No.</label>
                     <select asp-for="MatricNo" asp-items="Model.UserOptions" required>
