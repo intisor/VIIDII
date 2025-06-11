@@ -523,7 +523,7 @@ connection.on("ReceivePost", (message) => {
             contentHtml = `${fileName} <a href="#" class="file-download" data-file-id="${message.content}">Download</a>`;
         }
         messageBox.innerHTML = `
-            <div class="username">${message.userName || "Lecturer"}</div>
+            <div class="username" style="text-align:right;">${message.userName || "Lecturer"}</div>
             <div class="message lecturer-msg" data-post-id="${message.id}">
                 <div class="content">${contentHtml}</div>
                 <div class="message-footer">
@@ -656,7 +656,7 @@ connection.on("ReceiveMessages", (messages) => {
                 }
                 //messageDiv.className = messageClass;
                 messageBox.innerHTML = `
-                    <div class="username">${comment.userName || "User"}</div>
+                    <div class="username" style="text-align:left">${comment.userName || "User"}</div>
                     <div class="${messageClass}" data-post-id="${comment.id}">
                         <div class="content">${comment.content}</div>
                         <div class="message-footer">
