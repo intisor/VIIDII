@@ -38,13 +38,7 @@ namespace FutaMeetWeb.Pages
                 return RedirectToPage("/Login", new { ReturnUrl = returnUrl });
             }
 
-            if (Session?.Status == SessionStatus.Ended)
-            {
-                // Clear current session ID since it's ended
-                HttpContext.Session.Remove("CurrentSessionId");
-                Message = "Session has ended.";
-                return RedirectToPage("/Login"); // Redirect to Index
-            }
+           
 
             if (!string.IsNullOrEmpty(sessionId))
             {
@@ -53,6 +47,14 @@ namespace FutaMeetWeb.Pages
                 {
                     Message = "Session not found.";
                     return Page();
+                }
+                if (Session?.Status == SessionStatus.Ended)
+                {
+                    // Clear current session ID since it's ended
+                    HttpContext.Session.Remove("CurrentSessionId");
+                    CurrentSessionId = null;
+                    Message = "Session has ended.";
+                    return RedirectToPage("/Login"); // Re
                 }
                 CurrentSessionId = sessionId;
                 IsSessionStarted = Session.IsSessionStarted;
@@ -69,6 +71,13 @@ namespace FutaMeetWeb.Pages
                     Session = _sessionService.GetSessionById(CurrentSessionId);
                     if (Session != null)
                     {
+                        if (Session.Status == SessionStatus.Ended)
+                        {
+                            HttpContext.Session.Remove("CurrentSessionId");
+                            CurrentSessionId = null;
+                            Message = "Session has ended.";
+                            return RedirectToPage("/Login");
+                        }
                         IsSessionStarted = Session.IsSessionStarted;
                         IsSessionLecturer = Session.LecturerId == matricNo;
                         Message = HttpContext.Session.GetString("SessionMessage");
@@ -105,8 +114,9 @@ namespace FutaMeetWeb.Pages
             {
                 // Clear current session ID since it's ended
                 HttpContext.Session.Remove("CurrentSessionId");
+                CurrentSessionId = null; // Also clear the model property
                 Message = "Session has ended.";
-                return RedirectToPage("/Login"); // Redirect to Index
+                return RedirectToPage("/Login");
             }
 
             CurrentSessionId = SessionId;
