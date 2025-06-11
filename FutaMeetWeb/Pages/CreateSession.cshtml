@@ -303,6 +303,7 @@
             display: flex;
             flex-direction: column;
             min-height:0;
+            align-items: stretch; /* Allow children to align themselves */
         }
 
         .message-box {
@@ -312,6 +313,7 @@
             border-radius: 15px;
             word-wrap: break-word;
             clear:both;
+            align-self: flex-start; /* Default: left */
         }
 
         .message {
@@ -319,7 +321,9 @@
             flex-direction: column;
         }
 
-        .lecturer-msg, .lecturer-reply-msg, .self-reply-msg{
+        .message-box.lecturer-msg .message,
+        .message-box.lecturer-reply-msg .message,
+        .message-box.self-reply-msg .message {
             background-color: #E0CDFA;
             box-shadow: 0px -4.80561px 19.2224px rgba(193, 155, 245, 0.25);
             border-radius: 30px 30px 0px 30px;
@@ -330,7 +334,7 @@
             align-self:flex-end; 
         }
 
-        .student-reply-msg {
+        .message-box.student-reply-msg .message {
             background-color: #E0CDFA;
             box-shadow: 0px -4.80561px 19.2224px rgba(193, 155, 245, 0.25);
             border-radius: 0px 30px 30px 30px;
@@ -348,8 +352,19 @@
             line-height: 36px;
             color: #6B7280;
             position: relative;
-            text-align:right;
         }
+
+        .message-box.lecturer-msg .username,
+        .message-box.lecturer-reply-msg .username,
+        .message-box.self-reply-msg .username {
+            text-align: right !important;
+        }
+
+        .message-box.student-reply-msg .username {
+            text-align: left !important;
+        }
+
+
 
         .content {
             font-size: 1em;

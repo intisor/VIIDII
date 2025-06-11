@@ -306,7 +306,7 @@
             flex-direction: column;
         }
 
-        .lecturer-msg {
+        .message-box.lecturer-msg .message {
             background-color: #E0CDFA;
             box-shadow: 0px -4.80561px 19.2224px rgba(193, 155, 245, 0.25);
             border-radius: 0px 30px 30px 30px;
@@ -317,7 +317,8 @@
             align-self: flex-start;
         }
 
-        .student-reply-msg, .lecturer-reply-msg {
+        .message-box.student-reply-msg .message,
+        .message-box.lecturer-reply-msg .message {
             background-color: #E0CDFA;
             box-shadow: 0px -4.80561px 19.2224px rgba(193, 155, 245, 0.25);
             border-radius: 0px 30px 30px 30px;
@@ -328,7 +329,7 @@
             align-self: flex-start;
         }
 
-        .self-reply-msg {
+        .message-box.self-reply-msg .message {
             background-color: #E0CDFA;
             box-shadow: 0px -4.80561px 19.2224px rgba(193, 155, 245, 0.25);
             border-radius: 30px 30px 0px 30px;
@@ -339,7 +340,7 @@
             align-self: flex-end;
         }
 
-        .lecturer-reply-msg {
+        .message-box.lecturer-msg .message {
             background-color: #E0CDFA;
             box-shadow: 0px -4.80561px 19.2224px rgba(193, 155, 245, 0.25);
             border-radius: 0px 30px 30px 30px;
@@ -525,7 +526,7 @@
                 padding: 10px;
                 gap: 10px;
                 height:80vh;
-                margin-top:15vh;
+                margin-top:10vh;
                 max-height:none;
             }
 
@@ -533,6 +534,7 @@
                 position: relative;
                 width: 100%;
                 padding: 10px;
+                margin-bottom:10vh;
             }
             
             .modern-heading{

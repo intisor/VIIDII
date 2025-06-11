@@ -511,7 +511,7 @@ connection.on("ReceivePost", (message) => {
     const discussion = document.getElementById("discussion");
     if (discussion) {
         const messageBox = document.createElement("div");
-        messageBox.className = "message-box";
+        messageBox.className = "message-box  lecturer-msg";
         //const messageDiv = document.createElement("div");
         //messageDiv.className = "message lecturer-msg"; // Added 'message' class
         //messageDiv.setAttribute("data-post-id", message.id);
@@ -523,8 +523,8 @@ connection.on("ReceivePost", (message) => {
             contentHtml = `${fileName} <a href="#" class="file-download" data-file-id="${message.content}">Download</a>`;
         }
         messageBox.innerHTML = `
-            <div class="username" style="text-align:right;">${message.userName || "Lecturer"}</div>
-            <div class="message lecturer-msg" data-post-id="${message.id}">
+            <div class="username">${message.userName || "Lecturer"}</div>
+            <div class="message" data-post-id="${message.id}">
                 <div class="content">${contentHtml}</div>
                 <div class="message-footer">
                     <div class="timestamp">${getTimestamp()}</div>
@@ -552,21 +552,21 @@ connection.on("ReceiveComment", (comment) => {
         const parentMessage = discussion.querySelector(`[data-post-id="${comment.parentId}"]`);
         if (parentMessage) {
             const messageBox = document.createElement("div");
-            messageBox.className = "message-box";
             //const messageDiv = document.createElement("div");
             // Determine if the comment is from the current user or another student/lecturer
-            let messageClass = "message student-msg";
+            let messageClass = "student-msg";
             if (comment.userId === window.currentUserId) {
-                messageClass = "message self-reply-msg"; 
+                messageClass = "self-reply-msg"; 
             } else if (comment.isLecturerPost) { // Check if the commenter is a lecturer
-                messageClass = "message lecturer-reply-msg";
+                messageClass = "lecturer-reply-msg";
             } else {
-                messageClass = "message student-reply-msg";
+                messageClass = "student-reply-msg";
             }
+            messageBox.className = `message-box ${messageClass}`;
             //messageDiv.className = messageClass;
             messageBox.innerHTML = `
                 <div class="username">${comment.userName || "User"}</div>
-                <div class="${messageClass}" data-post-id="${comment.id}">
+                <div class="message" data-post-id="${comment.id}">
                     <div class="content">${comment.content}</div>
                     <div class="message-footer">
                         <div class="timestamp">${getTimestamp()}</div>
@@ -607,13 +607,13 @@ connection.on("ReceiveMessages", (messages) => {
         // First pass: Render all posts
         messages.filter(m => m.isLecturerPost && m.parentId === m.id).forEach(message => {
             const messageBox = document.createElement("div");
-            messageBox.className = "message-box";
+            messageBox.className = "message-box lecturer-msg";
             //const messageDiv = document.createElement("div");
             //messageDiv.className = "message lecturer-msg";
             //messageDiv.setAttribute("data-post-id", message.id);
             messageBox.innerHTML = `
                 <div class="username">${message.userName || "Lecturer"}</div>
-                <div class="message lecturer-msg" data-post-id="${message.id}">
+                <div class="message" data-post-id="${message.id}">
                     <div class="content">${message.content}</div>
                     <div class="message-footer">
                         <div class="timestamp">${getTimestamp()}</div>
@@ -643,21 +643,21 @@ connection.on("ReceiveMessages", (messages) => {
             const parentPostBox = postElements[comment.parentId];
             if (parentPostBox) {
                 const messageBox = document.createElement("div");
-                messageBox.className = "message-box";
                 //const messageDiv = document.createElement("div");
                 
-                let messageClass = "message student-msg"; // Default
+                let messageClass = "student-msg"; // Default
                 if (comment.userId === window.currentUserId) {
-                    messageClass = "message self-reply-msg";
+                    messageClass = "self-reply-msg";
                 } else if (comment.isLecturerPost) { // Commenter is a lecturer
-                    messageClass = "message lecturer-reply-msg";
+                    messageClass = "lecturer-reply-msg";
                 } else { // Another student's reply
-                    messageClass = "message student-reply-msg";
+                    messageClass = "student-reply-msg";
                 }
                 //messageDiv.className = messageClass;
+                messageBox.className = `message-box ${messageClass}`;
                 messageBox.innerHTML = `
-                    <div class="username" style="text-align:left">${comment.userName || "User"}</div>
-                    <div class="${messageClass}" data-post-id="${comment.id}">
+                    <div class="username">${comment.userName || "User"}</div>
+                    <div class="message" data-post-id="${comment.id}">
                         <div class="content">${comment.content}</div>
                         <div class="message-footer">
                             <div class="timestamp">${getTimestamp()}</div>
@@ -682,18 +682,18 @@ connection.on("ReceiveMessages", (messages) => {
             } else {
                 console.warn(`ReceiveMessages: Parent post with ID ${comment.parentId} not found for comment. Appending to end of discussion as orphan.`);
                 const messageBox = document.createElement("div");
-                messageBox.className = "message-box";
                 //const messageDiv = document.createElement("div");
                 // Determine class for orphaned comment
-                let orphanMessageClass = "message student-reply-msg"; // Default
+                let orphanMessageClass = "student-reply-msg"; // Default
                 if (comment.userId === window.currentUserId) {
-                    orphanMessageClass = "message self-reply-msg";
+                    orphanMessageClass = "self-reply-msg";
                 } else if (comment.isLecturerPost) {
-                    orphanMessageClass = "message lecturer-reply-msg";
+                    orphanMessageClass = "lecturer-reply-msg";
                 }
+                messageBox.className = `message-box ${orphanMessageClass}`;
                 messageBox.innerHTML = `
                     <div class="username">${comment.userName || "User"}</div>
-                    <div class="${orphanMessageClass}" data-post-id="${comment.id}">
+                    <div class="message" data-post-id="${comment.id}">
                         <div class="content">${comment.content} (Orphaned: Parent post not found)</div>
                         <div class="message-footer">
                             <div class="timestamp">${getTimestamp()}</div>
