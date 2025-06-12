@@ -6,6 +6,7 @@ namespace FutaMeetWeb.Services;
 public class SessionService
 {
     private readonly ConcurrentDictionary<string, Session> _sessions = [];
+    private static Dictionary<string, string> _userDetailsCache; // Static cache for user details
 
     // Define ParticipantScoreDetails here or ensure it's in Models/User.cs or a new Models/ParticipantScoreDetails.cs
     public class ParticipantScoreDetails
@@ -204,37 +205,48 @@ public class SessionService
     public List<Session> GetActiveSessions() =>
         _sessions.Values
             .Where(s => s.Status == SessionStatus.Active || s.Status == SessionStatus.Started)
-            .ToList();    
+            .ToList();
     public Dictionary<string, ParticipantScoreDetails> CalculateAttendanceScore(string sessionId)
     {
         if (!_sessions.TryGetValue(sessionId, out var session))
             return new Dictionary<string, ParticipantScoreDetails>();
-        var endTime = session.EndTime ?? DateTime.UtcNow.AddHours(1); // Changed DateTimeOffset to DateTime
-        var totalSessionMinutes = Math.Max((endTime - session.StartTime).TotalMinutes, 1);
+
+        // Use UTC now for endTime to avoid over-rewarding ongoing sessions
+        var endTime = session.EndTime ?? DateTime.UtcNow;
+        var totalSessionMinutes = (endTime - session.StartTime).TotalMinutes;
+
+        // Return empty scores for invalid (zero or negative) session duration
+        if (totalSessionMinutes <= 0)
+        {
+            Console.WriteLine($"CalculateAttendanceScore: Session {sessionId} has invalid duration ({totalSessionMinutes:F1} min), returning empty scores");
+            return new Dictionary<string, ParticipantScoreDetails>();
+        }
+
         Console.WriteLine($"CalculateAttendanceScore: Session {sessionId}, Start={session.StartTime}, End={endTime}, Duration={totalSessionMinutes:F1} min");
-        var userDetails = MockApiService.GetUsers().ToDictionary(u => u.MatricNo, u => u.Name); // For fetching names
 
-        // Get all participant IDs that have events, even if they're no longer in ParticipantIds
+        // Initialize or use cached user details (all times are UTC for consistency)
+        _userDetailsCache ??= MockApiService.GetUsers().ToDictionary(u => u.MatricNo, u => u.Name);
+
+        // Single-pass participant ID collection, including past participants with events/statuses
         var allParticipantIds = new HashSet<string>(session.ParticipantIds);
-        
-        // Add any participants that have events but might not be in the current ParticipantIds
-        foreach (var participantId in session.ParticipantEvents.Keys)
+        allParticipantIds.UnionWith(session.ParticipantEvents.Keys);
+        allParticipantIds.UnionWith(session.ParticipantStatuses.Keys);
+
+        var result = new Dictionary<string, ParticipantScoreDetails>(allParticipantIds.Count);
+        foreach (var participantId in allParticipantIds)
         {
-            allParticipantIds.Add(participantId);
-        }
-        
-        // Add participants that have status entries
-        foreach (var participantId in session.ParticipantStatuses.Keys)
-        {
-            allParticipantIds.Add(participantId);
+            result[participantId] = CalculateScorePerParticipant(
+                session,
+                participantId,
+                totalSessionMinutes,
+                _userDetailsCache.GetValueOrDefault(participantId, "Unknown User")
+            );
         }
 
-        return allParticipantIds
-            .ToDictionary(participantId => participantId,
-            participantId => CalculateScoreperParticipant(session, participantId, totalSessionMinutes, userDetails.GetValueOrDefault(participantId, "Unknown User")));
+        return result;
     }
 
-    public ParticipantScoreDetails CalculateScoreperParticipant(Session session, string participantId, double totalSessionMinutes, string participantName)
+    public ParticipantScoreDetails CalculateScorePerParticipant(Session session, string participantId, double totalSessionMinutes, string participantName)
     {
         var details = new ParticipantScoreDetails
         {
@@ -243,127 +255,122 @@ public class SessionService
             ParticipantName = participantName
         };
 
-        double rawScore = 0;
-        DateTime currentTime = session.StartTime; // Changed DateTimeOffset to DateTime
-        Session.StudentStatus currentStatusForCalc = Session.StudentStatus.Disconnected;
-        Session.StudentStatus? statusThatPrecededCurrentSegment = null;
-
         Console.WriteLine($"CalculateScore: {participantId}, TotalSessionMinutes={totalSessionMinutes:F1}, StartTime={session.StartTime}");
 
-        if (session.ParticipantEvents.TryGetValue(participantId, out var events) && events.Any())
+        double totalCreditMinutes = 0;
+        var sessionEnd = session.EndTime ?? DateTime.UtcNow.AddHours(1);
+        Session.StudentStatus? previousStatus = null;
+
+        if (!session.ParticipantEvents.TryGetValue(participantId, out var events) || !events.Any())
         {
-            var sortedEvents = events.OrderBy(e => e.timeStamp).ToList();
-            Console.WriteLine($"CalculateScore: {participantId} has {sortedEvents.Count} events");
+            // No events: use last known status or default to Disconnected
+            var status = session.ParticipantStatuses.TryGetValue(participantId, out var lastStatus)
+                ? lastStatus
+                : Session.StudentStatus.Disconnected;
 
-            var firstEventDetails = sortedEvents.First();
-            if (firstEventDetails.timeStamp > session.StartTime)
-            {
-                var durationBeforeFirstEvent = (firstEventDetails.timeStamp - session.StartTime).TotalMinutes;
-                if (durationBeforeFirstEvent > 0)
-                {
-                    rawScore += GetStatusWeight(Session.StudentStatus.Disconnected, null) * durationBeforeFirstEvent;
-                    UpdateDurationForStatus(details, Session.StudentStatus.Disconnected, durationBeforeFirstEvent);
-                    Console.WriteLine($"CalculateScore: {participantId} Disconnected for {durationBeforeFirstEvent:F1} min, Score+={rawScore:F1}");
-                }
-                statusThatPrecededCurrentSegment = Session.StudentStatus.Disconnected;
-            }
-            else
-            {
-                statusThatPrecededCurrentSegment = null;
-            }
-
-            currentTime = firstEventDetails.timeStamp; // Ensure currentTime is DateTime
-            currentStatusForCalc = firstEventDetails.status;
-            Console.WriteLine($"CalculateScore: {participantId} First event: {currentStatusForCalc} at {currentTime}");
-
-            foreach (var nextEventDetails in sortedEvents.Skip(1))
-            {
-                var nextStatus = nextEventDetails.status;
-                var eventTime = nextEventDetails.timeStamp; // Ensure eventTime is DateTime
-
-                if (eventTime < currentTime) continue;
-
-                var durationInCurrentStatus = (eventTime - currentTime).TotalMinutes;
-                if (durationInCurrentStatus > 0)
-                {
-                    var weight = GetStatusWeight(currentStatusForCalc, statusThatPrecededCurrentSegment);
-                    rawScore += weight * durationInCurrentStatus;
-                    UpdateDurationForStatus(details, currentStatusForCalc, durationInCurrentStatus);
-                    Console.WriteLine($"CalculateScore: {participantId} {currentStatusForCalc} for {durationInCurrentStatus:F1} min, Weight={weight}, Score+={rawScore:F1}");
-                }
-
-                statusThatPrecededCurrentSegment = currentStatusForCalc;
-                currentStatusForCalc = nextStatus;
-                currentTime = eventTime;
-            }
-
-            DateTime sessionEffectiveEndTime = session.EndTime ?? DateTime.UtcNow.AddHours(1); // Changed DateTimeOffset to DateTime
-            if (sessionEffectiveEndTime > currentTime)
-            {
-                var durationAfterLastEvent = (sessionEffectiveEndTime - currentTime).TotalMinutes;
-                if (durationAfterLastEvent > 0)
-                {
-                    var weight = GetStatusWeight(currentStatusForCalc, statusThatPrecededCurrentSegment);
-                    rawScore += weight * durationAfterLastEvent;
-                    UpdateDurationForStatus(details, currentStatusForCalc, durationAfterLastEvent);
-                    Console.WriteLine($"CalculateScore: {participantId} {currentStatusForCalc} (end) for {durationAfterLastEvent:F1} min, Weight={weight}, Score+={rawScore:F1}");
-                }
-            }
+            totalCreditMinutes = CalculateSegmentCredit(status, null, totalSessionMinutes);
+            UpdateDurationForStatus(details, status, totalSessionMinutes);
+            Console.WriteLine($"CalculateScore: {participantId} {status} for {totalSessionMinutes:F1} min, Credit={totalCreditMinutes:F1} min");
         }
         else
         {
-            currentStatusForCalc = session.ParticipantStatuses.TryGetValue(participantId, out var lastKnownStatus) ? lastKnownStatus : Session.StudentStatus.Disconnected;
-            var duration = totalSessionMinutes;
-            if (duration > 0)
+            // Process events chronologically with correct timeline logic
+            var sortedEvents = events.OrderBy(e => e.timeStamp).ToList();
+            var currentTime = session.StartTime;
+
+            // Handle time before first event (late join scenario)
+            var firstEvent = sortedEvents[0];
+            if (firstEvent.timeStamp > session.StartTime)
             {
-                var weight = GetStatusWeight(currentStatusForCalc, null);
-                rawScore += weight * duration;
-                UpdateDurationForStatus(details, currentStatusForCalc, duration);
-                Console.WriteLine($"CalculateScore: {participantId} No events, {currentStatusForCalc} for {duration:F1} min, Weight={weight}, Score={rawScore:F1}");
+                var duration = (firstEvent.timeStamp - session.StartTime).TotalMinutes;
+                if (duration > 0)
+                {
+                    var credit = CalculateSegmentCredit(Session.StudentStatus.Disconnected, null, duration);
+                    totalCreditMinutes += credit;
+                    UpdateDurationForStatus(details, Session.StudentStatus.Disconnected, duration);
+                    Console.WriteLine($"CalculateScore: {participantId} Disconnected (before join) for {duration:F1} min, Credit={credit:F1} min");
+                }
+                currentTime = firstEvent.timeStamp;
+            }
+
+            // Process each status change event
+            for (int i = 0; i < sortedEvents.Count; i++)
+            {
+                var currentEvent = sortedEvents[i];
+                var nextEventTime = i < sortedEvents.Count - 1 ? sortedEvents[i + 1].timeStamp : sessionEnd;
+
+                // Calculate duration from this event until the next event (or session end)
+                var duration = (nextEventTime - currentEvent.timeStamp).TotalMinutes;
+
+                if (duration > 0.01)
+                {
+                    var credit = CalculateSegmentCredit(currentEvent.status, previousStatus, duration);
+                    totalCreditMinutes += credit;
+                    UpdateDurationForStatus(details, currentEvent.status, duration);
+                    Console.WriteLine($"CalculateScore: {participantId} {currentEvent.status} for {duration:F1} min, Credit={credit:F1} min");
+                }
+
+                previousStatus = currentEvent.status;
             }
         }
 
-        double maxPossibleScore = 10 * totalSessionMinutes;
-        details.FinalScorePercentage = maxPossibleScore == 0 ? 0 : Math.Clamp((rawScore / maxPossibleScore) * 100, 0, 100);
-        Console.WriteLine($"CalculateScore: {participantId} Final: rawScore={rawScore:F1}, Max={maxPossibleScore:F1}, Percentage={details.FinalScorePercentage:F1}%");
+        // Calculate final percentage
+        details.FinalScorePercentage = totalSessionMinutes == 0 ? 0 : 
+            Math.Round(Math.Clamp((totalCreditMinutes / totalSessionMinutes) * 100, 0, 100), 2);
+
+        Console.WriteLine($"CalculateScore: {participantId} Final: TotalCredit={totalCreditMinutes:F1}, Possible={totalSessionMinutes:F1}, Percentage={details.FinalScorePercentage:F1}%");
 
         return details;
     }
-    private void UpdateDurationForStatus(ParticipantScoreDetails details, Session.StudentStatus status, double duration)
+
+    private double CalculateSegmentCredit(Session.StudentStatus currentStatus, Session.StudentStatus? previousStatus, double duration)
     {
-        switch (status)
+        // Base credit calculation
+        double baseCredit = currentStatus switch
         {
-            case Session.StudentStatus.Active: details.TimeActiveMinutes += duration; break;
-            case Session.StudentStatus.InActive: details.TimeInactiveMinutes += duration; break;
-            case Session.StudentStatus.BatteryLow: details.TimeBatteryLowMinutes += duration; break;
-            case Session.StudentStatus.DataFinished: details.TimeDataFinishedMinutes += duration; break;
-            case Session.StudentStatus.Disconnected: details.TimeDisconnectedMinutes += duration; break;
-        }
-    }
-
-    private int GetStatusWeight(Session.StudentStatus currentStatus, Session.StudentStatus? statusOfImmediatelyPrecedingEvent)
-    {
-        if (statusOfImmediatelyPrecedingEvent.HasValue)
-        {
-            bool wasWarning = statusOfImmediatelyPrecedingEvent == Session.StudentStatus.BatteryLow ||
-                              statusOfImmediatelyPrecedingEvent == Session.StudentStatus.DataFinished;
-
-            if (wasWarning)
-            {
-                if (currentStatus == Session.StudentStatus.InActive) return -1; // Grace penalty for InActive after warning
-                if (currentStatus == Session.StudentStatus.Disconnected) return -2; // Grace penalty for Disconnected after warning
-            }
-        }
-
-        // Default weights if no grace applies or for states not covered by grace
-        return currentStatus switch
-        {
-            Session.StudentStatus.Active => 10,
-            Session.StudentStatus.InActive => -2,       // Standard InActive penalty
-            Session.StudentStatus.BatteryLow => 0,      // Warning state, not directly penalized; grace is applied to subsequent Inactive/Disconnected states
-            Session.StudentStatus.DataFinished => 0,    // Warning state, not directly penalized; grace is applied to subsequent Inactive/Disconnected states
-            Session.StudentStatus.Disconnected => -3,  // Standard Disconnected penalty
+            Session.StudentStatus.Active => duration,           // 100% credit
+            Session.StudentStatus.BatteryLow => 0,              // Warning only - no credit
+            Session.StudentStatus.DataFinished => 0,            // Warning only - no credit
+            Session.StudentStatus.InActive => 0,                // 0% credit normally
+            Session.StudentStatus.Disconnected => 0,            // 0% credit normally
             _ => 0
         };
+
+        // Apply 50% grace if current status follows a warning
+        bool previousWasWarning = previousStatus is Session.StudentStatus.BatteryLow or Session.StudentStatus.DataFinished;
+
+        if (previousWasWarning && (currentStatus == Session.StudentStatus.InActive || currentStatus == Session.StudentStatus.Disconnected))
+        {
+            var graceCredit = duration * 0.5; // 50% credit instead of 0%
+            Console.WriteLine($"Grace applied: {currentStatus} after warning gets {graceCredit:F1} min credit (50% of {duration:F1} min)");
+            return graceCredit;
+        }
+
+        return baseCredit;
+    }
+
+    private void UpdateDurationForStatus(ParticipantScoreDetails details, Session.StudentStatus status, double duration)
+    {
+        // Consider using ILogger for production instead of Console.WriteLine
+        switch (status)
+        {
+            case Session.StudentStatus.Active:
+                details.TimeActiveMinutes += duration;
+                break;
+            case Session.StudentStatus.InActive:
+                details.TimeInactiveMinutes += duration;
+                break;
+            case Session.StudentStatus.BatteryLow:
+                details.TimeBatteryLowMinutes += duration;
+                break;
+            case Session.StudentStatus.DataFinished:
+                details.TimeDataFinishedMinutes += duration;
+                break;
+            case Session.StudentStatus.Disconnected:
+                details.TimeDisconnectedMinutes += duration;
+                break;
+            default:
+                break;
+        }
     }
 }
