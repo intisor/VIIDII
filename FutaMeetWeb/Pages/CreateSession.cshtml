@@ -303,18 +303,24 @@
             display: flex;
             flex-direction: column;
             min-height:0;
-            align-items: stretch; /* Allow children to align themselves */
+            /* align-items: flex-end; /* Allow children to align themselves */ 
         }
 
         .message-box {
-            margin-bottom: 10px;
+            margin-bottom: 1px;
             max-width: 80%;
             padding: 8px 12px;
             border-radius: 15px;
             word-wrap: break-word;
             clear:both;
-            align-self: flex-start; /* Default: left */
+            align-self: flex-start; /* Default: left */ 
         }
+
+            .message-box.lecturer-msg,
+            .message-box.lecturer-reply-msg,
+            .message-box.self-reply-msg{
+                align-self:flex-end;
+            }
 
         .message {
             display: flex;
@@ -419,7 +425,7 @@
                 border-radius: 24px;
                 font-size: 1rem;
                 cursor: pointer;
-                margin: 30 auto; /* Center the button horizontally */
+                margin: 30px auto; /* Center the button horizontally */
                 display: inline-block; /* Ensure the button is treated as an inline block for margin auto to work */
                 max-width: 200px; /* Set a maximum width for the button to ensure it doesn't stretch too wide */
             }
@@ -698,6 +704,7 @@
                                     <i class="fas fa-paper-plane" style="font-size: 0.8em; color: white;"></i>
                                 </button>
                                 <input type="file" id="fileInput" class="d-none" />
+                            <span id="fileIndicator" style="color:#fff; font-size:0.85em; margin-left:6px; display:none;"></span>
                             </div>
 
                         </div>
@@ -822,6 +829,31 @@
                     }
                 });
             }
+
+            const fileInput = document.getElementById('fileInput');
+            const fileIndicator = document.getElementById('fileIndicator');
+            if (fileInput && fileIndicator) {
+                fileInput.addEventListener('change', function () {
+                if (fileInput.files && fileInput.files.length > 0) {
+                    fileIndicator.style.display = 'inline';
+                    fileIndicator.textContent = fileInput.files[0].name;
+                } else {
+                    fileIndicator.style.display = 'none';
+                    fileIndicator.textContent = '';
+                }
+            });
+
+            const createPostBtn = document.getElementById('createPost');
+            if (createPostBtn && fileInput && fileIndicator) {
+                createPostBtn.addEventListener('click', function () {
+                // Clear file input and indicator after sending
+                fileInput.value = '';
+                fileIndicator.style.display = 'none';
+                fileIndicator.textContent = '';
+            });
+        }
+
+        }
         });
     </script>
 </body>

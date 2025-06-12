@@ -231,12 +231,11 @@
             flex-direction: row;
             justify-content: space-between;
             width: 90vw;
-            max-height: calc(100vh - 70px); /* Account for margin-top and padding */
+            height: calc(100vh - 70px); /* Adjust height to ensure it doesn't touch the top curve, considering margin-top */
             margin-top: 50px; /* Reduced to clear top curve */
             padding: 10px;
             gap: 10px;
             box-sizing: border-box;
-            overflow-y: auto; /* Allow scrolling if content overflows */
         }
 
         .video-section {
@@ -294,17 +293,24 @@
         }
 
         .message-box {
-            margin-bottom: 10px;
+            margin-bottom: 1px;
             max-width: 80%;
             padding: 8px 12px;
             border-radius: 15px;
             word-wrap: break-word;
+            clear: both;
+            align-self:flex-start;
         }
+
+            .message-box.self-reply-msg {
+                align-self: flex-end;
+            }
 
         .message {
             display: flex;
             flex-direction: column;
         }
+
 
         .message-box.lecturer-msg .message {
             background-color: #E0CDFA;
@@ -358,8 +364,18 @@
             line-height: 36px;
             color: #6B7280;
             position: relative;
-            text-align: right;
         }
+
+        .message-box.lecturer-msg .username,
+        .message-box.lecturer-reply-msg .username,
+        .message-box.student-reply-msg .username {
+            text-align: left !important;
+        }
+
+        .message-box.self-reply-msg .username {
+            text-align: right !important;
+        }
+
 
         .content {
             font-size: 1em;
@@ -697,7 +713,7 @@
                 </div>
                 <div id="replyArea" class="input-group" style="display: none;">
                     <textarea id="replyInput" rows="2" class="modern-input" placeholder="Write a reply..."></textarea>
-                    <button id="sendReply" class="btn btn-skeuo">
+                    <button id="sendReply" class="btn btn-skeuo" style="border-radius:20px 20px 20px 20px;">
                         <i class="fas fa-paper-plane"></i> Send Reply
                     </button>
                 </div>

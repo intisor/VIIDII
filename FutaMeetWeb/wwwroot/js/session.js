@@ -180,7 +180,7 @@ connection.on("StartSession", (sessionId) => {
             video.srcObject = localStream;
             return;
         }
-        navigator.mediaDevices.getUserMedia({video: { width: { ideal: 1280 }, height: { ideal: 720 } }, audio: true })
+        navigator.mediaDevices.getUserMedia({video: { width: { ideal: 720 }, height: { ideal: 420 } }, audio: true })
             .then(stream => {
                 console.log("Successfully obtained local stream:", stream);
                 localStream = stream;
