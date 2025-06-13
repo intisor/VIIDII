@@ -21,8 +21,6 @@ namespace FutaMeetWeb.Pages
         public Session Session { get; set; }
         public string Message { get; set; }
         public string LecturerName { get; set; }
-
-
         public List<SelectListItem> AvailableSessions { get; set; } = [];
         public bool IsSessionStarted { get; set; }
         public bool IsSessionLecturer { get; set; }
@@ -38,7 +36,7 @@ namespace FutaMeetWeb.Pages
                 return RedirectToPage("/Login", new { ReturnUrl = returnUrl });
             }
 
-           
+            var lecturers = MockApiService.GetLecturers();
 
             if (!string.IsNullOrEmpty(sessionId))
             {
@@ -59,7 +57,7 @@ namespace FutaMeetWeb.Pages
                 CurrentSessionId = sessionId;
                 IsSessionStarted = Session.IsSessionStarted;
                 IsSessionLecturer = Session.LecturerId == matricNo;
-                LecturerName = MockApiService.GetLecturers().Where(s => s.MatricNo == Session.LecturerId).FirstOrDefault().Name;
+                LecturerName = lecturers.FirstOrDefault(s => s.MatricNo == Session.LecturerId)?.Name ?? string.Empty;
                 Message = $"Joined session {sessionId}";
                 HttpContext.Session.SetString("CurrentSessionId", CurrentSessionId);
             }
@@ -81,7 +79,7 @@ namespace FutaMeetWeb.Pages
                         IsSessionStarted = Session.IsSessionStarted;
                         IsSessionLecturer = Session.LecturerId == matricNo;
                         Message = HttpContext.Session.GetString("SessionMessage");
-                        LecturerName = MockApiService.GetLecturers().Where(s => s.MatricNo == Session.LecturerId).FirstOrDefault().Name;
+                        LecturerName = lecturers.FirstOrDefault(s => s.MatricNo == Session.LecturerId)?.Name ?? string.Empty;
                     }
                 }
             }
@@ -119,14 +117,16 @@ namespace FutaMeetWeb.Pages
                 return RedirectToPage("/Login");
             }
 
+            var users = MockApiService.GetUsers();
+
             CurrentSessionId = SessionId;
             IsSessionStarted = Session.IsSessionStarted;
             IsSessionLecturer = Session.LecturerId == matricNo;
-            LecturerName = MockApiService.GetLecturers().Where(s => s.MatricNo == Session.LecturerId).FirstOrDefault().Name;
+            LecturerName = users.FirstOrDefault(s => s.MatricNo == matricNo).Name ?? string.Empty;
             Message = $"Joined session {SessionId}";
             HttpContext.Session.SetString("CurrentSessionId", CurrentSessionId);
             HttpContext.Session.SetString("SessionMessage", Message);
-            HttpContext.Session.SetString("FullName", MockApiService.GetStudents().Where(s => s.MatricNo == matricNo).FirstOrDefault().Name);
+            HttpContext.Session.SetString("FullName",users.FirstOrDefault(s => s.MatricNo == matricNo).Name ?? string.Empty);
 
             if (!string.IsNullOrEmpty(returnUrl) && Url.IsLocalUrl(returnUrl))
             {
