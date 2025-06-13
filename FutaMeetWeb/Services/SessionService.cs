@@ -149,6 +149,20 @@ public class SessionService
         }
         return session;
     }
+
+    public void RemoveSessionsByLecturer(string lecturerId)
+    {
+        var sessionsToRemove = _sessions.Values
+            .Where(s => s.LecturerId == lecturerId)
+            .Select(s => s.SessionId)
+            .ToList();
+
+        foreach (var sessionId in sessionsToRemove)
+        {
+            _sessions.TryRemove(sessionId, out _);
+        }
+    }
+
     public bool UpdateParticipantStatus(string sessionId, string participantId, Session.StudentStatus status)
     {
         if (_sessions.TryGetValue(sessionId, out var session) &&

@@ -67,15 +67,13 @@ namespace FutaMeetWeb.Pages
         public IActionResult OnPost(bool replaceExisting = false)
         {
             var lecturerId = HttpContext.Session.GetString("MatricNo");
-            if (AllowedDepartments == null || !AllowedDepartments.Any())
-            {
-                AllowedDepartments.Add(Models.User.Departments.Any);
-            }
+           
+            if (AllowedDepartments == null || AllowedDepartments.Count == 0)
+                AllowedDepartments = new List<User.Departments> { Models.User.Departments.Any };
 
-            if (AllowedLevels == null || !AllowedLevels.Any())
-            {
-                AllowedLevels.Add(Models.User.Levels.Any);
-            }
+            if (AllowedLevels == null || AllowedLevels.Count == 0)
+                AllowedLevels = new List<User.Levels> { Models.User.Levels.Any };
+
 
             Session = _sessionService.CreateSession(lecturerId, Title, AllowedDepartments, AllowedLevels, replaceExisting);
             if (!replaceExisting && Session.Status == SessionStatus.Started)
@@ -87,7 +85,8 @@ namespace FutaMeetWeb.Pages
                 return Page();
             }
             CurrentSessionId = Session.SessionId;
-            LecturerName = MockApiService.GetLecturers().Where(s => s.MatricNo == lecturerId).FirstOrDefault().Name;
+            var lecturer = MockApiService.GetLecturers().FirstOrDefault(s => s.MatricNo == lecturerId);
+            LecturerName = lecturer?.Name ?? string.Empty;
             Message =  $"session: {Session.SessionId}";
             IsSessionStarted = Session.IsSessionStarted;
             IsSessionLecturer = Session.LecturerId == lecturerId; // No conflict now
@@ -100,9 +99,7 @@ namespace FutaMeetWeb.Pages
         {
             var lecturerId = HttpContext.Session.GetString("MatricNo");
             if (string.IsNullOrEmpty(lecturerId))
-            {
                 return RedirectToPage("/Login");
-            }
 
             Session = _sessionService.GetSessionsByLecturer(lecturerId).FirstOrDefault();
             if (Session is null)
@@ -127,8 +124,8 @@ namespace FutaMeetWeb.Pages
         {
             var lecturerId = HttpContext.Session.GetString("MatricNo");
             var sessionId = HttpContext.Session.GetString("CurrentSessionId");
-            Session = _sessionService.GetSessionsByLecturer(lecturerId).FirstOrDefault()
-                ?? _sessionService.GetSessionById(sessionId);
+            var sessions = _sessionService.GetSessionsByLecturer(lecturerId);
+            Session = sessions.FirstOrDefault() ?? _sessionService.GetSessionById(sessionId);
             if (Session is null)
             {
                 Message = "No session found to stop.";
@@ -149,8 +146,11 @@ namespace FutaMeetWeb.Pages
             var matricNo = HttpContext.Session.GetString("MatricNo");
             if (!string.IsNullOrEmpty(matricNo))
             {
+                // Remove all sessions created by this lecturer
+                _sessionService.RemoveSessionsByLecturer(matricNo);
                 MockApiService.LogoutUser(matricNo);
             }
+
             HttpContext.Session.Clear();
             Message = "Logged out!";
             return RedirectToPage("/Index");

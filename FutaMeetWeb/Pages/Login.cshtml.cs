@@ -37,17 +37,17 @@ public class LoginModel : PageModel
 
     public IActionResult OnGet()
     {
-        UserOptions = MockApiService.GetUsers()
+        var users = MockApiService.GetUsers();
+        UserOptions = [.. users
             .Select(u => new SelectListItem
             {
                 Value = u.MatricNo,
                 Text = $"{u.Name} ({u.Role})"
-            })
-            .ToList();
+            })];
         var matricNo = HttpContext.Session.GetString("MatricNo");
         if (!string.IsNullOrEmpty(matricNo))
         {
-            var user = MockApiService.GetUsers().FirstOrDefault(u => u.MatricNo == matricNo);
+            var user = users.FirstOrDefault(u => u.MatricNo == matricNo);
             Role = user.Role.ToString() ?? "";
             UserName = user.Name ?? "";
             Department = user.Department;
@@ -64,13 +64,15 @@ public class LoginModel : PageModel
             Message = "Pick a user!";
             return Page();
         }
-        UserOptions = [.. MockApiService.GetUsers()
+
+        var users = MockApiService.GetUsers();
+        UserOptions = [.. users
            .Select(u => new SelectListItem
            {
                Value = u.MatricNo,
                Text = $"{u.Name} ({u.Role})"
            })];
-        var user = MockApiService.GetUsers().FirstOrDefault(u => u.MatricNo == MatricNo);
+        var user = users.FirstOrDefault(u => u.MatricNo == MatricNo);
         Role = user.Role.ToString() ?? "";
         UserName = user?.Name ?? "";
         Department = user.Department;
@@ -117,6 +119,7 @@ public class LoginModel : PageModel
         {
             MockApiService.LogoutUser(matricNo);
         }
+
         HttpContext.Session.Clear();
         Message = "Logged out!";
         return RedirectToPage("/Index");
