@@ -636,7 +636,7 @@
     }
     @if ((Model.CurrentSessionId != null) && (Model.Session?.Status != SessionStatus.Ended))
     {
-        <div class="title"> <strong>@Model.Session.Title </strong> by @Model.LecturerName</div>
+        @* <div class="title"> <strong>@Model.Session.Title </strong> by @Model.LecturerName</div> *@
         @* <div> *@
         @*     <label>Share this link:</label> *@
         @*     <input type="text" readonly value="@Url.Page("/JoinSession", null, new { sessionId = Model.CurrentSessionId }, Request.Scheme)" style="width:100%" /> *@
