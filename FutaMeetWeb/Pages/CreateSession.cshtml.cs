@@ -144,5 +144,16 @@ namespace FutaMeetWeb.Pages
             HttpContext.Session.SetString("SessionMessage", Message);
             return RedirectToPage("/SessionRecap", new { sessionId });
         }
+        public IActionResult OnPostLogout()
+        {
+            var matricNo = HttpContext.Session.GetString("MatricNo");
+            if (!string.IsNullOrEmpty(matricNo))
+            {
+                MockApiService.LogoutUser(matricNo);
+            }
+            HttpContext.Session.Clear();
+            Message = "Logged out!";
+            return RedirectToPage("/Index");
+        }
     }
 }
