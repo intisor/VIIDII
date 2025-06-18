@@ -842,10 +842,43 @@ document.getElementById("flagBatteryLow")?.addEventListener("click", () => {
     }
 });
 
-document.getElementById("flagDataFinished")?.addEventListener("click", () => {
+// ✅ UPDATED flagDataFinished handler with network check:
+async function isNetworkUnstableFallback() {
+    const start = Date.now();
+    try {
+        await fetch("https://example.com/ping.txt", { cache: "no-store" });
+        const duration = Date.now() - start;
+        return duration > 1000;
+    } catch {
+        return true;
+    }
+}
+
+function isUnstableNetworkAPI(connection) {
+    const { effectiveType, downlink, rtt } = connection;
+    return (
+        effectiveType === "2g" || effectiveType === "slow-2g" ||
+        rtt > 300 || downlink < 0.5
+    );
+}
+
+document.getElementById("flagDataFinished")?.addEventListener("click", async () => {
     if (window.isSessionLecturer) return;
-    connection.invoke("FlagIssue", "DataFinished")
-        .catch(err => console.error("Failed to flag data issue:", err));
+
+    let unstable = false;
+
+    if ("connection" in navigator) {
+        unstable = isUnstableNetworkAPI(navigator.connection);
+    } else {
+        unstable = await isNetworkUnstableFallback();
+    }
+
+    if (unstable) {
+        connection.invoke("FlagIssue", "DataFinished")
+            .catch(err => console.error("Failed to flag data issue:", err));
+    } else {
+        alert("Network is stable. Flag not sent.");
+    }
 });
 
 connection.on("ReceivePeerId", (userId, peerId) => {
