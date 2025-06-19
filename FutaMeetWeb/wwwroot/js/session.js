@@ -842,13 +842,13 @@ document.getElementById("flagBatteryLow")?.addEventListener("click", () => {
     }
 });
 
-// ✅ UPDATED flagDataFinished handler with network check:
+//  UPDATED flagDataFinished handler with network check:
 async function isNetworkUnstableFallback() {
     const start = Date.now();
     try {
         await fetch("https://example.com/ping.txt", { cache: "no-store" });
         const duration = Date.now() - start;
-        return duration > 1000;
+        return duration > 7000;
     } catch {
         return true;
     }
