@@ -1,0 +1,293 @@
+@page "/create-session"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject AuthService AuthService
+@inject SessionService SessionService
+@inject NavigationManager Navigation
+
+<PageTitle>Create Session - VIIDII</PageTitle>
+
+@if (CurrentUser == null)
+{
+    <div class="alert alert-warning">Please log in first.</div>
+}
+else if (CurrentUser.Role.ToString() != "Lecturer")
+{
+    <div class="alert alert-danger">Only lecturers can create sessions.</div>
+}
+else
+{
+    <style>
+        .create-session-container {
+            max-width: 800px;
+            margin: 2rem auto;
+            padding: 2rem;
+        }
+
+        .session-header {
+            background: linear-gradient(135deg, #8338EC 0%, #C19BF5 100%);
+            color: white;
+            padding: 2rem;
+            border-radius: 1rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 8px 24px rgba(131, 56, 236, 0.2);
+        }
+
+        .session-header h1 {
+            margin: 0;
+            font-size: 2rem;
+        }
+
+        .form-card {
+            background: white;
+            padding: 2rem;
+            border-radius: 1rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: #333;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 0.75rem;
+            border: 2px solid #ddd;
+            border-radius: 0.5rem;
+            font-size: 1rem;
+            transition: border-color 0.3s ease;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: #8338EC;
+        }
+
+        .form-check {
+            margin-bottom: 0.5rem;
+        }
+
+        .form-check-input {
+            margin-right: 0.5rem;
+        }
+
+        .btn {
+            padding: 0.75rem 2rem;
+            border: none;
+            border-radius: 0.5rem;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-right: 1rem;
+        }
+
+        .btn-primary {
+            background: linear-gradient(128.97deg, #8338EC 2.4%, #C19BF5 85.87%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 16px rgba(131, 56, 236, 0.3);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+
+        .alert {
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .alert-danger {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .alert-success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .alert-warning {
+            background-color: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+
+        .checkbox-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+        }
+    </style>
+
+    <div class="create-session-container">
+        <div class="session-header">
+            <h1>📹 Create New Session</h1>
+        </div>
+
+        @if (!string.IsNullOrEmpty(ErrorMessage))
+        {
+            <div class="alert alert-danger">@ErrorMessage</div>
+        }
+
+        @if (!string.IsNullOrEmpty(SuccessMessage))
+        {
+            <div class="alert alert-success">@SuccessMessage</div>
+        }
+
+        <div class="form-card">
+            <EditForm Model="@SessionModel" OnValidSubmit="@HandleCreateSession" FormName="CreateSessionForm">
+                <DataAnnotationsValidator />
+
+                <div class="form-group">
+                    <label class="form-label">Session Title</label>
+                    <InputText class="form-control" @bind-value="SessionModel.Title" placeholder="e.g., Software Engineering Lecture - Week 5" />
+                    <ValidationMessage For="@(() => SessionModel.Title)" />
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Allowed Departments</label>
+                    <div class="form-check">
+                        <InputCheckbox class="form-check-input" @bind-value="SelectAllDepartments" id="selectAllDepts" />
+                        <label class="form-check-label" for="selectAllDepts"><strong>Select All Departments</strong></label>
+                    </div>
+                    <div class="checkbox-grid">
+                        @foreach (var dept in Enum.GetValues<User.Departments>())
+                        {
+                            <div class="form-check">
+                                <InputCheckbox class="form-check-input" id="@($"dept_{dept}")" 
+                                             @bind-value="SessionModel.AllowedDepartments[dept]" 
+                                             disabled="@SelectAllDepartments" />
+                                <label class="form-check-label" for="@($"dept_{dept}")">@dept</label>
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Allowed Levels</label>
+                    <div class="form-check">
+                        <InputCheckbox class="form-check-input" @bind-value="SelectAllLevels" id="selectAllLevels" />
+                        <label class="form-check-label" for="selectAllLevels"><strong>Select All Levels</strong></label>
+                    </div>
+                    <div class="checkbox-grid">
+                        @foreach (var level in Enum.GetValues<User.Levels>())
+                        {
+                            <div class="form-check">
+                                <InputCheckbox class="form-check-input" @bind-value="SessionModel.AllowedLevels[level]" id="@($"level_{level}")" disabled="@SelectAllLevels" />
+                                <label class="form-check-label" for="@($"level_{level}")">@level</label>
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-primary" disabled="@IsLoading">
+                    @if (IsLoading)
+                    {
+                        <span>⏳ Creating...</span>
+                    }
+                    else
+                    {
+                        <span>✅ Create Session</span>
+                    }
+                </button>
+                <button type="button" class="btn btn-secondary" @onclick="GoBack">
+                    ❌ Cancel
+                </button>
+            </EditForm>
+        </div>
+    </div>
+}
+
+@code {
+    private User? CurrentUser;
+    private CreateSessionRequest SessionModel = new();
+    private string? ErrorMessage;
+    private string? SuccessMessage;
+    private bool IsLoading = false;
+    private bool SelectAllDepartments = true;
+    private bool SelectAllLevels = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        CurrentUser = await AuthService.GetCurrentUserAsync();
+        if (CurrentUser == null || CurrentUser.Role.ToString() != "Lecturer")
+        {
+            Navigation.NavigateTo("/dashboard");
+        }
+
+        // Initialize department and level dictionaries
+        foreach (var dept in Enum.GetValues<User.Departments>())
+        {
+            SessionModel.AllowedDepartments[dept] = true;
+        }
+        foreach (var level in Enum.GetValues<User.Levels>())
+        {
+            SessionModel.AllowedLevels[level] = true;
+        }
+    }
+
+    private async Task HandleCreateSession()
+    {
+        IsLoading = true;
+        ErrorMessage = null;
+        SuccessMessage = null;
+
+        var selectedDepts = SessionModel.AllowedDepartments
+            .Where(x => x.Value)
+            .Select(x => x.Key)
+            .ToList();
+
+        var selectedLevels = SessionModel.AllowedLevels
+            .Where(x => x.Value)
+            .Select(x => x.Key)
+            .ToList();
+
+        var session = SessionService.CreateSession(
+            CurrentUser!.MatricNo,
+            SessionModel.Title,
+            selectedDepts,
+            selectedLevels
+        );
+
+        if (session != null)
+        {
+            SuccessMessage = $"Session created successfully! Session ID: {session.SessionId}";
+            Navigation.NavigateTo($"/session/{session.SessionId}");
+        }
+        else
+        {
+            ErrorMessage = "Failed to create session.";
+        }
+
+        IsLoading = false;
+    }
+
+    private void GoBack() => Navigation.NavigateTo("/dashboard");
+
+    public class CreateSessionRequest
+    {
+        public string Title { get; set; } = string.Empty;
+        public Dictionary<User.Departments, bool> AllowedDepartments { get; set; } = new();
+        public Dictionary<User.Levels, bool> AllowedLevels { get; set; } = new();
+    }
+}

@@ -1,0 +1,227 @@
+@page "/login"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject AuthService AuthService
+@inject NavigationManager Navigation
+
+<PageTitle>Login - VIIDII</PageTitle>
+
+<div class="login-container">
+    <style>
+        .login-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: linear-gradient(135deg, rgba(131, 56, 236, 0.1) 0%, rgba(193, 155, 245, 0.1) 100%);
+        }
+
+        .login-box {
+            background: white;
+            padding: 3rem;
+            border-radius: 1rem;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 400px;
+        }
+
+        .login-title {
+            text-align: center;
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 2rem;
+            background: linear-gradient(128.97deg, #8338EC 2.4%, #C19BF5 85.87%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 0.75rem;
+            border: 2px solid #ddd;
+            border-radius: 0.5rem;
+            font-size: 1rem;
+            transition: border-color 0.3s ease;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: #8338EC;
+        }
+
+        .login-button {
+            width: 100%;
+            padding: 0.75rem;
+            background: linear-gradient(128.97deg, #8338EC 2.4%, #C19BF5 85.87%);
+            color: white;
+            border: none;
+            border-radius: 0.5rem;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .login-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 16px rgba(131, 56, 236, 0.3);
+        }
+
+        .alert-error {
+            background-color: #f8d7da;
+            color: #721c24;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin-bottom: 1rem;
+            border: 1px solid #f5c6cb;
+        }
+
+        .loading {
+            opacity: 0.7;
+            pointer-events: none;
+        }
+
+        .credentials-info {
+            background: #f8f9fa;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin-bottom: 1.5rem;
+            border-left: 4px solid #8338EC;
+        }
+
+        .credentials-info h3 {
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+            color: #8338EC;
+        }
+
+        .credential-item {
+            font-size: 0.813rem;
+            margin-bottom: 0.5rem;
+            color: #555;
+        }
+
+        .credential-item strong {
+            color: #333;
+        }
+    </style>
+
+    <div class="login-box">
+        <h1 class="login-title">Login</h1>
+
+        <div class="credentials-info">
+            <h3>🔑 Quick Login</h3>
+            <p style="margin: 0; font-size: 0.875rem; color: #666;">Select any user from the dropdown above. Password is auto-filled!</p>
+        </div>
+
+        @if (!string.IsNullOrEmpty(ErrorMessage))
+        {
+            <div class="alert-error">@ErrorMessage</div>
+        }
+
+        <EditForm Model="@LoginModel" OnValidSubmit="@HandleLogin" FormName="LoginForm">
+            <DataAnnotationsValidator />
+
+            <div class="form-group">
+                <label class="form-label">Select User</label>
+                <InputSelect class="form-control" @bind-value="LoginModel.MatricNo" @bind-value:after="OnUserSelected">
+                    <option value="">-- Choose a user --</option>
+                    @foreach (var user in AvailableUsers)
+                    {
+                        <option value="@user.MatricNo">@user.Name (@user.Role) - @user.MatricNo</option>
+                    }
+                </InputSelect>
+                <ValidationMessage For="@(() => LoginModel.MatricNo)" />
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Password</label>
+                <InputText type="password" class="form-control" @bind-value="LoginModel.Password" placeholder="Enter your password" />
+                <ValidationMessage For="@(() => LoginModel.Password)" />
+            </div>
+
+            <button type="submit" class="login-button" disabled="@IsLoading">
+                @if (IsLoading)
+                {
+                    <span>Logging in...</span>
+                }
+                else
+                {
+                    <span>Login</span>
+                }
+            </button>
+        </EditForm>
+    </div>
+</div>
+
+@code {
+    private LoginRequest LoginModel = new();
+    private string? ErrorMessage;
+    private bool IsLoading = false;
+    private List<UserInfo> AvailableUsers = new();
+
+    protected override void OnInitialized()
+    {
+        AvailableUsers = new List<UserInfo>
+        {
+            new UserInfo("Intisor", "123456", "Student"),
+            new UserInfo("Goodluck", "654321", "Student"),
+            new UserInfo("Ade", "789012", "Student"),
+            new UserInfo("Umar", "383012", "Student"),
+            new UserInfo("Alice", "100001", "Student"),
+            new UserInfo("Brian", "100002", "Student"),
+            new UserInfo("Cynthia", "100003", "Student"),
+            new UserInfo("John doe", "Lec001", "Lecturer"),
+            new UserInfo("Dr. Brown", "Lec002", "Lecturer"),
+            new UserInfo("Admin", "Admin", "Admin")
+        };
+    }
+
+    private void OnUserSelected()
+    {
+        // Auto-fill password hint when user is selected
+        if (!string.IsNullOrEmpty(LoginModel.MatricNo))
+        {
+            LoginModel.Password = "studpass1";
+        }
+    }
+
+    private async Task HandleLogin()
+    {
+        IsLoading = true;
+        ErrorMessage = null;
+
+        var (success, message, user) = await AuthService.LoginAsync(LoginModel.MatricNo, LoginModel.Password);
+
+        if (success && user != null)
+        {
+            Navigation.NavigateTo("/dashboard");
+        }
+        else
+        {
+            ErrorMessage = message ?? "Login failed";
+        }
+
+        IsLoading = false;
+    }
+
+    public class LoginRequest
+    {
+        public string MatricNo { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
+    }
+
+    public record UserInfo(string Name, string MatricNo, string Role);
+}

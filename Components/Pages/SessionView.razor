@@ -1,0 +1,239 @@
+@page "/session/{SessionId}"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject AuthService AuthService
+@inject SessionService SessionService
+@inject NavigationManager Navigation
+@using VIIDII.Models
+
+<PageTitle>Session - @SessionId</PageTitle>
+
+@if (CurrentUser == null)
+{
+    <div class="alert alert-warning">Please log in first.</div>
+}
+else if (CurrentSession == null)
+{
+    <div class="alert alert-danger">Session not found or you don't have access.</div>
+}
+else
+{
+    <div class="session-container">
+        <div class="session-header">
+            <h1>📹 @CurrentSession.Title</h1>
+            <p>Session ID: <strong>@SessionId</strong></p>
+            <p>Status: <strong>@CurrentSession.Status</strong></p>
+        </div>
+
+        @if (IsLecturer)
+        {
+            <div class="lecturer-controls">
+                <h2>Lecturer Controls</h2>
+                @if (!CurrentSession.IsSessionStarted)
+                {
+                    <button class="btn btn-success" @onclick="StartSession">🎬 Start Session</button>
+                }
+                else
+                {
+                    <button class="btn btn-danger" @onclick="EndSession">🛑 End Session</button>
+                }
+                
+                <h3>Participants: @CurrentSession.ParticipantIds.Count</h3>
+                <div class="participants-list">
+                    @foreach (var participantId in CurrentSession.ParticipantIds)
+                    {
+                        var status = CurrentSession.ParticipantStatuses.ContainsKey(participantId) 
+                            ? CurrentSession.ParticipantStatuses[participantId].ToString() 
+                            : "Unknown";
+                        <div class="participant-item">
+                            <span>@participantId</span>
+                            <span class="badge badge-@status.ToLower()">@status</span>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="student-view">
+                <h2>Session Information</h2>
+                <p>You are connected to this session.</p>
+                @if (CurrentSession.IsSessionStarted)
+                {
+                    <p class="text-success">✅ Session is live!</p>
+                }
+                else
+                {
+                    <p class="text-warning">⏳ Waiting for lecturer to start...</p>
+                }
+            </div>
+        }
+    </div>
+
+    <style>
+        .session-container {
+            max-width: 1200px;
+            margin: 2rem auto;
+            padding: 2rem;
+        }
+
+        .session-header {
+            background: linear-gradient(135deg, #8338EC 0%, #C19BF5 100%);
+            color: white;
+            padding: 2rem;
+            border-radius: 1rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 8px 24px rgba(131, 56, 236, 0.2);
+        }
+
+        .session-header h1 {
+            margin: 0 0 0.5rem 0;
+        }
+
+        .lecturer-controls, .student-view {
+            background: white;
+            padding: 2rem;
+            border-radius: 1rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        .btn {
+            padding: 0.75rem 2rem;
+            border: none;
+            border-radius: 0.5rem;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            margin-right: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            color: white;
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+            color: white;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        .participants-list {
+            margin-top: 1rem;
+        }
+
+        .participant-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.75rem;
+            border-bottom: 1px solid #eee;
+        }
+
+        .badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: 1rem;
+            font-size: 0.875rem;
+            font-weight: 600;
+        }
+
+        .badge-active {
+            background: #28a745;
+            color: white;
+        }
+
+        .badge-inactive {
+            background: #ffc107;
+            color: #333;
+        }
+
+        .badge-batterylow {
+            background: #fd7e14;
+            color: white;
+        }
+
+        .badge-datafinished {
+            background: #dc3545;
+            color: white;
+        }
+
+        .badge-disconnected {
+            background: #6c757d;
+            color: white;
+        }
+
+        .text-success {
+            color: #28a745;
+            font-weight: 600;
+        }
+
+        .text-warning {
+            color: #ffc107;
+            font-weight: 600;
+        }
+
+        .alert {
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin: 2rem;
+        }
+
+        .alert-warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+
+        .alert-danger {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+    </style>
+}
+
+@code {
+    [Parameter]
+    public string SessionId { get; set; } = string.Empty;
+
+    private User? CurrentUser;
+    private VIIDII.Models.Session? CurrentSession;
+    private bool IsLecturer => CurrentUser != null && CurrentSession != null && CurrentSession.LecturerId == CurrentUser.MatricNo;
+
+    protected override async Task OnInitializedAsync()
+    {
+        CurrentUser = await AuthService.GetCurrentUserAsync();
+        if (CurrentUser == null)
+        {
+            Navigation.NavigateTo("/login");
+            return;
+        }
+
+        CurrentSession = SessionService.GetSessionById(SessionId);
+        if (CurrentSession == null)
+        {
+            Navigation.NavigateTo("/dashboard");
+        }
+    }
+
+    private void StartSession()
+    {
+        if (CurrentSession != null && IsLecturer)
+        {
+            SessionService.StartSession(SessionId);
+            StateHasChanged();
+        }
+    }
+
+    private void EndSession()
+    {
+        if (CurrentSession != null && IsLecturer)
+        {
+            SessionService.EndSession(SessionId, CurrentUser!.MatricNo);
+            Navigation.NavigateTo("/dashboard");
+        }
+    }
+}

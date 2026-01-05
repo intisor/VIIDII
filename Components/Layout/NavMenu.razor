@@ -1,0 +1,63 @@
+@inject NavigationManager Navigation
+@inject AuthService AuthService
+
+<div class="navbar navbar-expand-lg navbar-dark bg-dark">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="">VIIDII</a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+            <ul class="navbar-nav ms-auto">
+                @if (CurrentUser != null)
+                {
+                    <li class="nav-item">
+                        <span class="nav-link text-light">Logged in as: @CurrentUser.MatricNo</span>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/dashboard">Dashboard</a>
+                    </li>
+                    @if (CurrentUser.Role == Role.Lecturer)
+                    {
+                        <li class="nav-item">
+                            <a class="nav-link" href="/create-session">Create Session</a>
+                        </li>
+                    }
+                    @if (CurrentUser.Role == Role.Admin)
+                    {
+                        <li class="nav-item">
+                            <a class="nav-link" href="/admin">Admin</a>
+                        </li>
+                    }
+                    <li class="nav-item">
+                        <a class="nav-link" href="/join-session">Join Session</a>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link btn btn-link" @onclick="Logout">Logout</button>
+                    </li>
+                }
+                else
+                {
+                    <li class="nav-item">
+                        <a class="nav-link" href="/login">Login</a>
+                    </li>
+                }
+            </ul>
+        </div>
+    </div>
+</div>
+
+@code {
+    private User? CurrentUser;
+
+    protected override async Task OnInitializedAsync()
+    {
+        CurrentUser = await AuthService.GetCurrentUserAsync();
+    }
+
+    private async Task Logout()
+    {
+        await AuthService.LogoutAsync();
+        Navigation.NavigateTo("/login", forceLoad: true);
+    }
+}

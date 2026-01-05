@@ -1,0 +1,12 @@
+<Solution>
+  <Project Path="VIIDII.csproj">
+    <Configuration>
+      <Name>Debug</Name>
+      <Platform>Any CPU</Platform>
+    </Configuration>
+    <Configuration>
+      <Name>Release</Name>
+      <Platform>Any CPU</Platform>
+    </Configuration>
+  </Project>
+</Solution>

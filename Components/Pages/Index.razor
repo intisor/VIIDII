@@ -1,0 +1,126 @@
+@page "/"
+@inject NavigationManager Navigation
+@inject AuthService AuthService
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+<PageTitle>Welcome to VIIDII</PageTitle>
+
+<div class="welcome-container">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: rgba(255, 255, 255, 0.9);
+            font-family: 'Poppins', sans-serif;
+            color: #333;
+        }
+
+        .welcome-container {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            position: relative;
+            overflow: hidden;
+            background: linear-gradient(135deg, rgba(131, 56, 236, 0.1) 0%, rgba(193, 155, 245, 0.1) 100%);
+        }
+
+        .welcome-content {
+            text-align: center;
+            z-index: 10;
+        }
+
+        .welcome-title {
+            font-size: 3.5rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            background: linear-gradient(128.97deg, #8338EC 2.4%, #C19BF5 85.87%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .welcome-subtitle {
+            font-size: 1.25rem;
+            color: #666;
+            margin-bottom: 2rem;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            margin-top: 2rem;
+        }
+
+        .btn-custom {
+            padding: 0.75rem 2rem;
+            border: none;
+            border-radius: 0.5rem;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+        }
+
+        .btn-primary-custom {
+            background: linear-gradient(128.97deg, #8338EC 2.4%, #C19BF5 85.87%);
+            color: white;
+        }
+
+        .btn-primary-custom:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 16px rgba(131, 56, 236, 0.3);
+        }
+
+        .btn-secondary-custom {
+            background: white;
+            color: #8338EC;
+            border: 2px solid #8338EC;
+        }
+
+        .btn-secondary-custom:hover {
+            background: #8338EC;
+            color: white;
+        }
+    </style>
+
+    <div class="welcome-content">
+        <h1 class="welcome-title">Welcome to VIIDII</h1>
+        <p class="welcome-subtitle">Session Attendance Management System</p>
+        
+        <div class="btn-group">
+            @if (IsAuthenticated)
+            {
+                <button class="btn-custom btn-primary-custom" @onclick="GoDashboard">
+                    Go to Dashboard
+                </button>
+            }
+            else
+            {
+                <button class="btn-custom btn-primary-custom" @onclick="GoLogin">
+                    Login
+                </button>
+                <button class="btn-custom btn-secondary-custom" @onclick="GoAbout">
+                    Learn More
+                </button>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private bool IsAuthenticated { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = await AuthService.GetCurrentUserAsync();
+        IsAuthenticated = user != null;
+    }
+
+    private void GoDashboard() => Navigation.NavigateTo("/dashboard");
+    private void GoLogin() => Navigation.NavigateTo("/login");
+    private void GoAbout() => Navigation.NavigateTo("/about");
+}

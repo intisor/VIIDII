@@ -1,0 +1,149 @@
+@page "/dashboard"
+@inject AuthService AuthService
+@inject NavigationManager Navigation
+@inject SessionService SessionService
+
+<PageTitle>Dashboard - VIIDII</PageTitle>
+
+@if (CurrentUser == null)
+{
+    <div class="alert alert-warning">Please log in first.</div>
+}
+else
+{
+    <style>
+        .dashboard-container {
+            max-width: 1200px;
+            margin: 2rem auto;
+            padding: 2rem;
+        }
+
+        .dashboard-header {
+            background: linear-gradient(135deg, #8338EC 0%, #C19BF5 100%);
+            color: white;
+            padding: 2rem;
+            border-radius: 1rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 8px 24px rgba(131, 56, 236, 0.2);
+        }
+
+        .dashboard-header h1 {
+            margin: 0 0 0.5rem 0;
+            font-size: 2rem;
+        }
+
+        .role-badge {
+            display: inline-block;
+            background: rgba(255, 255, 255, 0.2);
+            padding: 0.5rem 1rem;
+            border-radius: 2rem;
+            font-size: 0.875rem;
+            font-weight: 600;
+        }
+
+        .section-card {
+            background: white;
+            padding: 2rem;
+            border-radius: 1rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            margin-bottom: 1.5rem;
+        }
+
+        .section-card h2 {
+            margin-top: 0;
+            color: #333;
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .btn-primary-custom {
+            background: linear-gradient(128.97deg, #8338EC 2.4%, #C19BF5 85.87%);
+            color: white;
+            border: none;
+            padding: 0.75rem 2rem;
+            border-radius: 0.5rem;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary-custom:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 16px rgba(131, 56, 236, 0.3);
+        }
+
+        .info-text {
+            color: #666;
+            margin-bottom: 1rem;
+        }
+    </style>
+
+    <div class="dashboard-container">
+        <div class="dashboard-header">
+            <h1>Welcome, @CurrentUser.Name! 👋</h1>
+            <span class="role-badge">@CurrentUser.Role</span>
+            @if (CurrentUser.Department != null)
+            {
+                <span class="role-badge">@CurrentUser.Department</span>
+            }
+            @if (CurrentUser.Level != null)
+            {
+                <span class="role-badge">@CurrentUser.Level</span>
+            }
+        </div>
+
+        @if (CurrentUser.Role.ToString() == "Lecturer")
+        {
+            <div class="section-card">
+                <h2>📚 Lecturer Dashboard</h2>
+                <p class="info-text">Create and manage your video conferencing sessions</p>
+                <button class="btn-primary-custom" @onclick="GoCreateSession">
+                    ➕ Create New Session
+                </button>
+            </div>
+        }
+        else if (CurrentUser.Role.ToString() == "Student")
+        {
+            <div class="section-card">
+                <h2>🎓 Student Dashboard</h2>
+                <p class="info-text">Join available sessions and participate in live classes</p>
+                @if (CurrentSession != null)
+                {
+                    <p><strong>Active Session:</strong> @CurrentSession.Title</p>
+                }
+                <button class="btn-primary-custom" @onclick="GoJoinSession">
+                    🎥 Join Session
+                </button>
+            </div>
+        }
+        else if (CurrentUser.Role.ToString() == "Admin")
+        {
+            <div class="section-card">
+                <h2>⚙️ Admin Dashboard</h2>
+                <p class="info-text">Manage users, sessions, and system settings</p>
+                <button class="btn-primary-custom" @onclick="GoAdmin">
+                    🔧 Admin Panel
+                </button>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private User? CurrentUser;
+    private Session? CurrentSession = null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        CurrentUser = await AuthService.GetCurrentUserAsync();
+        if (CurrentUser == null)
+        {
+            Navigation.NavigateTo("/login");
+        }
+    }
+
+    private void GoCreateSession() => Navigation.NavigateTo("/create-session");
+    private void GoJoinSession() => Navigation.NavigateTo("/join-session");
+    private void GoAdmin() => Navigation.NavigateTo("/admin");
+}

@@ -1,0 +1,20 @@
+@page "/join-session"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+
+<PageTitle>Join Session</PageTitle>
+
+<h1>Join Session</h1>
+
+<p>Enter the session code to join.</p>
+
+<div class="row">
+    <div class="col-md-4">
+        <form>
+            <div class="form-group mb-3">
+                <label for="sessionCode" class="form-label">Session Code</label>
+                <input type="text" class="form-control" id="sessionCode" placeholder="Enter code" />
+            </div>
+            <button type="submit" class="btn btn-primary">Join</button>
+        </form>
+    </div>
+</div>

@@ -1,0 +1,17 @@
+@using Microsoft.AspNetCore.Components.Routing
+@using VIIDII.Components.Layout
+
+<Router AppAssembly="@typeof(Program).Assembly">
+    <Found Context="routeData">
+        <RouteView RouteData="@routeData" DefaultLayout="@typeof(Layout.MainLayout)" />
+        <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+    </Found>
+    <NotFound>
+        <PageTitle>Not found</PageTitle>
+        <LayoutView Layout="@typeof(Layout.MainLayout)">
+            <div class="alert alert-warning" role="alert">
+                <p><strong>Sorry</strong>, there's nothing at this address.</p>
+            </div>
+        </LayoutView>
+    </NotFound>
+</Router>
