@@ -34,6 +34,7 @@
     public class Session
     {
         public string SessionId { get; } = GenerateSessionCode();
+        public DateTime CreatedAt { get; } = DateTime.UtcNow;
         public Session(string lecturerId)
         {
             LecturerId = lecturerId;

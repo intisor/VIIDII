@@ -1,0 +1,86 @@
+@page "/student/home"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject AuthService AuthService
+@inject NavigationManager Navigation
+@inject SessionService SessionService
+
+<PageTitle>Student Home - VIIDII</PageTitle>
+
+@if (CurrentUser is null)
+{
+    <div class="alert alert-warning">Please log in first.</div>
+}
+else if (CurrentUser.Role != Role.Student)
+{
+    <div class="alert alert-warning">Access denied. Student role required.</div>
+}
+else
+{
+    <div class="dashboard-container">
+        <div class="dashboard-header">
+            <h1>Welcome, @CurrentUser.Name!</h1>
+            <span class="role-badge">Student</span>
+            @if (CurrentUser.Department is not null)
+            {
+                <span class="role-badge">@CurrentUser.Department</span>
+            }
+            @if (CurrentUser.Level is not null)
+            {
+                <span class="role-badge">@CurrentUser.Level</span>
+            }
+        </div>
+
+        <div class="section-card">
+            <h2>Join Sessions</h2>
+            <p class="info-text">Enter a session code or browse eligible sessions.</p>
+            <div class="btn-row">
+                <button class="btn-primary-custom" @onclick="GoJoinSession">Join a Session</button>
+                @if (CurrentSession is not null)
+                {
+                    <button class="btn-secondary-custom" @onclick="() => GoSession(CurrentSession.SessionId)">Go to Active Session</button>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private User? CurrentUser;
+    private Session? CurrentSession;
+
+    protected override async Task OnInitializedAsync()
+    {
+        CurrentUser = await AuthService.GetCurrentUserAsync();
+        if (CurrentUser is null)
+        {
+            Navigation.NavigateTo("/login");
+            return;
+        }
+
+        if (CurrentUser.Role != Role.Student)
+        {
+            Navigation.NavigateTo("/dashboard");
+            return;
+        }
+
+        CurrentSession = SessionService.GetSessionByParticipant(CurrentUser.MatricNo);
+    }
+
+    private void GoJoinSession() => Navigation.NavigateTo("/join-session");
+    private void GoSession(string sessionId) => Navigation.NavigateTo($"/session/{sessionId}");
+}
+
+<style>
+    .dashboard-container { max-width: 1200px; margin: 2rem auto; padding: 2rem; }
+    .dashboard-header { background: linear-gradient(135deg, #8338EC 0%, #C19BF5 100%); color: white; padding: 2rem; border-radius: 1rem; margin-bottom: 2rem; box-shadow: 0 8px 24px rgba(131, 56, 236, 0.2); }
+    .dashboard-header h1 { margin: 0 0 0.5rem 0; font-size: 2rem; }
+    .role-badge { display: inline-block; background: rgba(255, 255, 255, 0.2); padding: 0.5rem 1rem; border-radius: 2rem; font-size: 0.875rem; font-weight: 600; }
+    .section-card { background: white; padding: 2rem; border-radius: 1rem; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); margin-bottom: 1.5rem; }
+    .section-card h2 { margin: 0 0 0.75rem 0; color: #333; font-size: 1.5rem; }
+    .info-text { color: #666; margin-bottom: 1rem; }
+    .btn-row { display: flex; gap: 1rem; flex-wrap: wrap; }
+    .btn-primary-custom { background: linear-gradient(128.97deg, #8338EC 2.4%, #C19BF5 85.87%); color: white; border: none; padding: 0.75rem 2rem; border-radius: 0.5rem; font-size: 1rem; font-weight: 600; cursor: pointer; transition: all 0.3s ease; }
+    .btn-primary-custom:hover { transform: translateY(-2px); box-shadow: 0 8px 16px rgba(131, 56, 236, 0.3); }
+    .btn-secondary-custom { background: white; color: #8338EC; border: 2px solid #8338EC; padding: 0.75rem 1.5rem; border-radius: 0.5rem; font-weight: 600; cursor: pointer; transition: all 0.3s ease; }
+    .btn-secondary-custom:hover { background: #8338EC; color: white; box-shadow: 0 8px 16px rgba(131, 56, 236, 0.2); }
+</style>

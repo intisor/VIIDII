@@ -1,7 +1,185 @@
 @page "/about"
 
-<PageTitle>About Us</PageTitle>
+<PageTitle>About VIIDII</PageTitle>
 
-<h1>About VIIDII</h1>
+<style>
+    .about-container {
+        max-width: 1000px;
+        margin: 2rem auto;
+        padding: 2rem;
+    }
 
-<p>VIIDII is a Session Attendance Management System.</p>
+    .about-header {
+        background: linear-gradient(135deg, #8338EC 0%, #C19BF5 100%);
+        color: white;
+        padding: 3rem 2rem;
+        border-radius: 1rem;
+        margin-bottom: 2rem;
+        text-align: center;
+        box-shadow: 0 8px 24px rgba(131, 56, 236, 0.2);
+    }
+
+    .about-header h1 {
+        margin: 0 0 1rem 0;
+        font-size: 2.5rem;
+    }
+
+    .about-header p {
+        font-size: 1.25rem;
+        margin: 0;
+        opacity: 0.9;
+    }
+
+    .content-section {
+        background: white;
+        padding: 2rem;
+        border-radius: 1rem;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        margin-bottom: 2rem;
+    }
+
+    .content-section h2 {
+        color: #8338EC;
+        font-size: 1.75rem;
+        margin-top: 0;
+        margin-bottom: 1rem;
+    }
+
+    .content-section p {
+        color: #666;
+        line-height: 1.6;
+        margin-bottom: 1rem;
+    }
+
+    .features-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 1.5rem;
+        margin-top: 1.5rem;
+    }
+
+    .feature-card {
+        background: #f8f9fa;
+        padding: 1.5rem;
+        border-radius: 0.5rem;
+        border-left: 4px solid #8338EC;
+    }
+
+    .feature-card h3 {
+        color: #333;
+        font-size: 1.25rem;
+        margin-top: 0;
+        margin-bottom: 0.5rem;
+    }
+
+    .feature-card p {
+        color: #666;
+        margin: 0;
+        font-size: 0.95rem;
+    }
+
+    .tech-stack {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+        margin-top: 1rem;
+    }
+
+    .tech-badge {
+        background: #8338EC;
+        color: white;
+        padding: 0.5rem 1rem;
+        border-radius: 2rem;
+        font-weight: 600;
+        font-size: 0.9rem;
+    }
+</style>
+
+<div class="about-container">
+    <div class="about-header">
+        <h1>About VIIDII</h1>
+        <p>Session Attendance Management System</p>
+    </div>
+
+    <div class="content-section">
+        <h2>What is VIIDII?</h2>
+        <p>
+            VIIDII is a comprehensive Session Attendance Management System designed to streamline 
+            the process of managing virtual and in-person educational sessions. Built with modern 
+            web technologies, VIIDII provides a seamless experience for both educators and students.
+        </p>
+        <p>
+            The platform enables lecturers to create and manage sessions, while students can easily 
+            join and participate in real-time classes. With built-in attendance tracking and 
+            real-time communication features, VIIDII ensures efficient session management.
+        </p>
+    </div>
+
+    <div class="content-section">
+        <h2>Key Features</h2>
+        <div class="features-grid">
+            <div class="feature-card">
+                <h3>Session Management</h3>
+                <p>Create, schedule, and manage educational sessions with ease.</p>
+            </div>
+            <div class="feature-card">
+                <h3>Real-time Communication</h3>
+                <p>Built-in SignalR support for instant updates and notifications.</p>
+            </div>
+            <div class="feature-card">
+                <h3>Role-based Access</h3>
+                <p>Different interfaces for Students, Lecturers, and Administrators.</p>
+            </div>
+            <div class="feature-card">
+                <h3>Attendance Tracking</h3>
+                <p>Automatic attendance recording and status monitoring.</p>
+            </div>
+            <div class="feature-card">
+                <h3>Department Filtering</h3>
+                <p>Target specific departments and levels for your sessions.</p>
+            </div>
+            <div class="feature-card">
+                <h3>Admin Dashboard</h3>
+                <p>Comprehensive system overview and user management tools.</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="content-section">
+        <h2>Technology Stack</h2>
+        <p>VIIDII is built using cutting-edge technologies to ensure performance, reliability, and scalability:</p>
+        <div class="tech-stack">
+            <span class="tech-badge">ASP.NET Core</span>
+            <span class="tech-badge">Blazor</span>
+            <span class="tech-badge">SignalR</span>
+            <span class="tech-badge">C#</span>
+            <span class="tech-badge">Real-time WebSockets</span>
+            <span class="tech-badge">Bootstrap</span>
+        </div>
+    </div>
+
+    <div class="content-section">
+        <h2>How It Works</h2>
+        <p>
+            <strong>For Lecturers:</strong> Log in, create a new session with customizable parameters, 
+            and share the session code with your students. Monitor attendance and manage participants 
+            in real-time.
+        </p>
+        <p>
+            <strong>For Students:</strong> Log in and join sessions either by entering a session code 
+            or browsing available sessions. Your attendance is automatically tracked once you join.
+        </p>
+        <p>
+            <strong>For Administrators:</strong> Access comprehensive dashboards to monitor system usage, 
+            manage users, oversee all sessions, and maintain system integrity.
+        </p>
+    </div>
+
+    <div class="content-section">
+        <h2>Contact & Support</h2>
+        <p>
+            For questions, support, or feedback about VIIDII, please contact your system administrator 
+            or refer to your institution's IT support channels.
+        </p>
+    </div>
+</div>

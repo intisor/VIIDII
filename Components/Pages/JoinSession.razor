@@ -1,20 +1,435 @@
 @page "/join-session"
-@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject AuthService AuthService
+@inject SessionService SessionService
+@inject NavigationManager Navigation
+@using VIIDII.Models
 
-<PageTitle>Join Session</PageTitle>
+<PageTitle>Join Session - VIIDII</PageTitle>
 
-<h1>Join Session</h1>
+<style>
+    .join-session-container {
+        max-width: 1200px;
+        margin: 2rem auto;
+        padding: 2rem;
+    }
 
-<p>Enter the session code to join.</p>
+    .page-header {
+        background: linear-gradient(135deg, #8338EC 0%, #C19BF5 100%);
+        color: white;
+        padding: 2rem;
+        border-radius: 1rem;
+        margin-bottom: 2rem;
+        box-shadow: 0 8px 24px rgba(131, 56, 236, 0.2);
+    }
 
-<div class="row">
-    <div class="col-md-4">
-        <form>
-            <div class="form-group mb-3">
-                <label for="sessionCode" class="form-label">Session Code</label>
-                <input type="text" class="form-control" id="sessionCode" placeholder="Enter code" />
+    .page-header h1 {
+        margin: 0;
+        font-size: 2rem;
+    }
+
+    .join-methods {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 2rem;
+        margin-bottom: 2rem;
+    }
+
+    .method-card {
+        background: white;
+        padding: 2rem;
+        border-radius: 1rem;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+
+    .method-card h2 {
+        color: #333;
+        font-size: 1.5rem;
+        margin-top: 0;
+        margin-bottom: 1rem;
+    }
+
+    .form-group {
+        margin-bottom: 1.5rem;
+    }
+
+    .form-label {
+        display: block;
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+        color: #333;
+    }
+
+    .form-control {
+        width: 100%;
+        padding: 0.75rem;
+        border: 2px solid #ddd;
+        border-radius: 0.5rem;
+        font-size: 1rem;
+        transition: border-color 0.3s ease;
+    }
+
+    .form-control:focus {
+        outline: none;
+        border-color: #8338EC;
+    }
+
+    .btn-primary {
+        width: 100%;
+        padding: 0.75rem;
+        background: linear-gradient(128.97deg, #8338EC 2.4%, #C19BF5 85.87%);
+        color: white;
+        border: none;
+        border-radius: 0.5rem;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+
+    .btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 16px rgba(131, 56, 236, 0.3);
+    }
+
+    .sessions-list {
+        background: white;
+        padding: 2rem;
+        border-radius: 1rem;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+
+    .sessions-list h2 {
+        color: #333;
+        font-size: 1.5rem;
+        margin-top: 0;
+        margin-bottom: 1.5rem;
+    }
+
+    .session-item {
+        background: #f8f9fa;
+        padding: 1.5rem;
+        border-radius: 0.5rem;
+        margin-bottom: 1rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        transition: all 0.3s ease;
+    }
+
+    .session-item:hover {
+        background: #e9ecef;
+        transform: translateX(5px);
+    }
+
+    .session-info h3 {
+        margin: 0 0 0.5rem 0;
+        color: #333;
+        font-size: 1.25rem;
+    }
+
+    .session-meta {
+        color: #666;
+        font-size: 0.875rem;
+    }
+
+    .session-status {
+        padding: 0.5rem 1rem;
+        border-radius: 2rem;
+        font-size: 0.875rem;
+        font-weight: 600;
+    }
+
+    .status-active {
+        background: #d4edda;
+        color: #155724;
+    }
+
+    .status-scheduled {
+        background: #fff3cd;
+        color: #856404;
+    }
+
+    .btn-join {
+        padding: 0.5rem 1.5rem;
+        background: #8338EC;
+        color: white;
+        border: none;
+        border-radius: 0.5rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        margin-left: 1rem;
+    }
+
+    .btn-join:hover {
+        background: #6c2bcc;
+        transform: scale(1.05);
+    }
+
+    .alert {
+        padding: 1rem;
+        border-radius: 0.5rem;
+        margin-bottom: 1rem;
+    }
+
+    .alert-info {
+        background: #d1ecf1;
+        color: #0c5460;
+        border: 1px solid #bee5eb;
+    }
+
+    .alert-warning {
+        background: #fff3cd;
+        color: #856404;
+        border: 1px solid #ffeeba;
+    }
+
+    .alert-danger {
+        background: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+    }
+
+    @@media (max-width: 768px) {
+        .join-methods {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+
+@if (CurrentUser == null)
+{
+    <div class="alert alert-warning">Please log in first.</div>
+}
+else
+{
+    <div class="join-session-container">
+        <div class="page-header">
+            <h1>Join a Session</h1>
+            <p>Enter a session code or browse available sessions</p>
+        </div>
+
+        @if (!string.IsNullOrEmpty(ErrorMessage))
+        {
+            <div class="alert alert-danger">@ErrorMessage</div>
+        }
+
+        @if (!string.IsNullOrEmpty(SuccessMessage))
+        {
+            <div class="alert alert-info">@SuccessMessage</div>
+        }
+
+        <div class="join-methods">
+            <div class="method-card">
+                <h2>Join with Code</h2>
+                <p>Have a session code? Enter it here to join directly.</p>
+                <div class="form-group">
+                    <label class="form-label">Session Code</label>
+                    <input type="text" class="form-control" @bind="SessionCode" placeholder="Enter session code" />
+                </div>
+                <button class="btn-primary" @onclick="JoinByCode">Join Session</button>
             </div>
-            <button type="submit" class="btn btn-primary">Join</button>
-        </form>
+
+            <div class="method-card">
+                <h2>Quick Join</h2>
+                <p>Join the most recent active session automatically.</p>
+                <button class="btn-primary" @onclick="JoinLatestSession">Join Latest Session</button>
+            </div>
+        </div>
+
+        <div class="sessions-list">
+            <h2>Available Sessions</h2>
+            @if (AvailableSessions == null || !AvailableSessions.Any())
+            {
+                <div class="alert alert-info">No active sessions available at the moment.</div>
+            }
+            else
+            {
+                @foreach (var session in AvailableSessions)
+                {
+                    <div class="session-item">
+                        <div class="session-info">
+                            <h3>@session.Title</h3>
+                            <div class="session-meta">
+                                <span>Lecturer: @session.LecturerId</span>
+                                <span> | </span>
+                                <span>Departments: @FormatDepartments(session)</span>
+                                <span> | </span>
+                                <span>Levels: @FormatLevels(session)</span>
+                            </div>
+                        </div>
+                        <div style="display: flex; align-items: center;">
+                            <span class="session-status @(session.IsSessionStarted ? "status-active" : "status-scheduled")">
+                                @(session.IsSessionStarted ? "Live" : "Scheduled")
+                            </span>
+                            <button class="btn-join" @onclick="() => JoinSessionById(session.SessionId)">Join</button>
+                        </div>
+                    </div>
+                }
+            }
+        </div>
     </div>
-</div>
+}
+
+@code {
+    private User? CurrentUser;
+    private string SessionCode = "";
+    private string ErrorMessage = "";
+    private string SuccessMessage = "";
+    private List<Session> AvailableSessions = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        CurrentUser = await AuthService.GetCurrentUserAsync();
+        if (CurrentUser == null)
+        {
+            Navigation.NavigateTo("/login");
+            return;
+        }
+
+        await LoadAvailableSessions();
+    }
+
+    private async Task LoadAvailableSessions()
+    {
+        try
+        {
+            AvailableSessions = SessionService.GetAllSessions()
+                .Where(s => s.Status == SessionStatus.Active || s.IsSessionStarted)
+                .Where(IsSessionAllowedForUser)
+                .OrderByDescending(s => s.IsSessionStarted)
+                .ThenByDescending(s => s.CreatedAt)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Error loading sessions: {ex.Message}";
+        }
+    }
+
+    private bool IsSessionAllowedForUser(Session session)
+    {
+        if (CurrentUser is null)
+            return false;
+
+        var deptAllowed = session.AllowedDepartments.Contains(User.Departments.Any) ||
+                          (CurrentUser.Department is not null && session.AllowedDepartments.Contains(CurrentUser.Department.Value));
+
+        var levelAllowed = session.AllowedLevels.Contains(User.Levels.Any) ||
+                           (CurrentUser.Level is not null && session.AllowedLevels.Contains(CurrentUser.Level.Value));
+
+        return deptAllowed && levelAllowed;
+    }
+
+    private async Task JoinByCode()
+    {
+        ErrorMessage = "";
+        SuccessMessage = "";
+
+        if (string.IsNullOrWhiteSpace(SessionCode))
+        {
+            ErrorMessage = "Please enter a session code.";
+            return;
+        }
+
+        try
+        {
+            var session = SessionService.GetSessionByCode(SessionCode);
+            if (session != null)
+            {
+                await JoinSelectedSession(session);
+            }
+            else
+            {
+                ErrorMessage = "Session not found. Please check the code and try again.";
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Error joining session: {ex.Message}";
+        }
+    }
+
+    private async Task JoinLatestSession()
+    {
+        ErrorMessage = "";
+        SuccessMessage = "";
+
+        try
+        {
+            var latestSession = AvailableSessions.FirstOrDefault();
+            if (latestSession != null)
+            {
+                await JoinSelectedSession(latestSession);
+            }
+            else
+            {
+                ErrorMessage = "No active sessions available.";
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Error joining session: {ex.Message}";
+        }
+    }
+
+    private async Task JoinSessionById(string sessionId)
+    {
+        ErrorMessage = "";
+        SuccessMessage = "";
+
+        try
+        {
+            var session = SessionService.GetSession(sessionId);
+            if (session != null)
+            {
+                await JoinSelectedSession(session);
+            }
+            else
+            {
+                ErrorMessage = "Session not found.";
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Error joining session: {ex.Message}";
+        }
+    }
+
+    private async Task JoinSelectedSession(Session session)
+    {
+        try
+        {
+            var (_, error) = SessionService.JoinSession(session.SessionId, CurrentUser!.MatricNo, null);
+            if (error is not null)
+            {
+                ErrorMessage = error;
+                return;
+            }
+            SuccessMessage = $"Successfully joined {session.Title}!";
+            
+            // Navigate to session view after a brief delay
+            await Task.Delay(500);
+            Navigation.NavigateTo($"/session/{session.SessionId}");
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Error joining session: {ex.Message}";
+        }
+    }
+
+    private static string FormatDepartments(Session session)
+    {
+        return session.AllowedDepartments.Contains(User.Departments.Any)
+            ? "All Departments"
+            : string.Join(", ", session.AllowedDepartments);
+    }
+
+    private static string FormatLevels(Session session)
+    {
+        return session.AllowedLevels.Contains(User.Levels.Any)
+            ? "All Levels"
+            : string.Join(", ", session.AllowedLevels);
+    }
+}

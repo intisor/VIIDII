@@ -111,4 +111,9 @@ public class AuthService
         var httpContext = _httpContextAccessor.HttpContext;
         return httpContext?.Session.GetString("MatricNo") != null;
     }
+
+    public List<User> GetAllUsers()
+    {
+        return MockApiService.GetUsers();
+    }
 }

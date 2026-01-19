@@ -71,25 +71,35 @@ public class SessionService
         session.ParticipantIds.Remove(participantId);
         return session;
     }
-    public (Session Session, string Error) JoinSession(string sessionId, string participantId, string connectionId)
+    public (Session Session, string? Error) JoinSession(string sessionId, string participantId, string? connectionId)
     {
         if (!_sessions.TryGetValue(sessionId, out var session) || session.Status == SessionStatus.Ended)
             return (null, "Session not found or inactive.");
         var user = MockApiService.GetUsers().FirstOrDefault(u => u.MatricNo == participantId);
         if (user is null)
             return (null, "Invalid user.");
-        if (!session.AllowedDepartments.Contains(User.Departments.Any) && !session.AllowedDepartments.Contains(user.Department.Value))
-            return (null, "Your department is not allowed for this session.");
 
-        if (!session.AllowedLevels.Contains(User.Levels.Any) &&!session.AllowedLevels.Contains(user.Level.Value))
-            return (null, "Your level is not allowed for this session.");
+        if (!session.AllowedDepartments.Contains(User.Departments.Any))
+        {
+            if (user.Department is null || !session.AllowedDepartments.Contains(user.Department.Value))
+                return (null, "Your department is not allowed for this session.");
+        }
+
+        if (!session.AllowedLevels.Contains(User.Levels.Any))
+        {
+            if (user.Level is null || !session.AllowedLevels.Contains(user.Level.Value))
+                return (null, "Your level is not allowed for this session.");
+        }
+
         if (_sessions.Values.Any(s => s.Status == SessionStatus.Active && s.ParticipantIds.Contains(participantId) && s.SessionId != sessionId))
             return (null, "You are already in a different session.");
-        if (string.IsNullOrEmpty(connectionId))
-            return (null, "Invalid connection ID.");
+
         session.ParticipantIds.Add(participantId);
         session.ParticipantStatuses[participantId] = Session.StudentStatus.Active;
-        session.ParticipantConnectionIds[participantId] = connectionId;
+        if (!string.IsNullOrEmpty(connectionId))
+        {
+            session.ParticipantConnectionIds[participantId] = connectionId;
+        }
 
         // If session has already started, log an initial event for this joining participant
         if (session.Status == SessionStatus.Started)
@@ -113,11 +123,18 @@ public class SessionService
 
         return (session, null);
     }   
+    public Session EndSession(string sessionId)
+    {
+        if (!_sessions.TryGetValue(sessionId, out var session))
+            return null;
+        return EndSession(sessionId, session.LecturerId);
+    }
+
     public Session EndSession(string sessionId, string lecturerId)
     {
         if (!_sessions.TryGetValue(sessionId, out var session))
             return null;
-        if (session.LecturerId != lecturerId || session.Status != SessionStatus.Started)
+        if (session.LecturerId != lecturerId || (session.Status != SessionStatus.Started && session.Status != SessionStatus.Active))
             return null;
         session.Status = SessionStatus.Ended;
         session.EndTime = DateTime.UtcNow.AddHours(1); // Changed DateTimeOffset to DateTime
@@ -385,6 +402,28 @@ public class SessionService
                 break;
             default:
                 break;
+        }
+    }
+
+    // Add missing methods for page functionality
+    public List<Session> GetAllSessions() =>
+        _sessions.Values.ToList();
+
+    public Session? GetSessionByCode(string code) =>
+        _sessions.Values.FirstOrDefault(s => s.SessionId == code);
+
+    public Session? GetSession(string sessionId) =>
+        GetSessionById(sessionId);
+
+    public void AddParticipant(string sessionId, string participantId)
+    {
+        if (_sessions.TryGetValue(sessionId, out var session))
+        {
+            if (!session.ParticipantIds.Contains(participantId))
+            {
+                session.ParticipantIds.Add(participantId);
+                session.ParticipantStatuses[participantId] = Session.StudentStatus.Active;
+            }
         }
     }
 }

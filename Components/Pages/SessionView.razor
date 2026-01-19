@@ -19,7 +19,7 @@ else
 {
     <div class="session-container">
         <div class="session-header">
-            <h1>📹 @CurrentSession.Title</h1>
+            <h1>@CurrentSession.Title</h1>
             <p>Session ID: <strong>@SessionId</strong></p>
             <p>Status: <strong>@CurrentSession.Status</strong></p>
         </div>
@@ -30,11 +30,11 @@ else
                 <h2>Lecturer Controls</h2>
                 @if (!CurrentSession.IsSessionStarted)
                 {
-                    <button class="btn btn-success" @onclick="StartSession">🎬 Start Session</button>
+                    <button class="btn btn-success" @onclick="StartSession">Start Session</button>
                 }
                 else
                 {
-                    <button class="btn btn-danger" @onclick="EndSession">🛑 End Session</button>
+                    <button class="btn btn-danger" @onclick="EndSession">End Session</button>
                 }
                 
                 <h3>Participants: @CurrentSession.ParticipantIds.Count</h3>
@@ -59,11 +59,11 @@ else
                 <p>You are connected to this session.</p>
                 @if (CurrentSession.IsSessionStarted)
                 {
-                    <p class="text-success">✅ Session is live!</p>
+                    <p class="text-success">Session is live!</p>
                 }
                 else
                 {
-                    <p class="text-warning">⏳ Waiting for lecturer to start...</p>
+                    <p class="text-warning">Waiting for lecturer to start...</p>
                 }
             </div>
         }

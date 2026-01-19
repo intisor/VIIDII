@@ -1,8 +1,413 @@
 @page "/admin"
-@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject AuthService AuthService
+@inject SessionService SessionService
+@inject NavigationManager Navigation
+@using VIIDII.Models
 
-<PageTitle>Admin Dashboard</PageTitle>
+<PageTitle>Admin Dashboard - VIIDII</PageTitle>
 
-<h1>Admin Dashboard</h1>
+<style>
+    .admin-container {
+        max-width: 1400px;
+        margin: 2rem auto;
+        padding: 2rem;
+    }
 
-<p>Welcome to the admin area.</p>
+    .admin-header {
+        background: linear-gradient(135deg, #8338EC 0%, #C19BF5 100%);
+        color: white;
+        padding: 2rem;
+        border-radius: 1rem;
+        margin-bottom: 2rem;
+        box-shadow: 0 8px 24px rgba(131, 56, 236, 0.2);
+    }
+
+    .admin-header h1 {
+        margin: 0;
+        font-size: 2rem;
+    }
+
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 1.5rem;
+        margin-bottom: 2rem;
+    }
+
+    .stat-card {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 1rem;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        text-align: center;
+    }
+
+    .stat-number {
+        font-size: 2.5rem;
+        font-weight: 700;
+        color: #8338EC;
+        margin: 0.5rem 0;
+    }
+
+    .stat-label {
+        color: #666;
+        font-size: 1rem;
+        font-weight: 600;
+    }
+
+    .admin-section {
+        background: white;
+        padding: 2rem;
+        border-radius: 1rem;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        margin-bottom: 2rem;
+    }
+
+    .admin-section h2 {
+        color: #333;
+        font-size: 1.5rem;
+        margin-top: 0;
+        margin-bottom: 1.5rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 2px solid #8338EC;
+    }
+
+    .data-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .data-table th {
+        background: #f8f9fa;
+        padding: 1rem;
+        text-align: left;
+        font-weight: 600;
+        color: #333;
+        border-bottom: 2px solid #dee2e6;
+    }
+
+    .data-table td {
+        padding: 1rem;
+        border-bottom: 1px solid #dee2e6;
+    }
+
+    .data-table tr:hover {
+        background: #f8f9fa;
+    }
+
+    .badge {
+        display: inline-block;
+        padding: 0.25rem 0.75rem;
+        border-radius: 1rem;
+        font-size: 0.875rem;
+        font-weight: 600;
+    }
+
+    .badge-active {
+        background: #d4edda;
+        color: #155724;
+    }
+
+    .badge-completed {
+        background: #d1ecf1;
+        color: #0c5460;
+    }
+
+    .badge-cancelled {
+        background: #f8d7da;
+        color: #721c24;
+    }
+
+    .badge-student {
+        background: #cfe2ff;
+        color: #084298;
+    }
+
+    .badge-lecturer {
+        background: #e7e7ff;
+        color: #5c33e6;
+    }
+
+    .badge-admin {
+        background: #ffecd1;
+        color: #856404;
+    }
+
+    .btn {
+        padding: 0.5rem 1rem;
+        border: none;
+        border-radius: 0.5rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        margin-right: 0.5rem;
+    }
+
+    .btn-primary {
+        background: #8338EC;
+        color: white;
+    }
+
+    .btn-primary:hover {
+        background: #6c2bcc;
+    }
+
+    .btn-danger {
+        background: #dc3545;
+        color: white;
+    }
+
+    .btn-danger:hover {
+        background: #bb2d3b;
+    }
+
+    .btn-success {
+        background: #198754;
+        color: white;
+    }
+
+    .btn-success:hover {
+        background: #157347;
+    }
+
+    .alert {
+        padding: 1rem;
+        border-radius: 0.5rem;
+        margin-bottom: 1rem;
+    }
+
+    .alert-warning {
+        background: #fff3cd;
+        color: #856404;
+        border: 1px solid #ffeeba;
+    }
+
+    .alert-info {
+        background: #d1ecf1;
+        color: #0c5460;
+        border: 1px solid #bee5eb;
+    }
+
+    .no-data {
+        text-align: center;
+        padding: 2rem;
+        color: #666;
+        font-style: italic;
+    }
+</style>
+
+@if (CurrentUser == null || CurrentUser.Role.ToString() != "Admin")
+{
+    <div class="alert alert-warning">Access denied. Admin privileges required.</div>
+}
+else
+{
+    <div class="admin-container">
+        <div class="admin-header">
+            <h1>Admin Dashboard</h1>
+            <p>System overview and management</p>
+        </div>
+
+        @if (!string.IsNullOrEmpty(Message))
+        {
+            <div class="alert alert-info">@Message</div>
+        }
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">Total Users</div>
+                <div class="stat-number">@TotalUsers</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Active Sessions</div>
+                <div class="stat-number">@ActiveSessions</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Total Sessions</div>
+                <div class="stat-number">@TotalSessions</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Lecturers</div>
+                <div class="stat-number">@TotalLecturers</div>
+            </div>
+        </div>
+
+        <div class="admin-section">
+            <h2>Recent Sessions</h2>
+            @if (RecentSessions.Any())
+            {
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Session ID</th>
+                            <th>Title</th>
+                            <th>Lecturer</th>
+                            <th>Audience</th>
+                            <th>Status</th>
+                            <th>Participants</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var session in RecentSessions)
+                        {
+                            <tr>
+                                <td>@session.SessionId</td>
+                                <td>@session.Title</td>
+                                <td>@session.LecturerId</td>
+                                <td>
+                                    <div>Dept: @FormatDepartments(session)</div>
+                                    <div>Level: @FormatLevels(session)</div>
+                                </td>
+                                <td>
+                                    <span class="badge badge-@session.Status.ToString().ToLower()">
+                                        @session.Status
+                                    </span>
+                                </td>
+                                <td>@session.ParticipantIds.Count</td>
+                                <td>
+                                    <button class="btn btn-primary" @onclick="() => ViewSession(session.SessionId)">View</button>
+                                    @if (session.Status == SessionStatus.Active || session.Status == SessionStatus.Started)
+                                    {
+                                        <button class="btn btn-danger" @onclick="() => EndSessionAdmin(session.SessionId)">End</button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+            else
+            {
+                <div class="no-data">No sessions found</div>
+            }
+        </div>
+
+        <div class="admin-section">
+            <h2>User Management</h2>
+            @if (AllUsers.Any())
+            {
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Matric No</th>
+                            <th>Name</th>
+                            <th>Role</th>
+                            <th>Department</th>
+                            <th>Level</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var user in AllUsers)
+                        {
+                            <tr>
+                                <td>@user.MatricNo</td>
+                                <td>@user.Name</td>
+                                <td>
+                                    <span class="badge badge-@user.Role.ToString().ToLower()">
+                                        @user.Role
+                                    </span>
+                                </td>
+                                <td>@(user.Department?.ToString() ?? "N/A")</td>
+                                <td>@(user.Level?.ToString() ?? "N/A")</td>
+                                <td>Active</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+            else
+            {
+                <div class="no-data">No users found</div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private User? CurrentUser;
+    private string Message = "";
+    
+    private int TotalUsers;
+    private int ActiveSessions;
+    private int TotalSessions;
+    private int TotalLecturers;
+    
+    private List<Session> RecentSessions = new();
+    private List<User> AllUsers = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        CurrentUser = await AuthService.GetCurrentUserAsync();
+        
+        if (CurrentUser == null)
+        {
+            Navigation.NavigateTo("/login");
+            return;
+        }
+
+        if (CurrentUser.Role.ToString() != "Admin")
+        {
+            Navigation.NavigateTo("/dashboard");
+            return;
+        }
+
+        LoadStatistics();
+    }
+
+    private void LoadStatistics()
+    {
+        // Get all users
+        AllUsers = AuthService.GetAllUsers();
+        TotalUsers = AllUsers.Count;
+        TotalLecturers = AllUsers.Count(u => u.Role == Role.Lecturer);
+
+        // Get all sessions
+        var allSessions = SessionService.GetAllSessions();
+        TotalSessions = allSessions.Count;
+        ActiveSessions = allSessions.Count(s => s.Status == SessionStatus.Active || s.IsSessionStarted);
+        
+        // Get recent sessions (last 10)
+        RecentSessions = allSessions
+            .OrderByDescending(s => s.CreatedAt)
+            .Take(10)
+            .ToList();
+    }
+
+    private void ViewSession(string sessionId)
+    {
+        Navigation.NavigateTo($"/session/{sessionId}");
+    }
+
+    private void EndSessionAdmin(string sessionId)
+    {
+        try
+        {
+            var ended = SessionService.EndSession(sessionId);
+            Message = ended is not null
+                ? $"Session {sessionId} has been ended."
+                : "Session not found.";
+            LoadStatistics(); // Refresh data
+        }
+        catch (Exception ex)
+        {
+            Message = $"Error ending session: {ex.Message}";
+        }
+    }
+
+    private static string FormatDepartments(Session session)
+    {
+        return session.AllowedDepartments.Contains(User.Departments.Any)
+            ? "All Departments"
+            : string.Join(", ", session.AllowedDepartments);
+    }
+
+    private static string FormatLevels(Session session)
+    {
+        return session.AllowedLevels.Contains(User.Levels.Any)
+            ? "All Levels"
+            : string.Join(", ", session.AllowedLevels);
+    }
+}
