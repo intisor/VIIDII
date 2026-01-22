@@ -1,0 +1,268 @@
+/* ParticipantPanel.razor.css */
+
+.participant-panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    border-bottom: 2px solid #eee;
+}
+
+.panel-header h3 {
+    margin: 0;
+    font-size: 1.2rem;
+    color: #333;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.btn-prompt {
+    background: linear-gradient(135deg, #8338EC, #C19BF5);
+    color: white;
+    border: none;
+    padding: 0.6rem 1.25rem;
+    border-radius: 0.5rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.btn-prompt:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(131, 56, 236, 0.3);
+}
+
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    color: #999;
+    padding: 3rem 1rem;
+}
+
+.empty-state i {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    opacity: 0.5;
+}
+
+.empty-state .hint {
+    font-size: 0.875rem;
+    color: #bbb;
+}
+
+.engagement-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+    padding: 1rem;
+    background: #f8f9fa;
+}
+
+.stat-card {
+    background: white;
+    padding: 1rem;
+    border-radius: 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.stat-card i {
+    font-size: 2rem;
+}
+
+.stat-card.active i {
+    color: #28a745;
+}
+
+.stat-card.inactive i {
+    color: #ffc107;
+}
+
+.stat-card.issues i {
+    color: #dc3545;
+}
+
+.stat-card .count {
+    display: block;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #333;
+}
+
+.stat-card .label {
+    display: block;
+    font-size: 0.8rem;
+    color: #666;
+    text-transform: uppercase;
+}
+
+.participants-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.participant-item {
+    background: white;
+    border-radius: 0.75rem;
+    padding: 1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    border-left: 4px solid #dee2e6;
+    transition: all 0.2s;
+}
+
+.participant-item:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+.participant-item.status-active {
+    border-left-color: #28a745;
+}
+
+.participant-item.status-inactive {
+    border-left-color: #ffc107;
+}
+
+.participant-item.status-batterylow {
+    border-left-color: #fd7e14;
+}
+
+.participant-item.status-datafinished {
+    border-left-color: #dc3545;
+}
+
+.participant-item.status-disconnected {
+    border-left-color: #6c757d;
+}
+
+.participant-info {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.participant-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #8338EC, #C19BF5);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 0.875rem;
+}
+
+.participant-details {
+    display: flex;
+    flex-direction: column;
+}
+
+.participant-name {
+    font-weight: 600;
+    color: #333;
+}
+
+.participant-id {
+    font-size: 0.75rem;
+    color: #999;
+}
+
+.participant-status {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 0.75rem;
+    border-radius: 1rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    background: #f8f9fa;
+    color: #666;
+}
+
+.participant-status i {
+    font-size: 1rem;
+}
+
+.status-active .participant-status {
+    background: #d4edda;
+    color: #155724;
+}
+
+.status-inactive .participant-status {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.status-batterylow .participant-status {
+    background: #ffe5cc;
+    color: #cc5500;
+}
+
+.status-datafinished .participant-status {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.status-disconnected .participant-status {
+    background: #e2e3e5;
+    color: #383d41;
+}
+
+/* Scrollbar */
+.participants-list::-webkit-scrollbar {
+    width: 6px;
+}
+
+.participants-list::-webkit-scrollbar-track {
+    background: #f1f1f1;
+}
+
+.participants-list::-webkit-scrollbar-thumb {
+    background: #ccc;
+    border-radius: 10px;
+}
+
+.participants-list::-webkit-scrollbar-thumb:hover {
+    background: #999;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .engagement-stats {
+        grid-template-columns: 1fr;
+    }
+
+    .panel-header {
+        flex-direction: column;
+        gap: 1rem;
+        align-items: stretch;
+    }
+
+    .btn-prompt {
+        width: 100%;
+        justify-content: center;
+    }
+}

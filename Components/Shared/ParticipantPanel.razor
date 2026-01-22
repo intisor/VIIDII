@@ -1,0 +1,146 @@
+@using VIIDII.Models
+@using Microsoft.AspNetCore.SignalR.Client
+
+<div class="participant-panel">
+    <div class="panel-header">
+        <h3>
+            <i class="fas fa-users"></i> 
+            Participants (@Participants.Count)
+        </h3>
+        
+        @if (IsLecturer && Participants.Count > 0)
+        {
+            <button class="btn-prompt" @onclick="PromptEngagement">
+                <i class="fas fa-hand-paper"></i> Prompt All
+            </button>
+        }
+    </div>
+
+    @if (Participants.Count == 0)
+    {
+        <div class="empty-state">
+            <i class="fas fa-user-slash"></i>
+            <p>No participants yet</p>
+            <p class="hint">Students will appear here when they join</p>
+        </div>
+    }
+    else
+    {
+        <!-- Engagement Stats (Lecturer Only) -->
+        @if (IsLecturer)
+        {
+            <div class="engagement-stats">
+                <div class="stat-card active">
+                    <i class="fas fa-check-circle"></i>
+                    <div>
+                        <span class="count">@ActiveCount</span>
+                        <span class="label">Active</span>
+                    </div>
+                </div>
+                <div class="stat-card inactive">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <div>
+                        <span class="count">@InactiveCount</span>
+                        <span class="label">Inactive</span>
+                    </div>
+                </div>
+                <div class="stat-card issues">
+                    <i class="fas fa-flag"></i>
+                    <div>
+                        <span class="count">@IssuesCount</span>
+                        <span class="label">Issues</span>
+                    </div>
+                </div>
+            </div>
+        }
+
+        <!-- Participant List -->
+        <div class="participants-list">
+            @foreach (var participant in Participants.OrderBy(p => p.Value))
+            {
+                var status = ParticipantStatuses.ContainsKey(participant.Key)
+                    ? ParticipantStatuses[participant.Key]
+                    : Session.StudentStatus.Disconnected;
+
+                <div class="participant-item status-@status.ToString().ToLower()">
+                    <div class="participant-info">
+                        <div class="participant-avatar">
+                            @GetInitials(participant.Value)
+                        </div>
+                        <div class="participant-details">
+                            <span class="participant-name">@participant.Value</span>
+                            <span class="participant-id">@participant.Key</span>
+                        </div>
+                    </div>
+                    <div class="participant-status">
+                        <i class="fas fa-@GetStatusIcon(status)"></i>
+                        <span>@GetStatusLabel(status)</span>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public Dictionary<string, string> Participants { get; set; } = new();
+    [Parameter] public Dictionary<string, Session.StudentStatus> ParticipantStatuses { get; set; } = new();
+    [Parameter] public HubConnection? HubConnection { get; set; }
+    [Parameter] public string SessionId { get; set; } = string.Empty;
+    [Parameter] public bool IsLecturer { get; set; }
+
+    private int ActiveCount => ParticipantStatuses.Count(p => p.Value == Session.StudentStatus.Active);
+    private int InactiveCount => ParticipantStatuses.Count(p => p.Value == Session.StudentStatus.InActive);
+    private int IssuesCount => ParticipantStatuses.Count(p => 
+        p.Value == Session.StudentStatus.BatteryLow || 
+        p.Value == Session.StudentStatus.DataFinished);
+
+    private async Task PromptEngagement()
+    {
+        if (HubConnection == null || !IsLecturer) return;
+
+        try
+        {
+            await HubConnection.SendAsync("PromptEngagement", SessionId);
+            Console.WriteLine("Engagement prompt sent to all students");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error prompting engagement: {ex.Message}");
+        }
+    }
+
+    private string GetInitials(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return "?";
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 1) return parts[0].Substring(0, Math.Min(2, parts[0].Length)).ToUpper();
+        return (parts[0][0].ToString() + parts[^1][0].ToString()).ToUpper();
+    }
+
+    private string GetStatusIcon(Session.StudentStatus status)
+    {
+        return status switch
+        {
+            Session.StudentStatus.Active => "check-circle",
+            Session.StudentStatus.InActive => "exclamation-circle",
+            Session.StudentStatus.BatteryLow => "battery-quarter",
+            Session.StudentStatus.DataFinished => "signal",
+            Session.StudentStatus.Disconnected => "times-circle",
+            _ => "user"
+        };
+    }
+
+    private string GetStatusLabel(Session.StudentStatus status)
+    {
+        return status switch
+        {
+            Session.StudentStatus.Active => "Active",
+            Session.StudentStatus.InActive => "Inactive",
+            Session.StudentStatus.BatteryLow => "Low Battery",
+            Session.StudentStatus.DataFinished => "Poor Network",
+            Session.StudentStatus.Disconnected => "Disconnected",
+            _ => "Unknown"
+        };
+    }
+}

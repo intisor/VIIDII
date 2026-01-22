@@ -1,0 +1,163 @@
+@using Microsoft.AspNetCore.SignalR.Client
+@using VIIDII.Services
+@inject ISessionJsInterop SessionJsInterop
+
+<div class="issue-buttons">
+    <div class="issue-header">
+        <span>Having Issues?</span>
+    </div>
+    
+    <div class="buttons-row">
+        <button class="btn-issue battery" 
+                @onclick="FlagBatteryLow" 
+                disabled="@(BatteryFlagged || IsChecking)">
+            <i class="fas fa-battery-quarter"></i>
+            <span>@(BatteryFlagged ? "Battery Flagged" : "Low Battery")</span>
+        </button>
+
+        <button class="btn-issue network" 
+                @onclick="FlagDataFinished" 
+                disabled="@(NetworkFlagged || IsChecking)">
+            <i class="fas fa-signal"></i>
+            <span>@(NetworkFlagged ? "Network Flagged" : "Poor Network")</span>
+        </button>
+    </div>
+
+    @if (!string.IsNullOrEmpty(StatusMessage))
+    {
+        <div class="status-message @MessageType">
+            <i class="fas fa-@(MessageType == "success" ? "check-circle" : "info-circle")"></i>
+            <span>@StatusMessage</span>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public HubConnection? HubConnection { get; set; }
+
+    private bool BatteryFlagged = false;
+    private bool NetworkFlagged = false;
+    private bool IsChecking = false;
+    private string StatusMessage = "";
+    private string MessageType = "info"; // "success" or "info"
+
+    private async Task FlagBatteryLow()
+    {
+        if (HubConnection == null || BatteryFlagged) return;
+
+        IsChecking = true;
+        StatusMessage = "Checking battery level...";
+        MessageType = "info";
+        StateHasChanged();
+
+        try
+        {
+            // Check battery level
+            var batteryStatus = await SessionJsInterop.GetBatteryLevelAsync();
+
+            if (batteryStatus.Level > 0 && batteryStatus.Level < 15)
+            {
+                // Battery is actually low, flag it
+                await HubConnection.SendAsync("FlagIssue", "BatteryLow");
+                BatteryFlagged = true;
+                StatusMessage = "Battery low status flagged to lecturer";
+                MessageType = "success";
+                Console.WriteLine("Battery low flagged");
+            }
+            else if (batteryStatus.Level < 0)
+            {
+                // Battery API not available, allow flagging anyway
+                await HubConnection.SendAsync("FlagIssue", "BatteryLow");
+                BatteryFlagged = true;
+                StatusMessage = "Battery low status flagged to lecturer";
+                MessageType = "success";
+                Console.WriteLine("Battery low flagged (API unavailable)");
+            }
+            else
+            {
+                StatusMessage = $"Battery at {batteryStatus.Level}% - not low enough to flag";
+                MessageType = "info";
+                Console.WriteLine($"Battery level: {batteryStatus.Level}% - cannot flag");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error flagging battery: {ex.Message}");
+            StatusMessage = "Error checking battery level";
+            MessageType = "info";
+        }
+        finally
+        {
+            IsChecking = false;
+            StateHasChanged();
+
+            // Clear message after 5 seconds
+            await Task.Delay(5000);
+            StatusMessage = "";
+            StateHasChanged();
+        }
+    }
+
+    private async Task FlagDataFinished()
+    {
+        if (HubConnection == null || NetworkFlagged) return;
+
+        IsChecking = true;
+        StatusMessage = "Checking network quality...";
+        MessageType = "info";
+        StateHasChanged();
+
+        try
+        {
+            // Check network quality
+            var networkStatus = await SessionJsInterop.GetNetworkStatusAsync();
+
+            // Consider 2g, slow-2g, or high RTT as poor
+            bool isPoorNetwork = networkStatus.EffectiveType == "2g" || 
+                                 networkStatus.EffectiveType == "slow-2g" ||
+                                 networkStatus.Rtt > 2000;
+
+            if (isPoorNetwork)
+            {
+                await HubConnection.SendAsync("FlagIssue", "DataFinished");
+                NetworkFlagged = true;
+                StatusMessage = "Poor network flagged to lecturer";
+                MessageType = "success";
+                Console.WriteLine($"Network issue flagged: {networkStatus.EffectiveType}");
+            }
+            else
+            {
+                StatusMessage = $"Network quality is {networkStatus.EffectiveType} - not poor enough to flag";
+                MessageType = "info";
+                Console.WriteLine($"Network quality: {networkStatus.EffectiveType} - cannot flag");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error flagging network: {ex.Message}");
+            // If error checking, allow flagging anyway (user knows their connection)
+            try
+            {
+                await HubConnection.SendAsync("FlagIssue", "DataFinished");
+                NetworkFlagged = true;
+                StatusMessage = "Poor network flagged to lecturer";
+                MessageType = "success";
+            }
+            catch
+            {
+                StatusMessage = "Error flagging network issue";
+                MessageType = "info";
+            }
+        }
+        finally
+        {
+            IsChecking = false;
+            StateHasChanged();
+
+            // Clear message after 5 seconds
+            await Task.Delay(5000);
+            StatusMessage = "";
+            StateHasChanged();
+        }
+    }
+}

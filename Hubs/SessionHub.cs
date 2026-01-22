@@ -290,5 +290,49 @@ namespace VIIDII.Hubs
         }
         public static bool TryGetLastSeen(string participantId, out DateTime lastSeen) =>
             _lastSeen.TryGetValue(participantId, out lastSeen);
+
+        // Messaging - Reaction Methods
+        public async Task AddReaction(string sessionId, string messageId, string emoji)
+        {
+            var matricNo = Context.GetHttpContext()?.Session.GetString("MatricNo");
+            if (string.IsNullOrEmpty(matricNo)) return;
+
+            var success = _messageService.AddReaction(sessionId, messageId, matricNo, emoji);
+            if (success)
+            {
+                // Broadcast reaction to all in session
+                await Clients.Group(sessionId).SendAsync("ReceiveReaction", messageId, matricNo, emoji, true);
+                Console.WriteLine($"Reaction added: {matricNo} reacted {emoji} to message {messageId}");
+            }
+        }
+
+        public async Task RemoveReaction(string sessionId, string messageId, string emoji)
+        {
+            var matricNo = Context.GetHttpContext()?.Session.GetString("MatricNo");
+            if (string.IsNullOrEmpty(matricNo)) return;
+
+            var success = _messageService.RemoveReaction(sessionId, messageId, matricNo, emoji);
+            if (success)
+            {
+                // Broadcast reaction removal to all in session
+                await Clients.Group(sessionId).SendAsync("ReceiveReaction", messageId, matricNo, emoji, false);
+                Console.WriteLine($"Reaction removed: {matricNo} unreacted {emoji} from message {messageId}");
+            }
+        }
+
+        // Engagement - Prompt Methods
+        public async Task PromptEngagement(string sessionId)
+        {
+            var matricNo = Context.GetHttpContext()?.Session.GetString("MatricNo");
+            var session = _sessionService.GetSessionById(sessionId);
+
+            // Only lecturer can prompt engagement
+            if (session != null && IsSessionLecturer(sessionId, matricNo))
+            {
+                // Broadcast "Are You There?" to all students in session (except lecturer)
+                await Clients.GroupExcept(sessionId, Context.ConnectionId).SendAsync("AreYouThere");
+                Console.WriteLine($"Lecturer {matricNo} prompted engagement for session {sessionId}");
+            }
+        }
     }
 }

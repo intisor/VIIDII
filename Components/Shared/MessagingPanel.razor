@@ -1,0 +1,464 @@
+@using VIIDII.Services
+@using Microsoft.AspNetCore.SignalR.Client
+@using Microsoft.JSInterop
+@using Microsoft.AspNetCore.Components.Forms
+@inject IJSRuntime JSRuntime
+@inject ISessionJsInterop SessionJsInterop
+
+<div class="messaging-panel">
+    <!-- Messages List -->
+    <div class="messages-container" @ref="_messagesContainer">
+        @if (!Messages.Any())
+        {
+            <div class="empty-state">
+                <i class="fas fa-comments"></i>
+                <p>No messages yet</p>
+                @if (IsLecturer)
+                {
+                    <p class="hint">Start the conversation by posting a message below</p>
+                }
+            </div>
+        }
+        else
+        {
+            @foreach (var message in GetPostMessages())
+            {
+                <!-- Lecturer Post -->
+                <div class="message-card lecturer-post">
+                    <div class="message-header">
+                        <div class="user-info">
+                            <div class="user-avatar">@GetInitials(message.UserName)</div>
+                            <div>
+                                <span class="user-name">@message.UserName</span>
+                                <span class="lecturer-badge">Lecturer</span>
+                            </div>
+                        </div>
+                        <span class="timestamp">@FormatTimestamp(message.createdAt)</span>
+                    </div>
+
+                    <div class="message-content">
+                        @if (message.messageType == MessageType.File)
+                        {
+                            <div class="file-attachment">
+                                <i class="fas fa-file"></i>
+                                <span>@message.content.Replace("File: ", "")</span>
+                                @if (!IsLecturer)
+                                {
+                                    <button class="btn-download" data-file-id="@message.id">
+                                        <i class="fas fa-download"></i> Download
+                                    </button>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <p>@message.content</p>
+                        }
+                    </div>
+
+                    <div class="message-footer">
+                        <button class="btn-reaction @(message.HasUserReacted(CurrentUserId) ? "reacted" : "")"
+                                @onclick="() => ToggleReaction(message.id)">
+                            <i class="fas fa-thumbs-up"></i>
+                            @if (message.ThumbsUpCount > 0)
+                            {
+                                <span>@message.ThumbsUpCount</span>
+                            }
+                        </button>
+
+                        @if (!IsLecturer)
+                        {
+                            <button class="btn-reply" @onclick="() => StartReply(message.id)">
+                                <i class="fas fa-reply"></i> Reply
+                            </button>
+                        }
+                    </div>
+
+                    <!-- Comments (Student Replies) -->
+                    @foreach (var comment in GetComments(message.id))
+                    {
+                        <div class="comment-card">
+                            <div class="comment-header">
+                                <div class="user-info">
+                                    <div class="user-avatar small">@GetInitials(comment.UserName)</div>
+                                    <span class="user-name">@comment.UserName</span>
+                                </div>
+                                <span class="timestamp">@FormatTimestamp(comment.createdAt)</span>
+                            </div>
+                            <div class="comment-content">
+                                <p>@comment.content</p>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        }
+    </div>
+
+    <!-- Input Section -->
+    @if (IsLecturer)
+    {
+        <div class="input-section">
+            <div class="input-row">
+                <InputFile id="fileInput" @ref="_fileInput" OnChange="HandleFileSelected" accept="*/*" style="display: none;" />
+                <button class="btn-attach" @onclick="TriggerFileInput" disabled="@IsUploadingFile">
+                    <i class="fas fa-paperclip"></i>
+                </button>
+                <input type="text" 
+                       class="message-input" 
+                       placeholder="Type a message or announcement..." 
+                       @bind="NewMessageContent"
+                       @onkeypress="HandleKeyPress"
+                       disabled="@IsUploadingFile" />
+                <button class="btn-send" @onclick="SendMessage" disabled="@(string.IsNullOrWhiteSpace(NewMessageContent) || IsUploadingFile)">
+                    <i class="fas fa-paper-plane"></i>
+                </button>
+            </div>
+
+            @if (IsUploadingFile)
+            {
+                <div class="upload-progress">
+                    <div class="progress-info">
+                        <span>Sending @SelectedFileName...</span>
+                        <span>@UploadProgress.ToString("F0")%</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: @(UploadProgress)%"></div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+
+    <!-- Reply Dialog (Students Only) -->
+    @if (!IsLecturer && !string.IsNullOrEmpty(ReplyingToMessageId))
+    {
+        <div class="reply-dialog">
+            <div class="reply-header">
+                <span>Replying to lecturer</span>
+                <button class="btn-close" @onclick="CancelReply">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="reply-input-row">
+                <input type="text" 
+                       class="reply-input" 
+                       placeholder="Type your reply..." 
+                       @bind="ReplyContent"
+                       @onkeypress="HandleReplyKeyPress" />
+                <button class="btn-send-reply" @onclick="SendReply" disabled="@string.IsNullOrWhiteSpace(ReplyContent)">
+                    <i class="fas fa-paper-plane"></i>
+                </button>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string SessionId { get; set; } = string.Empty;
+    [Parameter] public bool IsLecturer { get; set; }
+    [Parameter] public HubConnection? HubConnection { get; set; }
+    [Parameter] public string CurrentUserId { get; set; } = string.Empty;
+
+    private List<Message> Messages = new();
+    private string NewMessageContent = "";
+    private string ReplyContent = "";
+    private string? ReplyingToMessageId = null;
+    private ElementReference _messagesContainer;
+    private InputFile? _fileInput;
+    private IBrowserFile? SelectedFile;
+    private string SelectedFileName = "";
+    private bool IsUploadingFile = false;
+    private double UploadProgress = 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (HubConnection == null) return;
+
+        // Register SignalR handlers
+        HubConnection.On<Message>("ReceivePost", HandleReceivePost);
+        HubConnection.On<Message>("ReceiveComment", HandleReceiveComment);
+        HubConnection.On<List<Message>>("ReceiveMessages", HandleReceiveMessages);
+        HubConnection.On<string, string, string, bool>("ReceiveReaction", HandleReceiveReaction);
+        HubConnection.On<string>("PostCreated", HandlePostCreated);
+
+        // Load existing messages
+        try
+        {
+            await HubConnection.SendAsync("GetMessages", SessionId);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading messages: {ex.Message}");
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await ScrollToBottom();
+        }
+    }
+
+    // SignalR Handlers
+    private async Task HandleReceivePost(Message message)
+    {
+        if (message.sessionId != SessionId) return;
+
+        Messages.Add(message);
+        StateHasChanged();
+        await ScrollToBottom();
+    }
+
+    private async Task HandleReceiveComment(Message comment)
+    {
+        if (comment.sessionId != SessionId) return;
+
+        Messages.Add(comment);
+        StateHasChanged();
+        await ScrollToBottom();
+    }
+
+    private void HandleReceiveMessages(List<Message> messages)
+    {
+        Messages = messages.Where(m => m.sessionId == SessionId).ToList();
+        StateHasChanged();
+    }
+
+    private void HandleReceiveReaction(string messageId, string userId, string emoji, bool isAdd)
+    {
+        var message = Messages.FirstOrDefault(m => m.id == messageId);
+        if (message == null) return;
+
+        if (isAdd)
+        {
+            if (!message.Reactions.Any(r => r.UserId == userId && r.Emoji == emoji))
+            {
+                message.Reactions.Add(new Reaction
+                {
+                    UserId = userId,
+                    Emoji = emoji,
+                    Timestamp = DateTime.UtcNow
+                });
+            }
+        }
+        else
+        {
+            var reaction = message.Reactions.FirstOrDefault(r => r.UserId == userId && r.Emoji == emoji);
+            if (reaction != null)
+            {
+                message.Reactions.Remove(reaction);
+            }
+        }
+
+        StateHasChanged();
+    }
+
+    private void HandlePostCreated(string postId)
+    {
+        // Clear input after successful post
+        NewMessageContent = "";
+        StateHasChanged();
+    }
+
+    // Message Sending
+    private async Task SendMessage()
+    {
+        if (string.IsNullOrWhiteSpace(NewMessageContent) || HubConnection == null || !IsLecturer)
+            return;
+
+        try
+        {
+            await HubConnection.SendAsync("CreatePost", SessionId, NewMessageContent, false);
+            // Input cleared in PostCreated handler
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error sending message: {ex.Message}");
+        }
+    }
+
+    private async Task HandleKeyPress(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(NewMessageContent))
+        {
+            await SendMessage();
+        }
+    }
+
+    // Reply System
+    private void StartReply(string messageId)
+    {
+        ReplyingToMessageId = messageId;
+        ReplyContent = "";
+    }
+
+    private void CancelReply()
+    {
+        ReplyingToMessageId = null;
+        ReplyContent = "";
+    }
+
+    private async Task SendReply()
+    {
+        if (string.IsNullOrWhiteSpace(ReplyContent) || HubConnection == null || IsLecturer || string.IsNullOrEmpty(ReplyingToMessageId))
+            return;
+
+        try
+        {
+            await HubConnection.SendAsync("CreateComment", SessionId, ReplyingToMessageId, ReplyContent);
+            CancelReply();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error sending reply: {ex.Message}");
+        }
+    }
+
+    private async Task HandleReplyKeyPress(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(ReplyContent))
+        {
+            await SendReply();
+        }
+    }
+
+    // Reactions
+    private async Task ToggleReaction(string messageId)
+    {
+        if (HubConnection == null) return;
+
+        var message = Messages.FirstOrDefault(m => m.id == messageId);
+        if (message == null) return;
+
+        try
+        {
+            if (message.HasUserReacted(CurrentUserId))
+            {
+                await HubConnection.SendAsync("RemoveReaction", SessionId, messageId, "??");
+            }
+            else
+            {
+                await HubConnection.SendAsync("AddReaction", SessionId, messageId, "??");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error toggling reaction: {ex.Message}");
+        }
+    }
+
+    // File Handling
+    private async Task TriggerFileInput()
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("eval", "document.getElementById('fileInput').click()");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error triggering file input: {ex.Message}");
+        }
+    }
+
+    private async Task HandleFileSelected(InputFileChangeEventArgs e)
+    {
+        SelectedFile = e.File;
+        SelectedFileName = e.File.Name;
+
+        if (SelectedFile.Size > 50 * 1024 * 1024)
+        {
+            Console.WriteLine("File too large (max 50MB)");
+            // TODO: Show error to user
+            return;
+        }
+
+        IsUploadingFile = true;
+        UploadProgress = 0;
+        string? messageId = null;
+
+        try
+        {
+            // Create file message first
+            await HubConnection!.SendAsync("CreatePost", SessionId, $"File: {SelectedFileName}", true);
+            
+            // Wait a moment for message to be created and get its ID
+            await Task.Delay(200);
+            
+            // Get the latest file message ID (the one we just created)
+            var latestFileMessage = Messages.LastOrDefault(m => m.messageType == MessageType.File);
+            messageId = latestFileMessage?.id;
+
+            if (string.IsNullOrEmpty(messageId))
+            {
+                Console.WriteLine("Failed to get message ID for file");
+                return;
+            }
+
+            // Convert IBrowserFile to a format JS can use
+            // We'll pass the file via a stream reference
+            using var stream = SelectedFile.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024);
+            var dotNetStreamRef = new DotNetStreamReference(stream);
+
+            // Send file via P2P
+            var result = await SessionJsInterop.SendFileToStudentsAsync(dotNetStreamRef, messageId);
+
+            Console.WriteLine($"File transfer initiated: {SelectedFileName}");
+            UploadProgress = 100;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error uploading file: {ex.Message}");
+            // TODO: Show error to user
+        }
+        finally
+        {
+            IsUploadingFile = false;
+            SelectedFile = null;
+            SelectedFileName = "";
+            StateHasChanged();
+        }
+    }
+
+    // Helper Methods
+    private List<Message> GetPostMessages() => Messages.Where(m => m.parentId == m.id).OrderBy(m => m.createdAt).ToList();
+
+    private List<Message> GetComments(string postId) => Messages.Where(m => m.parentId == postId && m.id != postId).OrderBy(m => m.createdAt).ToList();
+
+    private string GetInitials(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return "?";
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 1) return parts[0].Substring(0, Math.Min(2, parts[0].Length)).ToUpper();
+        return (parts[0][0].ToString() + parts[^1][0].ToString()).ToUpper();
+    }
+
+    private string FormatTimestamp(DateTime timestamp)
+    {
+        var now = DateTime.UtcNow.AddHours(1);
+        var diff = now - timestamp;
+
+        if (diff.TotalMinutes < 1) return "Just now";
+        if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes}m ago";
+        if (diff.TotalHours < 24) return $"{(int)diff.TotalHours}h ago";
+        return timestamp.ToString("MMM d, h:mm tt");
+    }
+
+    private async Task ScrollToBottom()
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("eval", @"
+                const container = document.querySelector('.messages-container');
+                if (container) {
+                    container.scrollTop = container.scrollHeight;
+                }
+            ");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error scrolling: {ex.Message}");
+        }
+    }
+}

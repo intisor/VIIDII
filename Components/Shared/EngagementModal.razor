@@ -1,0 +1,169 @@
+@using Microsoft.AspNetCore.SignalR.Client
+@using Microsoft.JSInterop
+@implements IAsyncDisposable
+@inject IJSRuntime JSRuntime
+
+<!-- Engagement Modal -->
+<div class="modal fade" id="engagementModal" tabindex="-1" aria-labelledby="engagementModalLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="engagementModalLabel">
+                    <i class="fas fa-hand-paper"></i> Are You There?
+                </h5>
+            </div>
+            <div class="modal-body">
+                <div class="engagement-content">
+                    <div class="attention-icon">
+                        <i class="fas fa-user-check"></i>
+                    </div>
+                    <p class="message">Your lecturer wants to confirm you're paying attention.</p>
+                    <p class="instruction">Click the button below to confirm you're actively participating.</p>
+                    
+                    @if (TimeRemaining > 0)
+                    {
+                        <div class="timer">
+                            <i class="fas fa-clock"></i>
+                            <span>@TimeRemaining seconds remaining</span>
+                        </div>
+                    }
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary btn-lg w-100" @onclick="ConfirmActive">
+                    <i class="fas fa-check-circle"></i> I'm Here!
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public HubConnection? HubConnection { get; set; }
+    [Parameter] public bool IsStudent { get; set; }
+    [Parameter] public bool ShouldShow { get; set; }
+    [Parameter] public EventCallback OnHidden { get; set; }
+
+    private bool IsShown = false;
+    private int TimeRemaining = 30; // 30 seconds to respond
+    private System.Threading.Timer? _timer;
+    private object? _modalInstance;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Auto-show when ShouldShow becomes true
+        if (ShouldShow && !IsShown && IsStudent)
+        {
+            await Show();
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && IsStudent)
+        {
+            // Initialize Bootstrap modal
+            _modalInstance = await JSRuntime.InvokeAsync<object>("eval", @"
+                new bootstrap.Modal(document.getElementById('engagementModal'))
+            ");
+        }
+    }
+
+    public async Task Show()
+    {
+        if (!IsStudent || IsShown) return;
+
+        IsShown = true;
+        TimeRemaining = 30;
+
+        // Show modal
+        await JSRuntime.InvokeVoidAsync("eval", @"
+            const modal = bootstrap.Modal.getInstance(document.getElementById('engagementModal'));
+            if (modal) modal.show();
+        ");
+
+        // Start countdown timer
+        _timer?.Dispose();
+        _timer = new System.Threading.Timer(async _ =>
+        {
+            if (TimeRemaining > 0)
+            {
+                TimeRemaining--;
+                await InvokeAsync(StateHasChanged);
+            }
+            else
+            {
+                // Auto-dismiss after timeout
+                await AutoDismiss();
+            }
+        }, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+
+        StateHasChanged();
+    }
+
+    private async Task ConfirmActive()
+    {
+        if (HubConnection == null) return;
+
+        try
+        {
+            // Send confirmation to SignalR
+            await HubConnection.SendAsync("ConfirmActive");
+
+            // Hide modal
+            await Hide();
+
+            Console.WriteLine("Engagement confirmed");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error confirming active: {ex.Message}");
+        }
+    }
+
+    private async Task AutoDismiss()
+    {
+        // Student didn't respond - mark as inactive
+        Console.WriteLine("Engagement timeout - student did not respond");
+        await Hide();
+    }
+
+    private async Task Hide()
+    {
+        _timer?.Dispose();
+        _timer = null;
+        IsShown = false;
+        TimeRemaining = 0;
+
+        await JSRuntime.InvokeVoidAsync("eval", @"
+            const modal = bootstrap.Modal.getInstance(document.getElementById('engagementModal'));
+            if (modal) modal.hide();
+        ");
+
+        // Notify parent
+        await OnHidden.InvokeAsync();
+
+        StateHasChanged();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _timer?.Dispose();
+        
+        // Cleanup modal
+        if (_modalInstance != null)
+        {
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("eval", @"
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('engagementModal'));
+                    if (modal) modal.dispose();
+                ");
+            }
+            catch
+            {
+                // Ignore errors during disposal
+            }
+        }
+    }
+}

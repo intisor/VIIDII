@@ -1,13 +1,26 @@
 @page "/session/{SessionId}"
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
+@implements IAsyncDisposable
 @inject AuthService AuthService
 @inject SessionService SessionService
+@inject ISessionJsInterop SessionJsInterop
 @inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
 @using VIIDII.Models
+@using VIIDII.Services
+@using Microsoft.AspNetCore.SignalR.Client
+@using Microsoft.JSInterop
 
 <PageTitle>Session - @SessionId</PageTitle>
 
-@if (CurrentUser == null)
+@if (_isNavigating)
+{
+    <div class="loading-screen">
+        <div class="spinner"></div>
+        <p>Loading session...</p>
+    </div>
+}
+else if (State.CurrentUser == null)
 {
     <div class="alert alert-warning">Please log in first.</div>
 }
@@ -18,222 +31,1127 @@ else if (CurrentSession == null)
 else
 {
     <div class="session-container">
+        <!-- Session Header -->
         <div class="session-header">
             <h1>@CurrentSession.Title</h1>
             <p>Session ID: <strong>@SessionId</strong></p>
             <p>Status: <strong>@CurrentSession.Status</strong></p>
+            @if (State.IsLecturer && State.ParticipantCount > 0)
+            {
+                <span class="participant-badge">@State.ParticipantCount participant(s)</span>
+            }
         </div>
 
-        @if (IsLecturer)
+        <!-- Error Banner -->
+        @if (!string.IsNullOrEmpty(State.ErrorMessage))
         {
-            <div class="lecturer-controls">
-                <h2>Lecturer Controls</h2>
-                @if (!CurrentSession.IsSessionStarted)
+            <div class="error-banner">
+                <i class="fas fa-exclamation-triangle"></i>
+                <span>@State.ErrorMessage</span>
+                @if (!State.HasExceededMaxAttempts && !State.IsLecturer)
                 {
-                    <button class="btn btn-success" @onclick="StartSession">Start Session</button>
+                    <button class="btn-retry" @onclick="RetryConnection">Retry</button>
                 }
-                else
+                else if (State.HasExceededMaxAttempts)
                 {
-                    <button class="btn btn-danger" @onclick="EndSession">End Session</button>
+                    <button class="btn-retry" @onclick="RefreshPage">Refresh Page</button>
                 }
-                
-                <h3>Participants: @CurrentSession.ParticipantIds.Count</h3>
-                <div class="participants-list">
-                    @foreach (var participantId in CurrentSession.ParticipantIds)
+            </div>
+        }
+
+        <!-- Test Camera Section (Lecturer Only, Before Session Starts) -->
+        @if (State.IsLecturer && !State.IsSessionStarted && State.ShowTestCameraSection)
+        {
+            <div class="test-camera-section">
+                <h3>Test Your Camera</h3>
+                <p>Make sure your camera and microphone are working before starting the session.</p>
+                <div class="test-video-container">
+                    <video id="testVideo" autoplay playsinline muted class="test-video"></video>
+                </div>
+                <div class="test-controls">
+                    @if (!State.IsTestingCamera)
                     {
-                        var status = CurrentSession.ParticipantStatuses.ContainsKey(participantId) 
-                            ? CurrentSession.ParticipantStatuses[participantId].ToString() 
-                            : "Unknown";
-                        <div class="participant-item">
-                            <span>@participantId</span>
-                            <span class="badge badge-@status.ToLower()">@status</span>
+                        <button class="btn btn-primary" @onclick="TestCamera">
+                            <i class="fas fa-video"></i> Test Camera
+                        </button>
+                    }
+                    else
+                    {
+                        <button class="btn btn-secondary" @onclick="StopTestCamera">
+                            <i class="fas fa-stop"></i> Stop Test
+                        </button>
+                        <button class="btn btn-success" @onclick="StartSessionWithCamera">
+                            <i class="fas fa-play"></i> Looks Good - Start Session
+                        </button>
+                    }
+                </div>
+            </div>
+        }
+
+        <!-- Video Section -->
+        @if (State.IsSessionStarted || State.IsTestingCamera)
+        {
+            <div class="video-section">
+                <div class="video-container" id="videoContainer">
+                    <!-- Main Video Element -->
+                    <video id="sessionVideo" 
+                           autoplay 
+                           playsinline 
+                           muted="@State.IsLecturer"
+                           class="session-video">
+                    </video>
+
+                    <!-- Loading Overlay -->
+                    @if (State.IsLoading || State.IsInitializing)
+                    {
+                        <div class="loading-overlay">
+                            <div class="spinner"></div>
+                            <p>@(State.IsLecturer ? "Initializing camera..." : "Connecting to session...")</p>
+                        </div>
+                    }
+
+                    <!-- Mobile Play Overlay -->
+                    @if (State.ShowMobilePlayOverlay && !State.IsLecturer)
+                    {
+                        <div class="mobile-play-overlay" @onclick="PlayVideo">
+                            <div class="play-button">
+                                <i class="fas fa-play"></i>
+                                <p>Tap to start video</p>
+                            </div>
+                        </div>
+                    }
+
+                    <!-- Waiting for Lecturer (Student View) -->
+                    @if (!State.IsLecturer && !State.IsPeerConnected && State.IsSessionStarted)
+                    {
+                        <div class="waiting-overlay">
+                            <div class="spinner"></div>
+                            <p>Waiting for lecturer to start streaming...</p>
+                        </div>
+                    }
+
+                    <!-- Stream Type Indicator -->
+                    @if (State.IsLecturer && State.IsWebcamActive)
+                    {
+                        <div class="stream-indicator">
+                            <i class="fas fa-@(State.IsScreenSharing ? "desktop" : "video")"></i>
+                            <span>@(State.IsScreenSharing ? "Screen Sharing" : "Camera")</span>
+                        </div>
+                    }
+                </div>
+
+                <!-- Video Controls (Below Video) -->
+                <div class="video-controls-container">
+                    @if (State.IsLecturer && State.IsWebcamActive)
+                    {
+                        <div class="video-controls">
+                            <button class="btn-control" @onclick="ToggleScreenShare" disabled="@State.IsLoading">
+                                <i class="fas fa-@(State.IsScreenSharing ? "video" : "desktop")"></i>
+                                <span class="control-label">@(State.IsScreenSharing ? "Camera" : "Share Screen")</span>
+                            </button>
+                            
+                            <button class="btn-control btn-danger" @onclick="EndSession">
+                                <i class="fas fa-stop"></i>
+                                <span class="control-label">End Session</span>
+                            </button>
+                        </div>
+                    }
+                    else if (State.IsLecturer && !State.IsSessionStarted)
+                    {
+                        <div class="video-controls">
+                            <button class="btn btn-success btn-lg" @onclick="StartSession" disabled="@State.IsLoading">
+                                <i class="fas fa-play"></i> Start Session
+                            </button>
                         </div>
                     }
                 </div>
             </div>
         }
-        else
+
+        <!-- Tab Section (Messages & Participants) -->
+        @if (State.IsSessionStarted)
         {
-            <div class="student-view">
-                <h2>Session Information</h2>
-                <p>You are connected to this session.</p>
-                @if (CurrentSession.IsSessionStarted)
-                {
-                    <p class="text-success">Session is live!</p>
-                }
-                else
-                {
-                    <p class="text-warning">Waiting for lecturer to start...</p>
-                }
+            <div class="tab-section @(State.IsTabExpanded ? "expanded" : "")">
+                <!-- Tab Headers -->
+                <div class="tab-headers">
+                    <button class="tab-header @(State.ActiveTab == "messages" ? "active" : "")" 
+                            @onclick='() => State.SetTab("messages")'>
+                        <i class="fas fa-comments"></i>
+                        <span>Messages</span>
+                    </button>
+                    <button class="tab-header @(State.ActiveTab == "participants" ? "active" : "")" 
+                            @onclick='() => State.SetTab("participants")'>
+                        <i class="fas fa-users"></i>
+                        <span>Participants (@State.ParticipantCount)</span>
+                    </button>
+                    <button class="tab-toggle" @onclick="ToggleTabExpansion">
+                        <i class="fas fa-@(State.IsTabExpanded ? "compress" : "expand")"></i>
+                    </button>
+                </div>
+
+                <!-- Tab Content -->
+                <div class="tab-content">
+                    @if (State.ActiveTab == "messages")
+                    {
+                        <MessagingPanel SessionId="@SessionId"
+                                       IsLecturer="@State.IsLecturer"
+                                       HubConnection="@_hubConnection"
+                                       CurrentUserId="@(State.CurrentUser?.MatricNo ?? "")" />
+                    }
+                    else
+                    {
+                        <ParticipantPanel Participants="@State.Participants"
+                                         ParticipantStatuses="@State.ParticipantStatuses"
+                                         HubConnection="@_hubConnection"
+                                         SessionId="@SessionId"
+                                         IsLecturer="@State.IsLecturer" />
+                    }
+                </div>
             </div>
+        }
+
+        <!-- Issue Buttons (Student Only) -->
+        @if (!State.IsLecturer && State.IsSessionStarted)
+        {
+            <IssueButtons HubConnection="@_hubConnection" />
         }
     </div>
 
-    <style>
-        .session-container {
-            max-width: 1200px;
-            margin: 2rem auto;
-            padding: 2rem;
-        }
-
-        .session-header {
-            background: linear-gradient(135deg, #8338EC 0%, #C19BF5 100%);
-            color: white;
-            padding: 2rem;
-            border-radius: 1rem;
-            margin-bottom: 2rem;
-            box-shadow: 0 8px 24px rgba(131, 56, 236, 0.2);
-        }
-
-        .session-header h1 {
-            margin: 0 0 0.5rem 0;
-        }
-
-        .lecturer-controls, .student-view {
-            background: white;
-            padding: 2rem;
-            border-radius: 1rem;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-        }
-
-        .btn {
-            padding: 0.75rem 2rem;
-            border: none;
-            border-radius: 0.5rem;
-            font-size: 1rem;
-            font-weight: 600;
-            cursor: pointer;
-            margin-right: 1rem;
-            transition: all 0.3s ease;
-        }
-
-        .btn-success {
-            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
-            color: white;
-        }
-
-        .btn-danger {
-            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
-            color: white;
-        }
-
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-        }
-
-        .participants-list {
-            margin-top: 1rem;
-        }
-
-        .participant-item {
-            display: flex;
-            justify-content: space-between;
-            padding: 0.75rem;
-            border-bottom: 1px solid #eee;
-        }
-
-        .badge {
-            padding: 0.25rem 0.75rem;
-            border-radius: 1rem;
-            font-size: 0.875rem;
-            font-weight: 600;
-        }
-
-        .badge-active {
-            background: #28a745;
-            color: white;
-        }
-
-        .badge-inactive {
-            background: #ffc107;
-            color: #333;
-        }
-
-        .badge-batterylow {
-            background: #fd7e14;
-            color: white;
-        }
-
-        .badge-datafinished {
-            background: #dc3545;
-            color: white;
-        }
-
-        .badge-disconnected {
-            background: #6c757d;
-            color: white;
-        }
-
-        .text-success {
-            color: #28a745;
-            font-weight: 600;
-        }
-
-        .text-warning {
-            color: #ffc107;
-            font-weight: 600;
-        }
-
-        .alert {
-            padding: 1rem;
-            border-radius: 0.5rem;
-            margin: 2rem;
-        }
-
-        .alert-warning {
-            background: #fff3cd;
-            color: #856404;
-            border: 1px solid #ffeaa7;
-        }
-
-        .alert-danger {
-            background: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
-    </style>
+    <!-- Engagement Modal (Student Only) -->
+    @if (!State.IsLecturer)
+    {
+        <EngagementModal HubConnection="@_hubConnection"
+                         IsStudent="true"
+                         ShouldShow="@_showEngagementModal"
+                         OnHidden="@HideEngagementModal" />
+    }
 }
 
 @code {
     [Parameter]
     public string SessionId { get; set; } = string.Empty;
 
-    private User? CurrentUser;
+    // State
+    private SessionState State = new();
     private VIIDII.Models.Session? CurrentSession;
-    private bool IsLecturer => CurrentUser != null && CurrentSession != null && CurrentSession.LecturerId == CurrentUser.MatricNo;
+    private HubConnection? _hubConnection;
+    private DotNetObjectReference<SessionView>? _dotNetRef;
+    private bool _showEngagementModal = false;
+    private bool _isDisposed = false;
+    private bool _isNavigating = false; // Prevent render after navigation
+    private bool IsLecturer => State.IsLecturer;
 
+    // Lifecycle Methods
     protected override async Task OnInitializedAsync()
     {
-        CurrentUser = await AuthService.GetCurrentUserAsync();
-        if (CurrentUser == null)
+        try
         {
-            Navigation.NavigateTo("/login");
-            return;
-        }
+            // Load user FIRST
+            State.CurrentUser = await AuthService.GetCurrentUserAsync();
+            if (State.CurrentUser == null)
+            {
+                _isNavigating = true;
+                Navigation.NavigateTo("/login", forceLoad: true);
+                return;
+            }
 
-        CurrentSession = SessionService.GetSessionById(SessionId);
-        if (CurrentSession == null)
+            // Load session
+            CurrentSession = SessionService.GetSessionById(SessionId);
+            if (CurrentSession == null)
+            {
+                _isNavigating = true;
+                Navigation.NavigateTo("/dashboard", forceLoad: true);
+                return;
+            }
+
+            // NOW try to restore state (after user is loaded)
+            await TryRestoreSessionStateAsync();
+
+            // Initialize state
+            State.SessionId = SessionId;
+            State.SessionTitle = CurrentSession.Title;
+            State.Status = CurrentSession.Status;
+            State.IsSessionStarted = CurrentSession.IsSessionStarted;
+            State.IsLecturer = CurrentSession.LecturerId == State.CurrentUser.MatricNo;
+
+            // Show test camera for lecturer before session starts
+            if (State.IsLecturer && !State.IsSessionStarted)
+            {
+                State.ShowTestCameraSection = true;
+            }
+
+            // Setup SignalR Hub Connection
+            await SetupHubConnectionAsync();
+
+            // Save initial state to browser storage
+            await SaveSessionStateAsync();
+        }
+        catch (Exception ex)
         {
-            Navigation.NavigateTo("/dashboard");
+            Console.WriteLine($"Critical error in OnInitializedAsync: {ex.Message}");
+            State.SetError($"Failed to load session: {ex.Message}");
         }
     }
 
-    private void StartSession()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (CurrentSession != null && IsLecturer)
+        if (firstRender)
         {
+            try
+            {
+                // Check if mobile
+                State.IsMobileDevice = await SessionJsInterop.IsMobileAsync();
+
+                // Create DotNetObjectReference for callbacks
+                _dotNetRef = DotNetObjectReference.Create(this);
+
+                // Initialize JS interop
+                await SessionJsInterop.InitializeAsync(SessionId, State.IsLecturer, _dotNetRef);
+
+                // Setup tab visibility listener for students
+                if (!State.IsLecturer)
+                {
+                    await SessionJsInterop.SetupTabVisibilityListenerAsync();
+                }
+
+                // If student and session already started, setup peer
+                if (!State.IsLecturer && State.IsSessionStarted)
+                {
+                    await SetupStudentPeerConnectionAsync();
+                }
+
+                StateHasChanged();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error in OnAfterRenderAsync: {ex.Message}");
+                State.SetError($"Initialization error: {ex.Message}");
+            }
+        }
+    }
+
+    // SignalR Setup
+    private async Task SetupHubConnectionAsync()
+    {
+        try
+        {
+            _hubConnection = new HubConnectionBuilder()
+                .WithUrl(Navigation.ToAbsoluteUri("/sessionHub"))
+                .WithAutomaticReconnect()
+                .Build();
+
+            RegisterSignalRHandlers();
+
+            await _hubConnection.StartAsync();
+            State.IsHubConnected = true;
+
+            // Join session
+            await _hubConnection.SendAsync("JoinSession", SessionId);
+
+            Console.WriteLine($"SignalR connected and joined session: {SessionId}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"SignalR connection error: {ex.Message}");
+            State.SetError("Failed to connect to session. Please refresh the page.");
+        }
+    }
+
+    private void RegisterSignalRHandlers()
+    {
+        if (_hubConnection == null) return;
+
+        // Session lifecycle
+        _hubConnection.On<string>("SessionStarted", OnSessionStarted);
+        _hubConnection.On<string>("SessionEnded", OnSessionEnded);
+
+        // Peer management
+        _hubConnection.On<string, string>("ReceivePeerId", OnReceivePeerId);
+
+        // Stream changes
+        _hubConnection.On<string>("ReceiveStreamChange", OnStreamChange);
+
+        // Participant management (lecturer only)
+        if (State.IsLecturer)
+        {
+            _hubConnection.On<Dictionary<string, string>>("ReceiveParticipants", OnReceiveParticipants);
+            _hubConnection.On<Dictionary<string, string>>("ReceiveParticipantStatuses", OnReceiveParticipantStatuses);
+        }
+
+        // Engagement tracking (student only)
+        if (!State.IsLecturer)
+        {
+            _hubConnection.On("AreYouThere", OnAreYouThere);
+        }
+    }
+
+    // Lecturer Methods
+    private async Task TestCamera()
+    {
+        if (State.IsTestingCamera) return; // Prevent multiple clicks
+
+        try
+        {
+            State.IsTestingCamera = true;
+            State.StartLoading("Starting camera test...");
+
+            // Use test video element
+            var result = await JSRuntime.InvokeAsync<object>("eval", @"
+                (async () => {
+                    try {
+                        const video = document.getElementById('testVideo');
+                        if (!video) return { success: false, error: 'Video element not found' };
+                        
+                        const stream = await navigator.mediaDevices.getUserMedia({ 
+                            video: { width: { ideal: 720 }, height: { ideal: 420 } }, 
+                            audio: true 
+                        });
+                        video.srcObject = stream;
+                        window.testStream = stream;
+                        return { success: true };
+                    } catch (err) {
+                        return { success: false, error: err.message };
+                    }
+                })()
+            ");
+
+            State.StopLoading();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            State.SetError($"Camera test failed: {ex.Message}");
+            State.IsTestingCamera = false;
+            Console.WriteLine($"TestCamera error: {ex.Message}");
+        }
+    }
+
+    private async Task StopTestCamera()
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("eval", @"
+                if (window.testStream) {
+                    window.testStream.getTracks().forEach(track => track.stop());
+                    const video = document.getElementById('testVideo');
+                    if (video) video.srcObject = null;
+                    delete window.testStream;
+                }
+            ");
+
+            State.IsTestingCamera = false;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error stopping test camera: {ex.Message}");
+            // Don't set error here, just log it
+            State.IsTestingCamera = false;
+        }
+    }
+
+    private async Task StartSessionWithCamera()
+    {
+        await StopTestCamera();
+        await StartSession();
+    }
+
+    private async Task StartSession()
+    {
+        if (CurrentSession == null || !State.IsLecturer || State.IsLoading || State.IsWebcamActive)
+            return;
+
+        try
+        {
+            State.StartLoading("Starting session...");
+
+            // Update session in service
             SessionService.StartSession(SessionId);
+            CurrentSession.IsSessionStarted = true;
+            State.IsSessionStarted = true;
+            State.ShowTestCameraSection = false;
+
+            // Start webcam via JS interop
+            var result = await SessionJsInterop.StartWebcamAsync(SessionId);
+
+            // Parse result safely
+            if (result != null)
+            {
+                var resultJson = System.Text.Json.JsonSerializer.Serialize(result);
+                var resultDict = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, System.Text.Json.JsonElement>>(resultJson);
+
+                if (resultDict != null && resultDict.ContainsKey("success"))
+                {
+                    var success = resultDict["success"].GetBoolean();
+                    if (success)
+                    {
+                        State.IsWebcamActive = true;
+                        State.StopLoading();
+                        State.ClearError();
+                        Console.WriteLine("Webcam started successfully");
+                    }
+                    else
+                    {
+                        var error = resultDict.ContainsKey("error") 
+                            ? resultDict["error"].GetString() 
+                            : "Unknown error";
+                        State.SetError($"Camera failed: {error}. Please check permissions and try again.");
+                        Console.WriteLine($"Webcam start failed: {error}");
+                    }
+                }
+            }
+            else
+            {
+                State.SetError("Failed to start camera. Please refresh and try again.");
+            }
+
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error starting session: {ex.Message}");
+            State.SetError($"Failed to start session: {ex.Message}");
+        }
+    }
+
+    private async Task ToggleScreenShare()
+    {
+        if (!State.IsLecturer || !State.IsWebcamActive || State.IsLoading) return;
+
+        try
+        {
+            State.IsLoading = true;
+            StateHasChanged();
+
+            if (State.IsScreenSharing)
+            {
+                // Switch back to webcam - JS will handle this automatically when screen share stops
+                State.IsScreenSharing = false;
+            }
+            else
+            {
+                // Start screen share
+                var result = await SessionJsInterop.StartScreenShareAsync();
+                
+                if (result != null)
+                {
+                    var resultJson = System.Text.Json.JsonSerializer.Serialize(result);
+                    var resultDict = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, System.Text.Json.JsonElement>>(resultJson);
+
+                    if (resultDict != null && resultDict.ContainsKey("success"))
+                    {
+                        var success = resultDict["success"].GetBoolean();
+                        if (success)
+                        {
+                            State.IsScreenSharing = true;
+                            Console.WriteLine("Screen share started successfully");
+                        }
+                        else
+                        {
+                            var error = resultDict.ContainsKey("error") 
+                                ? resultDict["error"].GetString() 
+                                : "Unknown error";
+                            State.SetError($"Screen share failed: {error}");
+                            Console.WriteLine($"Screen share failed: {error}");
+                        }
+                    }
+                }
+            }
+
+            State.IsLoading = false;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error toggling screen share: {ex.Message}");
+            State.SetError($"Screen share error: {ex.Message}");
+            State.IsLoading = false;
+        }
+    }
+
+    private async Task EndSession()
+    {
+        if (CurrentSession == null || !State.IsLecturer || State.CurrentUser == null || State.IsLoading)
+            return;
+
+        try
+        {
+            State.StartLoading("Ending session...");
+
+            // End session in service
+            SessionService.EndSession(SessionId, State.CurrentUser.MatricNo);
+
+            // Notify via SignalR
+            if (_hubConnection != null && _hubConnection.State == HubConnectionState.Connected)
+            {
+                await _hubConnection.SendAsync("EndSession", SessionId);
+            }
+
+            // Clear session storage
+            await ClearSessionStorageAsync();
+
+            // Cleanup JS resources
+            await SessionJsInterop.CleanupAsync();
+
+            State.StopLoading();
+
+            // Navigate after cleanup
+            _isNavigating = true;
+            Navigation.NavigateTo("/dashboard", forceLoad: true);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error ending session: {ex.Message}");
+            State.SetError($"Error ending session: {ex.Message}");
+        }
+    }
+
+    // Student Methods
+    private async Task SetupStudentPeerConnectionAsync()
+    {
+        if (State.IsLecturer) return;
+
+        try
+        {
+            State.StartLoading("Setting up connection...");
+
+            var result = await SessionJsInterop.SetupStudentPeerAsync();
+            
+            // Result will have { success: true, peerId: "..." }
+            Console.WriteLine("Student peer setup initiated");
+
+            State.StopLoading();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error setting up student peer: {ex.Message}");
+            State.RecordConnectionAttempt();
+
+            if (State.ShouldRetryConnection() && !State.HasExceededMaxAttempts)
+            {
+                // Retry after backoff delay
+                await Task.Delay((int)(Math.Pow(2, State.ConnectionAttempts - 1) * 1000));
+                await SetupStudentPeerConnectionAsync();
+            }
+            else if (State.HasExceededMaxAttempts)
+            {
+                State.SetError("Unable to connect to session. Please refresh the page.");
+            }
+        }
+    }
+
+    private async Task PlayVideo()
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("eval", @"
+                const video = document.getElementById('sessionVideo');
+                if (video) video.play();
+            ");
+
+            State.ShowMobilePlayOverlay = false;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error playing video: {ex.Message}");
+        }
+    }
+
+    private async Task RetryConnection()
+    {
+        State.ClearError();
+        State.ConnectionAttempts = 0;
+        await SetupStudentPeerConnectionAsync();
+    }
+
+    private void RefreshPage()
+    {
+        Navigation.NavigateTo(Navigation.Uri, forceLoad: true);
+    }
+
+    // SignalR Event Handlers
+    private async Task OnSessionStarted(string sessionId)
+    {
+        Console.WriteLine($"SessionStarted event received: {sessionId}");
+
+        if (!State.IsLecturer && sessionId == SessionId)
+        {
+            State.IsSessionStarted = true;
+            await SetupStudentPeerConnectionAsync();
             StateHasChanged();
         }
     }
 
-    private void EndSession()
+    private async Task OnSessionEnded(string sessionId)
     {
-        if (CurrentSession != null && IsLecturer)
+        if (_isDisposed || _isNavigating) return;
+
+        Console.WriteLine($"SessionEnded event received: {sessionId}");
+
+        if (sessionId == SessionId)
         {
-            SessionService.EndSession(SessionId, CurrentUser!.MatricNo);
-            Navigation.NavigateTo("/dashboard");
+            try
+            {
+                // Cleanup JS resources
+                await SessionJsInterop.CleanupAsync();
+
+                // Clear storage
+                await ClearSessionStorageAsync();
+
+                // Show brief message
+                State.SetError("Session has ended");
+                StateHasChanged();
+
+                await Task.Delay(2000);
+
+                // Navigate based on role
+                _isNavigating = true;
+                if (State.IsLecturer)
+                {
+                    Navigation.NavigateTo($"/session-recap/{sessionId}", forceLoad: true);
+                }
+                else
+                {
+                    Navigation.NavigateTo("/dashboard", forceLoad: true);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error in OnSessionEnded: {ex.Message}");
+            }
+        }
+    }
+
+    private void OnReceivePeerId(string userId, string peerId)
+    {
+        Console.WriteLine($"ReceivePeerId: {userId} -> {peerId}");
+
+        if (State.IsLecturer)
+        {
+            State.AddStudentPeer(peerId, userId);
+            StateHasChanged();
+        }
+    }
+
+    private async Task OnStreamChange(string streamType)
+    {
+        Console.WriteLine($"Stream change: {streamType}");
+
+        State.CurrentStreamType = streamType;
+
+        if (!State.IsLecturer)
+        {
+            // Notify JS to handle stream change
+            await SessionJsInterop.HandleStreamChangeAsync(streamType);
+        }
+
+        StateHasChanged();
+    }
+
+    private void OnReceiveParticipants(Dictionary<string, string> participants)
+    {
+        Console.WriteLine($"Received participants: {participants.Count}");
+
+        foreach (var participant in participants)
+        {
+            State.AddParticipant(participant.Key, participant.Value);
+        }
+
+        StateHasChanged();
+    }
+
+    private void OnReceiveParticipantStatuses(Dictionary<string, string> statuses)
+    {
+        Console.WriteLine($"Received participant statuses: {statuses.Count}");
+
+        foreach (var status in statuses)
+        {
+            if (Enum.TryParse<Session.StudentStatus>(status.Value, out var studentStatus))
+            {
+                State.UpdateParticipantStatus(status.Key, studentStatus);
+            }
+        }
+
+        StateHasChanged();
+    }
+
+    // Engagement Handler
+    private void OnAreYouThere()
+    {
+        Console.WriteLine("AreYouThere prompt received from lecturer");
+
+        if (!State.IsLecturer)
+        {
+            _showEngagementModal = true;
+        }
+
+        StateHasChanged();
+    }
+
+    private void HideEngagementModal()
+    {
+        _showEngagementModal = false;
+        StateHasChanged();
+    }
+
+    // JSInvokable Callbacks (called from JavaScript)
+    [JSInvokable]
+    public async Task OnLecturerPeerReady(string peerId)
+    {
+        Console.WriteLine($"Lecturer peer ready: {peerId}");
+        State.MyPeerId = peerId;
+        State.IsPeerConnected = true;
+
+        // Notify SignalR that session started
+        if (_hubConnection != null)
+        {
+            await _hubConnection.SendAsync("SessionStarted", SessionId);
+        }
+
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void OnStudentConnected(string peerId)
+    {
+        Console.WriteLine($"Student connected: {peerId}");
+        State.AddStudentPeer(peerId);
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void OnStudentDisconnected(string peerId)
+    {
+        Console.WriteLine($"Student disconnected: {peerId}");
+        State.RemoveStudentPeer(peerId);
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public async Task OnStreamTypeChanged(string streamType)
+    {
+        Console.WriteLine($"Stream type changed to: {streamType}");
+        State.CurrentStreamType = streamType;
+
+        // Notify students via SignalR
+        if (_hubConnection != null && State.IsLecturer)
+        {
+            await _hubConnection.SendAsync("NotifyStreamChange", SessionId, streamType);
+        }
+
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public async Task OnStudentPeerReady(string peerId)
+    {
+        Console.WriteLine($"Student peer ready: {peerId}");
+        State.MyPeerId = peerId;
+
+        // Send peer ID to SignalR so lecturer can connect
+        if (_hubConnection != null)
+        {
+            await _hubConnection.SendAsync("SendPeerId", SessionId, peerId);
+        }
+
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void OnStreamReceived()
+    {
+        Console.WriteLine("Stream received");
+        State.IsStreamLoaded = true;
+        State.IsPeerConnected = true;
+        State.ShowMobilePlayOverlay = State.IsMobileDevice;
+        State.StopLoading();
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void OnStreamLost()
+    {
+        Console.WriteLine("Stream lost");
+        State.IsStreamLoaded = false;
+        State.SetError("Connection to lecturer lost. Reconnecting...");
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void OnPeerError(string errorType)
+    {
+        Console.WriteLine($"Peer error: {errorType}");
+        State.RecordConnectionAttempt();
+
+        if (State.ShouldRetryConnection() && !State.HasExceededMaxAttempts)
+        {
+            State.SetError("Connection issue. Retrying...");
+        }
+        else if (State.HasExceededMaxAttempts)
+        {
+            State.SetError("Unable to establish connection. Please refresh the page.");
+        }
+
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void OnConnectedToLecturer(string lecturerPeerId)
+    {
+        Console.WriteLine($"Connected to lecturer: {lecturerPeerId}");
+        State.LecturerPeerId = lecturerPeerId;
+        State.ClearError();
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void OnConnectionFailed(string errorType)
+    {
+        Console.WriteLine($"Connection failed: {errorType}");
+        State.RecordConnectionAttempt();
+
+        if (!State.HasExceededMaxAttempts)
+        {
+            State.SetError("Connection failed. Retrying...");
+        }
+        else
+        {
+            State.SetError("Unable to connect. Please refresh the page.");
+        }
+
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void OnFileChunkReceived(string jsonData)
+    {
+        // Phase 3 - File sharing
+        Console.WriteLine("File chunk received (Phase 3 feature)");
+    }
+
+    [JSInvokable]
+    public void OnFileUploadProgress(double progress, int sentChunks, int totalChunks)
+    {
+        Console.WriteLine($"File upload progress: {progress:F0}% ({sentChunks}/{totalChunks})");
+        // State can track progress here if needed
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void OnFileDownloadComplete(string messageId, string fileName)
+    {
+        Console.WriteLine($"File download complete: {fileName}");
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void OnFileDownloadError(string messageId, string error)
+    {
+        Console.WriteLine($"File download error for message {messageId}: {error}");
+        State.SetError($"File download failed: {error}");
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public async Task OnTabVisibilityChanged(bool isVisible)
+    {
+        if (State.IsLecturer) return;
+
+        // Report to SignalR for engagement tracking (Phase 4)
+        if (_hubConnection != null)
+        {
+            try
+            {
+                await _hubConnection.SendAsync("UpdateTabStatus", isVisible);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error updating tab status: {ex.Message}");
+            }
+        }
+    }
+
+    // Helper Methods
+    private void ToggleTabExpansion()
+    {
+        State.IsTabExpanded = !State.IsTabExpanded;
+    }
+
+    private string GetStatusIcon(Session.StudentStatus status)
+    {
+        return status switch
+        {
+            Session.StudentStatus.Active => "check-circle",
+            Session.StudentStatus.InActive => "exclamation-circle",
+            Session.StudentStatus.BatteryLow => "battery-quarter",
+            Session.StudentStatus.DataFinished => "signal",
+            Session.StudentStatus.Disconnected => "times-circle",
+            _ => "user"
+        };
+    }
+
+    // Session Persistence (Browser Storage)
+    private async Task SaveSessionStateAsync()
+    {
+        if (_isDisposed || State.CurrentUser == null) return;
+
+        try
+        {
+            var storageKey = $"viidii_session_{SessionId}_{State.CurrentUser.MatricNo}";
+            var stateData = new
+            {
+                SessionId = State.SessionId,
+                IsSessionStarted = State.IsSessionStarted,
+                IsLecturer = State.IsLecturer,
+                MyPeerId = State.MyPeerId,
+                LecturerPeerId = State.LecturerPeerId,
+                JoinedAt = DateTime.UtcNow,
+                UserId = State.CurrentUser.MatricNo
+            };
+
+            var json = System.Text.Json.JsonSerializer.Serialize(stateData);
+            await JSRuntime.InvokeVoidAsync("sessionStorage.setItem", storageKey, json);
+            
+            Console.WriteLine($"Session state saved to storage: {storageKey}");
+        }
+        catch (JSDisconnectedException)
+        {
+            Console.WriteLine("JS disconnected, cannot save state");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error saving session state: {ex.Message}");
+        }
+    }
+
+    private async Task TryRestoreSessionStateAsync()
+    {
+        try
+        {
+            // Try to get user MatricNo from auth service first (might not be available yet)
+            var tempUser = await AuthService.GetCurrentUserAsync();
+            if (tempUser == null) return;
+
+            var storageKey = $"viidii_session_{SessionId}_{tempUser.MatricNo}";
+            var json = await JSRuntime.InvokeAsync<string>("sessionStorage.getItem", storageKey);
+
+            if (!string.IsNullOrEmpty(json))
+            {
+                var stateData = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, System.Text.Json.JsonElement>>(json);
+                if (stateData != null)
+                {
+                    State.IsRestoredFromStorage = true;
+                    
+                    // Check if this is a recent session (within last 30 minutes)
+                    if (stateData.ContainsKey("JoinedAt"))
+                    {
+                        var joinedAtStr = stateData["JoinedAt"].GetString();
+                        if (DateTime.TryParse(joinedAtStr, out var joinedAt))
+                        {
+                            var timeSinceJoin = DateTime.UtcNow - joinedAt;
+                            
+                            if (timeSinceJoin.TotalMinutes > 30)
+                            {
+                                // Session too old, clear storage and start fresh
+                                await ClearSessionStorageAsync();
+                                State.IsRestoredFromStorage = false;
+                                return;
+                            }
+                        }
+                    }
+
+                    Console.WriteLine($"Session state restored from storage: {storageKey}");
+                }
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+            Console.WriteLine("JS disconnected, cannot restore state");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error restoring session state: {ex.Message}");
+            State.IsRestoredFromStorage = false;
+        }
+    }
+
+    private async Task ClearSessionStorageAsync()
+    {
+        if (_isDisposed || State.CurrentUser == null) return;
+
+        try
+        {
+            var storageKey = $"viidii_session_{SessionId}_{State.CurrentUser.MatricNo}";
+            await JSRuntime.InvokeVoidAsync("sessionStorage.removeItem", storageKey);
+            Console.WriteLine($"Session storage cleared: {storageKey}");
+        }
+        catch (JSDisconnectedException)
+        {
+            Console.WriteLine("JS disconnected, cannot clear storage");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error clearing session storage: {ex.Message}");
+        }
+    }
+
+    // Cleanup
+    public async ValueTask DisposeAsync()
+    {
+        if (_isDisposed) return;
+        _isDisposed = true;
+
+        try
+        {
+            // Only clear storage if user intentionally ended/left session
+            // (Not on refresh or accidental close)
+            if (CurrentSession?.Status == SessionStatus.Ended)
+            {
+                await ClearSessionStorageAsync();
+            }
+
+            // Dispose DotNetObjectReference
+            _dotNetRef?.Dispose();
+
+            // Stop HubConnection
+            if (_hubConnection != null)
+            {
+                try
+                {
+                    if (_hubConnection.State == HubConnectionState.Connected)
+                    {
+                        await _hubConnection.StopAsync();
+                    }
+                    await _hubConnection.DisposeAsync();
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error disposing HubConnection: {ex.Message}");
+                }
+            }
+
+            // Cleanup JS interop
+            try
+            {
+                await SessionJsInterop.CleanupAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+                // Expected when browser closes
+                Console.WriteLine("JS disconnected during cleanup (expected)");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error cleaning up JS interop: {ex.Message}");
+            }
+
+            Console.WriteLine("SessionView disposed");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error in DisposeAsync: {ex.Message}");
         }
     }
 }
+

@@ -6,18 +6,31 @@ using System.Collections.Generic;
 namespace VIIDII.Services
 {
     public enum MessageType { File, Text }
+
+    public class Reaction
+    {
+        public required string UserId { get; set; }
+        public required string Emoji { get; set; } // For now: just "??"
+        public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+    }
+
     public class Message
     {
         public string id { get; set; } = Guid.CreateVersion7().ToString();
         public required string sessionId { get; set; }
         public required string userId { get; set; }
-        public required string UserName { get; set; } // Added UserName
+        public required string UserName { get; set; }
         public required string content { get; set; }
         public string? parentId { get; set; }
         public bool isLecturerPost { get; set; }
-        public bool isComment { get; set; } // Unused but kept for future-proofing
+        public bool isComment { get; set; }
         public MessageType messageType { get; set; } = MessageType.Text;
         public DateTime createdAt { get; set; } = DateTime.UtcNow.AddHours(1);
+        public List<Reaction> Reactions { get; set; } = new();
+
+        // Helper properties
+        public int ThumbsUpCount => Reactions.Count(r => r.Emoji == "??");
+        public bool HasUserReacted(string userId) => Reactions.Any(r => r.UserId == userId);
     }
 
     public class MessageService
@@ -79,6 +92,39 @@ namespace VIIDII.Services
                 .Where(m => m.sessionId == sessionId)
                 .OrderBy(m => m.createdAt)
                 .ToList();
+        }
+
+        public bool AddReaction(string sessionId, string messageId, string userId, string emoji)
+        {
+            var message = _messages.FirstOrDefault(m => m.id == messageId && m.sessionId == sessionId);
+            if (message == null) return false;
+
+            // Check if user already reacted with this emoji
+            if (message.Reactions.Any(r => r.UserId == userId && r.Emoji == emoji))
+            {
+                return false; // Already reacted
+            }
+
+            message.Reactions.Add(new Reaction
+            {
+                UserId = userId,
+                Emoji = emoji,
+                Timestamp = DateTime.UtcNow
+            });
+
+            return true;
+        }
+
+        public bool RemoveReaction(string sessionId, string messageId, string userId, string emoji)
+        {
+            var message = _messages.FirstOrDefault(m => m.id == messageId && m.sessionId == sessionId);
+            if (message == null) return false;
+
+            var reaction = message.Reactions.FirstOrDefault(r => r.UserId == userId && r.Emoji == emoji);
+            if (reaction == null) return false;
+
+            message.Reactions.Remove(reaction);
+            return true;
         }
     }
 }
