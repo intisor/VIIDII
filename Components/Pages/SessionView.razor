@@ -395,6 +395,10 @@ else
             State.IsTestingCamera = true;
             State.StartLoading("Starting camera test...");
 
+            // Force render to ensure test video element exists
+            StateHasChanged();
+            await Task.Delay(100); // Wait for DOM to update
+
             // Use test video element
             var result = await JSRuntime.InvokeAsync<object>("eval", @"
                 (async () => {
@@ -470,6 +474,10 @@ else
             CurrentSession.IsSessionStarted = true;
             State.IsSessionStarted = true;
             State.ShowTestCameraSection = false;
+
+            // Force render to ensure video element exists
+            StateHasChanged();
+            await Task.Delay(100); // Wait for DOM to update
 
             // Start webcam via JS interop
             var result = await SessionJsInterop.StartWebcamAsync(SessionId);

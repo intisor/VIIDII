@@ -39,10 +39,22 @@ window.sessionInterop = (function () {
         
         const video = document.getElementById("sessionVideo");
         if (!video) {
-            console.error("Video element not found");
-            throw new Error("Video element #sessionVideo not found");
+            console.error("Video element #sessionVideo not found - waiting for DOM...");
+            // Wait a bit and try again
+            await new Promise(resolve => setTimeout(resolve, 200));
+            const videoRetry = document.getElementById("sessionVideo");
+            if (!videoRetry) {
+                console.error("Video element still not found after retry");
+                return { success: false, error: "Video element #sessionVideo not found. Make sure the session view is rendered." };
+            }
+            // Use the retry element
+            return startWebcamWithElement(sessionId, videoRetry);
         }
 
+        return startWebcamWithElement(sessionId, video);
+    }
+
+    async function startWebcamWithElement(sessionId, video) {
         try {
             localStream = await navigator.mediaDevices.getUserMedia({
                 video: { width: { ideal: 720 }, height: { ideal: 420 } },
