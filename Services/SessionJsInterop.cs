@@ -56,6 +56,11 @@ public interface ISessionJsInterop
     Task<object> ConnectToLecturerAsync(string lecturerPeerId);
 
     /// <summary>
+    /// Call a student peer (lecturer only)
+    /// </summary>
+    Task<object> CallStudentAsync(string studentPeerId);
+
+    /// <summary>
     /// Handle stream change notification (when lecturer switches stream type)
     /// </summary>
     Task HandleStreamChangeAsync(string streamType);
@@ -201,6 +206,24 @@ public class SessionJsInterop : ISessionJsInterop
         catch (Exception ex)
         {
             Console.WriteLine($"Error in ConnectToLecturerAsync: {ex.Message}");
+            throw;
+        }
+    }
+
+    public async Task<object> CallStudentAsync(string studentPeerId)
+    {
+        try
+        {
+            return await _jsRuntime.InvokeAsync<object>("sessionInterop.callStudent", studentPeerId);
+        }
+        catch (JSException ex)
+        {
+            Console.WriteLine($"JS Error in CallStudentAsync: {ex.Message}");
+            throw;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error in CallStudentAsync: {ex.Message}");
             throw;
         }
     }

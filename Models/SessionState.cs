@@ -39,7 +39,6 @@ public class SessionState
 
     // UI State
     public bool IsLoading { get; set; }
-    public bool IsInitializing { get; set; }
     public string? ErrorMessage { get; set; }
     public bool ShowMobilePlayOverlay { get; set; }
     public bool ShowTestCameraSection { get; set; }

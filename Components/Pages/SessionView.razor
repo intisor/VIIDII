@@ -35,11 +35,11 @@ else
         <!-- Session Header -->
         <div class="session-header">
             <h1>@CurrentSession.Title</h1>
-            <p>Session ID: <strong>@SessionId</strong></p>
-            <p>Status: <strong>@CurrentSession.Status</strong></p>
             @if (State.IsLecturer && State.ParticipantCount > 0)
             {
-                <span class="participant-badge">@State.ParticipantCount participant(s)</span>
+                <span class="participant-badge">
+                    <i class="fas fa-users"></i> @State.ParticipantCount participant(s) connected
+                </span>
             }
             
             <!-- Dev Tools (DEBUG mode only) -->
@@ -76,15 +76,15 @@ else
         @if (State.IsLecturer && !State.IsSessionStarted && State.ShowTestCameraSection)
         {
             <div class="test-camera-section">
-                <h3>Test Your Camera</h3>
-                <p>Make sure your camera and microphone are working before starting the session.</p>
+                <h3><i class="fas fa-video"></i> Camera Setup</h3>
+                <p>Test your camera and microphone before starting the session.</p>
                 <div class="test-video-container">
                     <video id="testVideo" autoplay playsinline muted class="test-video"></video>
                 </div>
                 <div class="test-controls">
                     @if (!State.IsTestingCamera)
                     {
-                        <button class="btn btn-primary" @onclick="TestCamera">
+                        <button class="btn btn-primary btn-lg" @onclick="TestCamera">
                             <i class="fas fa-video"></i> Test Camera
                         </button>
                     }
@@ -93,8 +93,8 @@ else
                         <button class="btn btn-secondary" @onclick="StopTestCamera">
                             <i class="fas fa-stop"></i> Stop Test
                         </button>
-                        <button class="btn btn-success" @onclick="StartSessionWithCamera">
-                            <i class="fas fa-play"></i> Looks Good - Start Session
+                        <button class="btn btn-success btn-lg" @onclick="StartSessionWithCamera">
+                            <i class="fas fa-check-circle"></i> Start Session
                         </button>
                     }
                 </div>
@@ -111,15 +111,23 @@ else
                            autoplay 
                            playsinline 
                            muted="@State.IsLecturer"
+                           controls="@(!State.IsLecturer)"
                            class="session-video">
                     </video>
 
-                    <!-- Loading Overlay -->
-                    @if (State.IsLoading || State.IsInitializing)
+                    <!-- Loading Overlay (combined loading/waiting states) -->
+                    @if (State.IsLoading)
                     {
                         <div class="loading-overlay">
                             <div class="spinner"></div>
-                            <p>@(State.IsLecturer ? "Initializing camera..." : "Connecting to session...")</p>
+                            <p>@(State.IsLecturer ? "Starting camera..." : "Connecting to lecturer...")</p>
+                        </div>
+                    }
+                    else if (!State.IsLecturer && !State.IsStreamLoaded && State.IsSessionStarted)
+                    {
+                        <div class="waiting-overlay">
+                            <div class="spinner"></div>
+                            <p>Waiting for lecturer's stream...</p>
                         </div>
                     }
 
@@ -131,15 +139,6 @@ else
                                 <i class="fas fa-play"></i>
                                 <p>Tap to start video</p>
                             </div>
-                        </div>
-                    }
-
-                    <!-- Waiting for Lecturer (Student View) -->
-                    @if (!State.IsLecturer && !State.IsPeerConnected && State.IsSessionStarted)
-                    {
-                        <div class="waiting-overlay">
-                            <div class="spinner"></div>
-                            <p>Waiting for lecturer to start streaming...</p>
                         </div>
                     }
 
@@ -353,6 +352,13 @@ else
                 Console.WriteLine($"Error in OnAfterRenderAsync: {ex.Message}");
                 State.SetError($"Initialization error: {ex.Message}");
             }
+        }
+        else if (!State.IsLecturer && State.IsSessionStarted && !_isSettingUpPeer && State.MyPeerId == null)
+        {
+            // On subsequent renders: if session just started and peer not setup yet, do it now
+            // This handles the case when OnSessionStarted event comes after firstRender
+            Console.WriteLine("Session started after initial render - setting up peer now");
+            await SetupStudentPeerConnectionAsync();
         }
     }
 
@@ -723,11 +729,14 @@ else
             {
                 State.IsSessionStarted = true;
                 
-                // Force render BEFORE calling JS
+                // StateHasChanged will trigger a render, and OnAfterRenderAsync
+                // will handle peer setup AFTER the video element is in the DOM
                 StateHasChanged();
-                await Task.Delay(150); // Wait for DOM to update
                 
-                await SetupStudentPeerConnectionAsync();
+                // Don't call SetupStudentPeerConnectionAsync() here!
+                // OnAfterRenderAsync will be called after the render completes,
+                // and it will check State.IsSessionStarted and setup the peer
+                Console.WriteLine("Session started - waiting for next render to setup peer");
             }
         });
     }
@@ -779,12 +788,29 @@ else
     {
         Console.WriteLine($"ReceivePeerId: {userId} -> {peerId}");
 
-        await InvokeAsync(() =>
+        await InvokeAsync(async () =>
         {
             if (State.IsLecturer)
             {
                 State.AddStudentPeer(peerId, userId);
                 StateHasChanged();
+
+                // Wait for student's DOM to be fully ready
+                // Student needs time to render video element and attach event handlers
+                Console.WriteLine($"Waiting for student {userId} DOM to stabilize...");
+                await Task.Delay(500); // Give student time to prepare
+
+                // Call the student to initiate WebRTC connection
+                try
+                {
+                    Console.WriteLine($"Lecturer calling student {userId} at peer {peerId}");
+                    var result = await SessionJsInterop.CallStudentAsync(peerId);
+                    Console.WriteLine($"Call to student {userId} initiated: {System.Text.Json.JsonSerializer.Serialize(result)}");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error calling student {userId}: {ex.Message}");
+                }
             }
         });
     }

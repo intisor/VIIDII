@@ -363,8 +363,17 @@ window.sessionInterop = (function () {
             if (video) {
                 console.log("Attaching remote stream to video element.");
                 video.srcObject = remoteStream;
+                
+                // Unmute video for students to hear lecturer
+                video.muted = false;
+                video.volume = 1.0;
+                
                 video.play().catch(err => {
                     console.error("Playback failed:", err.message);
+                    // If autoplay fails, show play button for user interaction
+                    if (dotNetRef) {
+                        dotNetRef.invokeMethodAsync('OnStreamReceived');
+                    }
                 });
 
                 // Notify Blazor that stream is attached
@@ -397,6 +406,58 @@ window.sessionInterop = (function () {
         });
 
         window.currentCall = call;
+    }
+
+    // Call a specific student (used by lecturer)
+    function callStudent(studentPeerId) {
+        if (!isLecturer) {
+            console.error("Only lecturer can call students");
+            return { success: false, error: "Not lecturer" };
+        }
+
+        if (!peer || peer.disconnected) {
+            console.error("Lecturer peer not initialized");
+            return { success: false, error: "Peer not initialized" };
+        }
+
+        if (!localStream) {
+            console.error("No local stream available");
+            return { success: false, error: "No local stream" };
+        }
+
+        console.log(`Calling student: ${studentPeerId}`);
+
+        try {
+            const call = peer.call(studentPeerId, localStream);
+
+            if (!call) {
+                console.error("Failed to create call");
+                return { success: false, error: "Failed to create call" };
+            }
+
+            call.on("stream", (remoteStream) => {
+                console.log(`Call established with student ${studentPeerId}`);
+                // Students don't send stream back, so this won't trigger
+            });
+
+            call.on("close", () => {
+                console.log(`Call to student ${studentPeerId} closed`);
+                if (dotNetRef) {
+                    dotNetRef.invokeMethodAsync('OnStudentDisconnected', studentPeerId);
+                }
+            });
+
+            call.on("error", (err) => {
+                console.error(`Call error with student ${studentPeerId}:`, err);
+            });
+
+            console.log(`Call initiated to student ${studentPeerId}`);
+            return { success: true, peerId: studentPeerId };
+
+        } catch (err) {
+            console.error(`Exception calling student ${studentPeerId}:`, err);
+            return { success: false, error: err.message };
+        }
     }
 
     // Connect student to lecturer peer
@@ -780,6 +841,7 @@ window.sessionInterop = (function () {
         startScreenShare: startScreenShare,
         setupStudentPeer: setupStudentPeer,
         connectToLecturer: connectToLecturer,
+        callStudent: callStudent,
         handleStreamChange: handleStreamChange,
         sendDataToPeers: sendDataToPeers,
         sendFileToStudents: sendFileToStudents,
