@@ -2,7 +2,6 @@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inject AuthService AuthService
 @inject NavigationManager Navigation
-@using System.Web
 
 <PageTitle>Login - VIIDII</PageTitle>
 
@@ -172,7 +171,6 @@ private LoginRequest LoginModel = new();
 private string? ErrorMessage;
 private bool IsLoading = false;
 private List<UserInfo> AvailableUsers = new();
-private bool TestMode = false;
 
 protected override void OnInitialized()
 {
@@ -189,25 +187,6 @@ protected override void OnInitialized()
         new UserInfo("Dr. Brown", "Lec002", "Lecturer"),
         new UserInfo("Admin", "Admin", "Admin")
     };
-        
-    // Check for test mode query parameter (DEBUG only)
-    #if DEBUG
-    try
-    {
-        var uri = new Uri(Navigation.Uri);
-        var query = HttpUtility.ParseQueryString(uri.Query);
-        TestMode = query["testMode"] == "true";
-            
-        if (TestMode)
-        {
-            Console.WriteLine("[Login] Test mode enabled - session persistence bypassed");
-        }
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"[Login] Error parsing query: {ex.Message}");
-    }
-    #endif
 }
 
     private void OnUserSelected()
@@ -223,15 +202,6 @@ protected override void OnInitialized()
     {
         IsLoading = true;
         ErrorMessage = null;
-        
-        // In test mode, clear session first to force fresh login
-        #if DEBUG
-        if (TestMode)
-        {
-            await AuthService.LogoutAsync();
-            Console.WriteLine("[Login] Test mode: Session cleared before login");
-        }
-        #endif
 
         var (success, message, user) = await AuthService.LoginAsync(LoginModel.MatricNo, LoginModel.Password);
 

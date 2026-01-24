@@ -244,17 +244,50 @@ window.sessionInterop = (function () {
     // Setup peer connection for student
     async function setupStudentPeer() {
         console.log("Setting up student peer");
+        
+        // Debug: Check all video elements
+        const allVideos = document.querySelectorAll('video');
+        console.log(`Found ${allVideos.length} video element(s) on page:`);
+        allVideos.forEach((v, i) => {
+            console.log(`  Video ${i}: id="${v.id}", class="${v.className}"`);
+        });
 
         const video = document.getElementById("sessionVideo");
         if (!video) {
-            console.error("Video element not found");
-            throw new Error("Video element #sessionVideo not found");
+            console.error("Video element #sessionVideo not found - waiting for DOM...");
+            // Wait and retry
+            await new Promise(resolve => setTimeout(resolve, 200));
+            const videoRetry = document.getElementById("sessionVideo");
+            if (!videoRetry) {
+                console.error("Video element still not found after retry");
+                
+                // Debug: List all elements with IDs
+                const allIds = document.querySelectorAll('[id]');
+                console.log(`All elements with IDs on page (${allIds.length}):`);
+                allIds.forEach(el => console.log(`  - ${el.tagName}#${el.id}`));
+                
+                return { success: false, error: "Video element #sessionVideo not found. Make sure the session view is rendered." };
+            }
+            // Use retry element
+            return setupStudentPeerWithElement(videoRetry);
         }
 
+        return setupStudentPeerWithElement(video);
+    }
+
+    async function setupStudentPeerWithElement(video) {
         if (peer && !peer.disconnected) {
             console.log("Student peer already exists:", peer.id);
             return { success: true, peerId: peer.id };
         }
+
+        console.log("Creating student peer for video element:", video.id);
+        console.log("Video element details:", {
+            id: video.id,
+            tagName: video.tagName,
+            className: video.className,
+            parentId: video.parentElement?.id
+        });
 
         peer = new Peer({
             config: {
