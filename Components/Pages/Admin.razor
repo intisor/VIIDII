@@ -6,8 +6,6 @@
 @using VIIDII.Models
 
 <PageTitle>Admin Dashboard - VIIDII</PageTitle>
-
-<style>
     .admin-container {
         max-width: 1400px;
         margin: 2rem auto;
@@ -189,15 +187,8 @@
         border: 1px solid #bee5eb;
     }
 
-    .no-data {
-        text-align: center;
-        padding: 2rem;
-        color: #666;
-        font-style: italic;
-    }
-</style>
 
-@if (CurrentUser == null || CurrentUser.Role.ToString() != "Admin")
+@if (CurrentUser == null || CurrentUser.Role != Role.Admin)
 {
     <div class="alert alert-warning">Access denied. Admin privileges required.</div>
 }
@@ -348,7 +339,7 @@ else
             return;
         }
 
-        if (CurrentUser.Role.ToString() != "Admin")
+        if (CurrentUser.Role != Role.Admin)
         {
             Navigation.NavigateTo("/dashboard");
             return;

@@ -1,7 +1,11 @@
+using System;
+using System.Collections.Generic;
 using VIIDII.Models;
 using Microsoft.AspNetCore.Identity;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
 
 namespace VIIDII.Services;
 
@@ -57,11 +61,28 @@ public class AuthService
 
             Console.WriteLine($"[AuthService] Password verified successfully");
             
-            // Store user in memory for Blazor (not in session during interactive render)
+            // Store in-memory for current circuit
             _currentUser = user;
+            
+            // Also store in session for cross-tab persistence (Production)
+            var httpContext = _httpContextAccessor.HttpContext;
+            if (httpContext?.Session != null)
+            {
+                try
+                {
+                    httpContext.Session.SetString("MatricNo", user.MatricNo);
+                    httpContext.Session.SetString("UserName", user.Name);
+                    httpContext.Session.SetString("UserRole", user.Role.ToString());
+                    Console.WriteLine($"[AuthService] User stored in session for cross-tab persistence");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[AuthService] Could not store in session: {ex.Message}");
+                }
+            }
+            
             Console.WriteLine($"[AuthService] User stored in memory for {matricNo}");
             
-            // Return user; state is kept in-memory for the Blazor circuit
             return (true, null, user);
         }
         catch (Exception ex)
@@ -75,14 +96,43 @@ public class AuthService
     {
         Console.WriteLine($"[AuthService.GetCurrentUserAsync] Checking current user. _currentUser is: {(_currentUser?.Name ?? "NULL")}");
         
-        // First check in-memory user (for Blazor interactive)
+        // First check in-memory user (for current circuit)
         if (_currentUser != null)
         {
-            Console.WriteLine($"[AuthService.GetCurrentUserAsync] Returning stored user: {_currentUser.Name}");
+            Console.WriteLine($"[AuthService.GetCurrentUserAsync] Returning in-memory user: {_currentUser.Name}");
             return _currentUser;
         }
         
-        Console.WriteLine($"[AuthService.GetCurrentUserAsync] No in-memory user found, returning null");
+        // If not in memory, try to restore from session (cross-tab persistence)
+        var httpContext = _httpContextAccessor.HttpContext;
+        if (httpContext?.Session != null)
+        {
+            try
+            {
+                var matricNo = httpContext.Session.GetString("MatricNo");
+                if (!string.IsNullOrEmpty(matricNo))
+                {
+                    Console.WriteLine($"[AuthService.GetCurrentUserAsync] Found session data for MatricNo: {matricNo}");
+                    
+                    // Restore user from session
+                    var users = MockApiService.GetUsers();
+                    var user = users.FirstOrDefault(u => u.MatricNo == matricNo);
+                    
+                    if (user != null)
+                    {
+                        _currentUser = user;
+                        Console.WriteLine($"[AuthService.GetCurrentUserAsync] Restored user from session: {user.Name}");
+                        return _currentUser;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[AuthService.GetCurrentUserAsync] Error reading session: {ex.Message}");
+            }
+        }
+        
+        Console.WriteLine($"[AuthService.GetCurrentUserAsync] No user found in memory or session");
         return null;
     }
 

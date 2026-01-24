@@ -10,6 +10,7 @@
 @using VIIDII.Services
 @using Microsoft.AspNetCore.SignalR.Client
 @using Microsoft.JSInterop
+@using System.Web
 
 <PageTitle>Session - @SessionId</PageTitle>
 
@@ -40,6 +41,18 @@ else
             {
                 <span class="participant-badge">@State.ParticipantCount participant(s)</span>
             }
+            
+            <!-- Dev Tools (DEBUG mode only) -->
+            #if DEBUG
+            <div class="dev-tools">
+                <button class="btn-dev-clear" @onclick="DevClearStorage" title="Clear session storage (Dev only)">
+                    <i class="fas fa-trash"></i> Clear Storage
+                </button>
+                <button class="btn-dev-logout" @onclick="DevLogout" title="Logout (Dev only)">
+                    <i class="fas fa-sign-out-alt"></i> Logout
+                </button>
+            </div>
+            #endif
         </div>
 
         <!-- Error Banner -->
@@ -264,8 +277,21 @@ else
                 return;
             }
 
-            // NOW try to restore state (after user is loaded)
-            await TryRestoreSessionStateAsync();
+            // Check for fresh start query parameter
+            var uri = new Uri(Navigation.Uri);
+            var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
+            bool forceFreshStart = query["fresh"] == "true";
+
+            if (forceFreshStart)
+            {
+                Console.WriteLine("Fresh start requested - clearing session storage");
+                await ClearSessionStorageAsync();
+            }
+            else
+            {
+                // Try to restore state (after user is loaded)
+                await TryRestoreSessionStateAsync();
+            }
 
             // Initialize state
             State.SessionId = SessionId;
@@ -1059,11 +1085,19 @@ else
                         {
                             var timeSinceJoin = DateTime.UtcNow - joinedAt;
                             
-                            if (timeSinceJoin.TotalMinutes > 30)
+                            // For development: 2 minutes, Production: 30 minutes
+                            #if DEBUG
+                            var expiryMinutes = 2;
+                            #else
+                            var expiryMinutes = 30;
+                            #endif
+                            
+                            if (timeSinceJoin.TotalMinutes > expiryMinutes)
                             {
                                 // Session too old, clear storage and start fresh
                                 await ClearSessionStorageAsync();
                                 State.IsRestoredFromStorage = false;
+                                Console.WriteLine($"Session expired ({timeSinceJoin.TotalMinutes:F0} minutes old), starting fresh");
                                 return;
                             }
                         }
@@ -1160,6 +1194,24 @@ else
         {
             Console.WriteLine($"Error in DisposeAsync: {ex.Message}");
         }
+    }
+
+    // Dev Helper: Clear session storage on demand
+    private async Task DevClearStorage()
+    {
+        await ClearSessionStorageAsync();
+        Console.WriteLine("Session storage cleared - refresh page to start fresh");
+        Navigation.NavigateTo(Navigation.Uri, forceLoad: true);
+    }
+
+    // Dev Helper: Quick logout for testing
+    private async Task DevLogout()
+    {
+        await ClearSessionStorageAsync();
+        await AuthService.LogoutAsync();
+        Console.WriteLine("Logged out - redirecting to login");
+        _isNavigating = true;
+        Navigation.NavigateTo("/login", forceLoad: true);
     }
 }
 

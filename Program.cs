@@ -18,7 +18,7 @@ builder.Services.AddSingleton<MockApiService>();
 builder.Services.AddSingleton<SessionService>();
 builder.Services.AddSingleton<MessageService>();
 builder.Services.AddSingleton<PasswordHasher<User>>();
-builder.Services.AddSingleton<AuthService>();
+builder.Services.AddScoped<AuthService>(); // CHANGED: Scoped per Blazor circuit (not Singleton)
 builder.Services.AddScoped<ISessionJsInterop, SessionJsInterop>();
 
 // Add hosted service for participant ping

@@ -2,6 +2,7 @@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inject AuthService AuthService
 @inject NavigationManager Navigation
+@using System.Web
 
 <PageTitle>Login - VIIDII</PageTitle>
 
@@ -167,27 +168,47 @@
 </div>
 
 @code {
-    private LoginRequest LoginModel = new();
-    private string? ErrorMessage;
-    private bool IsLoading = false;
-    private List<UserInfo> AvailableUsers = new();
+private LoginRequest LoginModel = new();
+private string? ErrorMessage;
+private bool IsLoading = false;
+private List<UserInfo> AvailableUsers = new();
+private bool TestMode = false;
 
-    protected override void OnInitialized()
+protected override void OnInitialized()
+{
+    AvailableUsers = new List<UserInfo>
     {
-        AvailableUsers = new List<UserInfo>
+        new UserInfo("Intisor", "123456", "Student"),
+        new UserInfo("Goodluck", "654321", "Student"),
+        new UserInfo("Ade", "789012", "Student"),
+        new UserInfo("Umar", "383012", "Student"),
+        new UserInfo("Alice", "100001", "Student"),
+        new UserInfo("Brian", "100002", "Student"),
+        new UserInfo("Cynthia", "100003", "Student"),
+        new UserInfo("John doe", "Lec001", "Lecturer"),
+        new UserInfo("Dr. Brown", "Lec002", "Lecturer"),
+        new UserInfo("Admin", "Admin", "Admin")
+    };
+        
+    // Check for test mode query parameter (DEBUG only)
+    #if DEBUG
+    try
+    {
+        var uri = new Uri(Navigation.Uri);
+        var query = HttpUtility.ParseQueryString(uri.Query);
+        TestMode = query["testMode"] == "true";
+            
+        if (TestMode)
         {
-            new UserInfo("Intisor", "123456", "Student"),
-            new UserInfo("Goodluck", "654321", "Student"),
-            new UserInfo("Ade", "789012", "Student"),
-            new UserInfo("Umar", "383012", "Student"),
-            new UserInfo("Alice", "100001", "Student"),
-            new UserInfo("Brian", "100002", "Student"),
-            new UserInfo("Cynthia", "100003", "Student"),
-            new UserInfo("John doe", "Lec001", "Lecturer"),
-            new UserInfo("Dr. Brown", "Lec002", "Lecturer"),
-            new UserInfo("Admin", "Admin", "Admin")
-        };
+            Console.WriteLine("[Login] Test mode enabled - session persistence bypassed");
+        }
     }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[Login] Error parsing query: {ex.Message}");
+    }
+    #endif
+}
 
     private void OnUserSelected()
     {
@@ -202,6 +223,15 @@
     {
         IsLoading = true;
         ErrorMessage = null;
+        
+        // In test mode, clear session first to force fresh login
+        #if DEBUG
+        if (TestMode)
+        {
+            await AuthService.LogoutAsync();
+            Console.WriteLine("[Login] Test mode: Session cleared before login");
+        }
+        #endif
 
         var (success, message, user) = await AuthService.LoginAsync(LoginModel.MatricNo, LoginModel.Password);
 
