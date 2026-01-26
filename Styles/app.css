@@ -4,6 +4,7 @@
 
 @layer base {
   :root {
+    /* Light Theme (Default) */
     --background: #ffffff;
     --foreground: #1a1a1a;
     --card: #ffffff;
@@ -20,8 +21,8 @@
     
     --muted: #f8f9fa;
     --muted-foreground: #666666;
-    --accent: #8338EC;
-    --accent-foreground: #ffffff;
+    --accent: #f8f9fa;
+    --accent-foreground: #1a1a1a;
     --destructive: #dc2626;
     --destructive-foreground: #ffffff;
     
@@ -37,6 +38,46 @@
     --warning-foreground: #ffffff;
     --info: #3b82f6;
     --info-foreground: #ffffff;
+    
+    --ring: #8338EC;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    /* Dark Theme */
+    --background: #09090b;
+    --foreground: #fafafa;
+    --card: #18181b;
+    --card-foreground: #fafafa;
+    --popover: #18181b;
+    --popover-foreground: #fafafa;
+    
+    /* VIIDII Brand Colors */
+    --primary: #8338EC;
+    --primary-foreground: #ffffff;
+    --primary-light: #C19BF5;
+    --secondary: #27272a;
+    --secondary-foreground: #fafafa;
+    
+    --muted: #27272a;
+    --muted-foreground: #a1a1aa;
+    --accent: #27272a;
+    --accent-foreground: #fafafa;
+    --destructive: #7f1d1d;
+    --destructive-foreground: #fafafa;
+    
+    --border: #27272a;
+    --input: #27272a;
+    --input-background: #18181b;
+    --switch-background: #27272a;
+    
+    /* Status Colors */
+    --success: #059669;
+    --success-foreground: #fafafa;
+    --warning: #d97706;
+    --warning-foreground: #fafafa;
+    --info: #2563eb;
+    --info-foreground: #fafafa;
     
     --ring: #8338EC;
     --radius: 0.5rem;

@@ -16,6 +16,7 @@
 
             <!-- Desktop Navigation -->
             <div class="hidden md:flex items-center gap-6">
+                <ThemeToggle />
                 @if (CurrentUser == null)
                 {
                     <a href="/" class="text-foreground hover:text-primary transition-colors text-sm font-medium">Home</a>

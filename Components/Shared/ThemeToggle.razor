@@ -1,0 +1,93 @@
+@inject IJSRuntime JS
+
+<button @onclick="ToggleTheme" 
+        class="flex items-center justify-center w-9 h-9 rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
+        title="Toggle theme">
+    @if (isDark)
+    {
+        <!-- Sun icon for light mode -->
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="4"/>
+            <path d="M12 2v2"/>
+            <path d="M12 20v2"/>
+            <path d="m4.93 4.93 1.41 1.41"/>
+            <path d="m17.66 17.66 1.41 1.41"/>
+            <path d="M2 12h2"/>
+            <path d="M20 12h2"/>
+            <path d="m6.34 17.66-1.41 1.41"/>
+            <path d="m19.07 4.93-1.41 1.41"/>
+        </svg>
+    }
+    else
+    {
+        <!-- Moon icon for dark mode -->
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>
+        </svg>
+    }
+</button>
+
+@code {
+    private bool isDark = false;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await InitializeTheme();
+        }
+    }
+
+    private async Task InitializeTheme()
+    {
+        try
+        {
+            var savedTheme = await JS.InvokeAsync<string>("localStorage.getItem", "viidii-theme");
+            
+            if (string.IsNullOrEmpty(savedTheme))
+            {
+                // Check system preference using our helper function
+                var prefersDark = await JS.InvokeAsync<bool>("blazorTheme.getSystemPreference");
+                savedTheme = prefersDark ? "dark" : "light";
+            }
+            
+            isDark = savedTheme == "dark";
+            await ApplyTheme(savedTheme);
+            StateHasChanged();
+        }
+        catch
+        {
+            // Fallback to light theme if there's any error
+            isDark = false;
+            await ApplyTheme("light");
+            StateHasChanged();
+        }
+    }
+
+    private async Task ToggleTheme()
+    {
+        isDark = !isDark;
+        var theme = isDark ? "dark" : "light";
+        await ApplyTheme(theme);
+        await JS.InvokeVoidAsync("localStorage.setItem", "viidii-theme", theme);
+    }
+
+    private async Task ApplyTheme(string theme)
+    {
+        try
+        {
+            if (theme == "dark")
+            {
+                await JS.InvokeVoidAsync("document.documentElement.classList.add", "dark");
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("document.documentElement.classList.remove", "dark");
+            }
+        }
+        catch
+        {
+            // Silently handle JS errors during prerendering
+        }
+    }
+}
