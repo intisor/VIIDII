@@ -3,98 +3,148 @@
 @inject AuthService AuthService
 @inject SessionService SessionService
 @inject NavigationManager Navigation
+@using VIIDII.Models
 
 <PageTitle>Create Session - VIIDII</PageTitle>
 
-<style>
-    .create-session-container { max-width: 800px; margin: 2rem auto; padding: 1rem; }
-    .session-header { padding: 1rem 0; margin-bottom: 1rem; }
-    .form-card { background: white; padding: 1rem; border-radius: 0.5rem; }
-    .checkbox-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.5rem; margin-top: 0.5rem; }
-</style>
+<div class="min-h-screen bg-background pb-12">
+    @if (CreatedSession != null)
+    {
+        <!-- Success View -->
+        <div class="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+             <div class="bg-white rounded-2xl border border-border shadow-lg p-8 text-center">
+                 <div class="w-16 h-16 rounded-full bg-green-500/10 mx-auto mb-6 flex items-center justify-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-green-600"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                 </div>
+                 
+                 <h1 class="text-2xl font-bold mb-2">Session Created Successfully!</h1>
+                 <p class="text-muted-foreground mb-8">
+                     Share the session code with your students to let them join.
+                 </p>
 
-    <div class="create-session-container">
-        <div class="session-header">
-            <h1>Create New Session</h1>
+                 <div class="bg-gradient-to-br from-[#8338EC]/10 to-[#C19BF5]/10 rounded-xl p-6 mb-8 border-2 border-[#8338EC]/20">
+                     <p class="text-sm text-muted-foreground mb-2">Session Code</p>
+                     <p class="text-3xl font-bold font-mono text-[#8338EC] mb-4">@CreatedSession.SessionId</p>
+                 </div>
+
+                 <div class="space-y-3">
+                     <button @onclick="GoToSession" class="w-full inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 h-11 px-8 py-2 bg-gradient-to-r from-[#8338EC] to-[#C19BF5] text-white hover:opacity-90">
+                         Go to Session
+                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ml-2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                     </button>
+                     <button @onclick="CreateAnother" class="w-full inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 h-11 px-8 py-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground">
+                         Create Another Session
+                     </button>
+                     <button @onclick="GoHome" class="w-full inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 h-11 px-8 py-2 hover:bg-accent hover:text-accent-foreground text-muted-foreground">
+                         Back to Home
+                     </button>
+                 </div>
+             </div>
+        </div>
+    }
+    else
+    {
+        <!-- Header -->
+        <div class="bg-gradient-to-br from-[#8338EC] to-[#C19BF5] text-white py-8 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 mb-8">
+            <div class="max-w-4xl mx-auto">
+                 <button @onclick="GoHome" type="button" class="flex items-center gap-2 text-white/80 hover:text-white transition-colors mb-4">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+                    Back to Home
+                 </button>
+                 <h1 class="text-3xl font-bold">Create New Session</h1>
+                 <p class="text-white/80 mt-2">Set up a new virtual classroom session</p>
+            </div>
         </div>
 
-        @if (!string.IsNullOrEmpty(ErrorMessage))
-        {
-            <div class="alert alert-danger">@ErrorMessage</div>
-        }
-
-        @if (!string.IsNullOrEmpty(SuccessMessage))
-        {
-            <div class="alert alert-success">@SuccessMessage</div>
-        }
-
-        <div class="form-card">
-            <EditForm Model="@SessionModel" OnValidSubmit="@HandleCreateSession" FormName="CreateSessionForm">
-                <DataAnnotationsValidator />
-
-                <div class="form-group">
-                    <label class="form-label">Session Title</label>
-                    <InputText class="form-control" @bind-value="SessionModel.Title" placeholder="e.g., Software Engineering Lecture - Week 5" />
-                    <ValidationMessage For="@(() => SessionModel.Title)" />
-                </div>
-
-                <div class="form-group">
-                    <label class="form-label">Allowed Departments</label>
-                    <div class="form-check">
-                        <InputCheckbox class="form-check-input" @bind-Value="SelectAllDepartments" id="selectAllDepts" @onchange="OnSelectAllDepartmentsChanged" />
-                        <label class="form-check-label" for="selectAllDepts"><strong>Select All Departments</strong></label>
+        <!-- Form -->
+        <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+             <EditForm Model="@SessionModel" OnValidSubmit="@HandleCreateSession" FormName="CreateSessionForm" class="bg-white rounded-xl border border-border shadow-sm p-6 md:p-8">
+                 <DataAnnotationsValidator />
+                 
+                 @if (!string.IsNullOrEmpty(ErrorMessage))
+                 {
+                    <div class="bg-red-500/10 text-red-600 border border-red-500/20 rounded-md p-4 mb-6 text-sm">
+                        @ErrorMessage
                     </div>
-                    <div class="checkbox-grid">
-                        @foreach (var dept in Enum.GetValues<User.Departments>())
-                        {
-                            <div class="form-check">
-                                <input type="checkbox" class="form-check-input" id="@($"dept_{dept}")"
-                                       checked="@IsDeptSelected(dept)"
-                                       disabled="@SelectAllDepartments"
-                                       @onchange="e => ToggleDept(dept, e)" />
-                                <label class="form-check-label" for="@($"dept_{dept}")">@dept</label>
-                            </div>
-                        }
-                    </div>
-                </div>
+                 }
 
-                <div class="form-group">
-                    <label class="form-label">Allowed Levels</label>
-                    <div class="form-check">
-                        <InputCheckbox class="form-check-input" @bind-Value="SelectAllLevels" id="selectAllLevels" @onchange="OnSelectAllLevelsChanged" />
-                        <label class="form-check-label" for="selectAllLevels"><strong>Select All Levels</strong></label>
-                    </div>
-                    <div class="checkbox-grid">
-                        @foreach (var level in Enum.GetValues<User.Levels>())
-                        {
-                            <div class="form-check">
-                                <input type="checkbox" class="form-check-input" id="@($"level_{level}")"
-                                       checked="@IsLevelSelected(level)"
-                                       disabled="@SelectAllLevels"
-                                       @onchange="e => ToggleLevel(level, e)" />
-                                <label class="form-check-label" for="@($"level_{level}")">@level</label>
-                            </div>
-                        }
-                    </div>
-                </div>
+                 <!-- Title -->
+                 <div class="mb-8">
+                     <label class="text-base font-medium mb-2 block">Session Title *</label>
+                     <InputText @bind-Value="SessionModel.Title" class="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50" placeholder="e.g., Software Engineering Lecture - Week 5" />
+                     <ValidationMessage For="@(() => SessionModel.Title)" class="text-sm text-red-500 mt-1" />
+                     <p class="text-sm text-muted-foreground mt-2">Give your session a descriptive title</p>
+                 </div>
 
-                <button type="submit" class="btn btn-primary" disabled="@IsLoading">
-                    @if (IsLoading) { <span>Creating...</span> } else { <span>Create Session</span> }
-                </button>
-                <button type="button" class="btn btn-secondary" @onclick="GoBack">Cancel</button>
-            </EditForm>
+                 <!-- Departments -->
+                 <div class="mb-8">
+                      <label class="text-base font-medium mb-3 block">Allowed Departments *</label>
+                      <p class="text-sm text-muted-foreground mb-4">Select which departments can join this session</p>
+
+                      <div class="mb-4 flex items-center gap-2 p-3 bg-secondary rounded-lg">
+                           <input type="checkbox" id="selectAllDepts" checked="@SelectAllDepartments" @onchange="OnSelectAllDepartmentsChanged" class="h-4 w-4 rounded border-primary text-primary focus:ring-primary" />
+                           <label for="selectAllDepts" class="font-medium cursor-pointer flex-1 select-none">Select All Departments</label>
+                      </div>
+
+                      <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                          @foreach (var dept in Enum.GetValues<User.Departments>())
+                          {
+                              <div class="flex items-center gap-2 p-3 border border-border rounded-lg hover:bg-secondary/50 transition-colors">
+                                  <input type="checkbox" id="@($"dept_{dept}")" checked="@IsDeptSelected(dept)" disabled="@SelectAllDepartments" @onchange="e => ToggleDept(dept, e)" class="h-4 w-4 rounded border-primary text-primary focus:ring-primary" />
+                                  <label for="@($"dept_{dept}")" class="cursor-pointer flex-1 text-sm select-none">@dept</label>
+                              </div>
+                          }
+                      </div>
+                 </div>
+
+                 <!-- Levels -->
+                 <div class="mb-8">
+                      <label class="text-base font-medium mb-3 block">Allowed Levels *</label>
+                      <p class="text-sm text-muted-foreground mb-4">Select which academic levels can join</p>
+
+                       <div class="mb-4 flex items-center gap-2 p-3 bg-secondary rounded-lg">
+                           <input type="checkbox" id="selectAllLevels" checked="@SelectAllLevels" @onchange="OnSelectAllLevelsChanged" class="h-4 w-4 rounded border-primary text-primary focus:ring-primary" />
+                           <label for="selectAllLevels" class="font-medium cursor-pointer flex-1 select-none">Select All Levels</label>
+                      </div>
+
+                      <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                          @foreach (var level in Enum.GetValues<User.Levels>())
+                          {
+                              <div class="flex items-center gap-2 p-3 border border-border rounded-lg hover:bg-secondary/50 transition-colors">
+                                  <input type="checkbox" id="@($"level_{level}")" checked="@IsLevelSelected(level)" disabled="@SelectAllLevels" @onchange="e => ToggleLevel(level, e)" class="h-4 w-4 rounded border-primary text-primary focus:ring-primary" />
+                                  <label for="@($"level_{level}")" class="cursor-pointer flex-1 text-sm select-none">@level</label>
+                              </div>
+                          }
+                      </div>
+                 </div>
+                 
+                 <button type="submit" disabled="@IsLoading" class="w-full inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 h-11 px-8 py-2 bg-gradient-to-r from-[#8338EC] to-[#C19BF5] text-white hover:opacity-90 shadow-sm">
+                      @if (IsLoading) {
+                          <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          <span>Creating Session...</span>
+                      } else {
+                          <span>Create Session</span>
+                      }
+                 </button>
+
+             </EditForm>
         </div>
-    </div>
+    }
+</div>
 
 @code {
     private CreateSessionRequest SessionModel = new();
     private string? ErrorMessage;
-    private string? SuccessMessage;
+    private Session? CreatedSession;
     private bool IsLoading = false;
     private bool SelectAllDepartments = true;
     private bool SelectAllLevels = true;
 
     private bool IsDeptSelected(User.Departments dept) => SessionModel.AllowedDepartments.TryGetValue(dept, out var v) && v;
+    
     private void ToggleDept(User.Departments dept, ChangeEventArgs e)
     {
         if (e?.Value is bool b)
@@ -102,6 +152,7 @@
     }
 
     private bool IsLevelSelected(User.Levels level) => SessionModel.AllowedLevels.TryGetValue(level, out var v) && v;
+    
     private void ToggleLevel(User.Levels level, ChangeEventArgs e)
     {
         if (e?.Value is bool b)
@@ -110,36 +161,40 @@
 
     private void OnSelectAllDepartmentsChanged(ChangeEventArgs e)
     {
-        // ensure all dept entries follow SelectAllDepartments
-        foreach (var key in SessionModel.AllowedDepartments.Keys.ToList())
-            SessionModel.AllowedDepartments[key] = SelectAllDepartments;
+        if (e.Value is bool val)
+        {
+            SelectAllDepartments = val;
+            foreach (var key in SessionModel.AllowedDepartments.Keys.ToList())
+                SessionModel.AllowedDepartments[key] = SelectAllDepartments;
+        }
     }
 
     private void OnSelectAllLevelsChanged(ChangeEventArgs e)
     {
-        foreach (var key in SessionModel.AllowedLevels.Keys.ToList())
-            SessionModel.AllowedLevels[key] = SelectAllLevels;
+        if (e.Value is bool val)
+        {
+            SelectAllLevels = val;
+            foreach (var key in SessionModel.AllowedLevels.Keys.ToList())
+                SessionModel.AllowedLevels[key] = SelectAllLevels;
+        }
     }
 
     protected override async Task OnInitializedAsync()
     {
         var currentUser = await AuthService.GetCurrentUserAsync();
         
-        // Check if user is authenticated
         if (currentUser == null)
         {
             Navigation.NavigateTo("/login");
             return;
         }
 
-        // Check if user is a lecturer
         if (currentUser.Role.ToString() != "Lecturer")
         {
             Navigation.NavigateTo("/dashboard");
             return;
         }
 
-        // Initialize department and level dictionaries
         foreach (var dept in Enum.GetValues<User.Departments>())
         {
             SessionModel.AllowedDepartments[dept] = true;
@@ -154,7 +209,6 @@
     {
         IsLoading = true;
         ErrorMessage = null;
-        SuccessMessage = null;
 
         try
         {
@@ -192,9 +246,7 @@
 
             if (session != null)
             {
-                SuccessMessage = $"Session created successfully! Redirecting...";
-                await Task.Delay(1000);
-                Navigation.NavigateTo($"/session/{session.SessionId}");
+                CreatedSession = session; 
             }
             else
             {
@@ -211,11 +263,23 @@
         }
     }
 
-    private void GoBack() => Navigation.NavigateTo("/dashboard");
+    private void GoHome() => Navigation.NavigateTo("/lecturer/home");
+    private void GoToSession() => Navigation.NavigateTo($"/session/{CreatedSession?.SessionId}");
+    private void CreateAnother()
+    {
+        CreatedSession = null;
+        SessionModel.Title = string.Empty;
+        SelectAllDepartments = true;
+        SelectAllLevels = true;
+        OnSelectAllDepartmentsChanged(new ChangeEventArgs { Value = true });
+        OnSelectAllLevelsChanged(new ChangeEventArgs { Value = true });
+    }
 
     public class CreateSessionRequest
     {
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Session title is required")]
         public string Title { get; set; } = string.Empty;
+        
         public Dictionary<User.Departments, bool> AllowedDepartments { get; set; } = new();
         public Dictionary<User.Levels, bool> AllowedLevels { get; set; } = new();
     }

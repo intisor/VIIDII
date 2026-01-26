@@ -31,206 +31,169 @@ else if (CurrentSession == null)
 }
 else
 {
-    <div class="session-container">
-        <!-- Session Header -->
-        <div class="session-header">
-            <h1>@CurrentSession.Title</h1>
-            @if (State.IsLecturer && State.ParticipantCount > 0)
-            {
-                <span class="participant-badge">
-                    <i class="fas fa-users"></i> @State.ParticipantCount participant(s) connected
-                </span>
-            }
-            
-            <!-- Dev Tools (DEBUG mode only) -->
-            #if DEBUG
-            <div class="dev-tools">
-                <button class="btn-dev-clear" @onclick="DevClearStorage" title="Clear session storage (Dev only)">
-                    <i class="fas fa-trash"></i> Clear Storage
-                </button>
-                <button class="btn-dev-logout" @onclick="DevLogout" title="Logout (Dev only)">
-                    <i class="fas fa-sign-out-alt"></i> Logout
-                </button>
+<div class="h-screen bg-background flex flex-col overflow-hidden">
+    <!-- Header -->
+    <header class="bg-white border-b border-border px-4 py-3 flex items-center justify-between flex-shrink-0 z-10">
+        <div class="flex items-center gap-3">
+             <button @onclick='() => Navigation.NavigateTo(State.IsLecturer ? "/lecturer/home" : "/student/home")' class="text-muted-foreground hover:text-foreground transition-colors p-2 hover:bg-secondary rounded-full">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+            </button>
+            <div>
+                 <h1 class="text-lg font-semibold leading-tight">@CurrentSession.Title</h1>
+                 <div class="flex items-center gap-2 text-xs text-muted-foreground">
+                    <span class="font-mono bg-secondary px-1.5 py-0.5 rounded">@SessionId</span>
+                    @if (State.IsLecturer && State.ParticipantCount > 0)
+                    {
+                        <span class="flex items-center gap-1 text-green-600">
+                             <span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+                             @State.ParticipantCount active
+                        </span>
+                    }
+                 </div>
             </div>
+        </div>
+        
+        <div class="flex items-center gap-2">
+            <!-- Dev Tools -->
+            #if DEBUG
+            <button class="text-xs text-red-500 hover:underline" @onclick="DevLogout">Dev Logout</button>
             #endif
         </div>
+    </header>
 
-        <!-- Error Banner -->
-        @if (!string.IsNullOrEmpty(State.ErrorMessage))
+    <!-- Main Content -->
+     <div class="flex-1 flex overflow-hidden relative">
+        <!-- ERROR BANNER -->
+         @if (!string.IsNullOrEmpty(State.ErrorMessage))
         {
-            <div class="error-banner">
-                <i class="fas fa-exclamation-triangle"></i>
+            <div class="absolute top-4 left-1/2 -translate-x-1/2 z-50 bg-destructive text-destructive-foreground px-4 py-2 rounded-md shadow-lg flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>
                 <span>@State.ErrorMessage</span>
-                @if (!State.HasExceededMaxAttempts && !State.IsLecturer)
+                 @if (!State.HasExceededMaxAttempts && !State.IsLecturer)
                 {
-                    <button class="btn-retry" @onclick="RetryConnection">Retry</button>
+                    <button class="ml-2 underline hover:text-white" @onclick="RetryConnection">Retry</button>
                 }
-                else if (State.HasExceededMaxAttempts)
+                 else if (State.HasExceededMaxAttempts)
                 {
-                    <button class="btn-retry" @onclick="RefreshPage">Refresh Page</button>
+                    <button class="ml-2 underline hover:text-white" @onclick="RefreshPage">Reload</button>
                 }
             </div>
         }
 
-        <!-- Test Camera Section (Lecturer Only, Before Session Starts) -->
+        <!-- TEST CAMERA MODE -->
         @if (State.IsLecturer && !State.IsSessionStarted && State.ShowTestCameraSection)
         {
-            <div class="test-camera-section">
-                <h3><i class="fas fa-video"></i> Camera Setup</h3>
-                <p>Test your camera and microphone before starting the session.</p>
-                <div class="test-video-container">
-                    <video id="testVideo" autoplay playsinline muted class="test-video"></video>
-                </div>
-                <div class="test-controls">
-                    @if (!State.IsTestingCamera)
-                    {
-                        <button class="btn btn-primary btn-lg" @onclick="TestCamera">
-                            <i class="fas fa-video"></i> Test Camera
-                        </button>
-                    }
-                    else
-                    {
-                        <button class="btn btn-secondary" @onclick="StopTestCamera">
-                            <i class="fas fa-stop"></i> Stop Test
-                        </button>
-                        <button class="btn btn-success btn-lg" @onclick="StartSessionWithCamera">
-                            <i class="fas fa-check-circle"></i> Start Session
-                        </button>
-                    }
-                </div>
-            </div>
-        }
-
-        <!-- Main Content Area: Video + Panels Side-by-Side -->
-        @if (State.IsSessionStarted || State.IsTestingCamera)
-        {
-            <div class="session-main-content">
-                <!-- Left: Video Section -->
-                <div class="video-section">
-                    <div class="video-container" id="videoContainer">
-                        <!-- Main Video Element -->
-                        <video id="sessionVideo" 
-                               autoplay 
-                               playsinline 
-                               muted="@State.IsLecturer"
-                               controls="@(!State.IsLecturer)"
-                               class="session-video">
-                        </video>
-
-                        <!-- Loading Overlay (combined loading/waiting states) -->
-                        @if (State.IsLoading)
-                        {
-                            <div class="loading-overlay">
-                                <div class="spinner"></div>
-                                <p>@(State.IsLecturer ? "Starting camera..." : "Connecting to lecturer...")</p>
-                            </div>
-                        }
-                        else if (!State.IsLecturer && !State.IsStreamLoaded && State.IsSessionStarted)
-                        {
-                            <div class="waiting-overlay">
-                                <div class="spinner"></div>
-                                <p>Waiting for lecturer's stream...</p>
-                            </div>
-                        }
-
-                        <!-- Mobile Play Overlay -->
-                        @if (State.ShowMobilePlayOverlay && !State.IsLecturer)
-                        {
-                            <div class="mobile-play-overlay" @onclick="PlayVideo">
-                                <div class="play-button">
-                                    <i class="fas fa-play"></i>
-                                    <p>Tap to start video</p>
-                                </div>
-                            </div>
-                        }
-
-                        <!-- Stream Type Indicator -->
-                        @if (State.IsLecturer && State.IsWebcamActive)
-                        {
-                            <div class="stream-indicator">
-                                <i class="fas fa-@(State.IsScreenSharing ? "desktop" : "video")"></i>
-                                <span>@(State.IsScreenSharing ? "Screen Sharing" : "Camera")</span>
-                            </div>
-                        }
-                    </div>
-
-                    <!-- Video Controls (Below Video) -->
-                    <div class="video-controls-container">
-                        @if (State.IsLecturer && State.IsWebcamActive)
-                        {
-                            <div class="video-controls">
-                                <button class="btn-control" @onclick="ToggleScreenShare" disabled="@State.IsLoading">
-                                    <i class="fas fa-@(State.IsScreenSharing ? "video" : "desktop")"></i>
-                                    <span class="control-label">@(State.IsScreenSharing ? "Camera" : "Share Screen")</span>
-                                </button>
-                                
-                                <button class="btn-control btn-danger" @onclick="EndSession">
-                                    <i class="fas fa-stop"></i>
-                                    <span class="control-label">End Session</span>
-                                </button>
-                            </div>
-                        }
-                        else if (State.IsLecturer && !State.IsSessionStarted)
-                        {
-                            <div class="video-controls">
-                                <button class="btn btn-success btn-lg" @onclick="StartSession" disabled="@State.IsLoading">
-                                    <i class="fas fa-play"></i> Start Session
-                                </button>
-                            </div>
-                        }
-                    </div>
-                </div>
-
-                <!-- Right: Panels Section (Messages & Participants) -->
-                @if (State.IsSessionStarted)
-                {
-                    <div class="panels-section @(State.IsTabExpanded ? "expanded" : "")">
-                        <!-- Tab Headers -->
-                        <div class="tab-headers">
-                            <button class="tab-header @(State.ActiveTab == "messages" ? "active" : "")" 
-                                    @onclick='() => State.SetTab("messages")'>
-                                <i class="fas fa-comments"></i>
-                                <span>Messages</span>
-                            </button>
-                            <button class="tab-header @(State.ActiveTab == "participants" ? "active" : "")" 
-                                    @onclick='() => State.SetTab("participants")'>
-                                <i class="fas fa-users"></i>
-                                <span>Participants (@State.ParticipantCount)</span>
-                            </button>
-                            <button class="tab-toggle" @onclick="ToggleTabExpansion">
-                                <i class="fas fa-@(State.IsTabExpanded ? "compress" : "expand")"></i>
-                            </button>
-                        </div>
-
-                        <!-- Tab Content -->
-                        <div class="tab-content">
-                            @if (State.ActiveTab == "messages")
+             <div class="absolute inset-0 z-40 bg-background/95 flex items-center justify-center p-4">
+                  <div class="max-w-2xl w-full bg-card border border-border rounded-xl shadow-2xl overflow-hidden flex flex-col">
+                       <div class="p-6 border-b border-border">
+                            <h3 class="text-xl font-semibold flex items-center gap-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+                                Camera Setup
+                            </h3>
+                       </div>
+                       <div class="aspect-video bg-black relative">
+                            <video id="testVideo" autoplay playsinline muted class="w-full h-full object-cover"></video>
+                       </div>
+                       <div class="p-6 flex items-center justify-end gap-3 bg-secondary/20">
+                            @if (!State.IsTestingCamera)
                             {
-                                <MessagingPanel SessionId="@SessionId"
-                                               IsLecturer="@State.IsLecturer"
-                                               HubConnection="@_hubConnection"
-                                               CurrentUserId="@(State.CurrentUser?.MatricNo ?? "")" />
+                                <button class="h-10 px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-md font-medium transition-colors" @onclick="TestCamera">
+                                    Test Camera
+                                </button>
                             }
                             else
                             {
-                                <ParticipantPanel Participants="@State.Participants"
+                                <button class="h-10 px-4 py-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground rounded-md font-medium" @onclick="StopTestCamera">
+                                    Stop Test
+                                </button>
+                                <button class="h-10 px-4 py-2 bg-green-600 text-white hover:bg-green-700 rounded-md font-medium" @onclick="StartSessionWithCamera">
+                                    Start Session
+                                </button>
+                            }
+                       </div>
+                  </div>
+             </div>
+        }
+
+        <!-- LEFT SIDEBAR (Participants) -->
+        <div class="hidden lg:flex w-80 flex-col border-r border-border bg-card">
+              <ParticipantPanel Participants="@State.Participants"
                                                  ParticipantStatuses="@State.ParticipantStatuses"
                                                  HubConnection="@_hubConnection"
                                                  SessionId="@SessionId"
                                                  IsLecturer="@State.IsLecturer" />
-                            }
-                        </div>
-                    </div>
-                }
-            </div>
-        }
+        </div>
 
-        <!-- Issue Buttons (Student Only) -->
-        @if (!State.IsLecturer && State.IsSessionStarted)
-        {
-            <IssueButtons HubConnection="@_hubConnection" />
-        }
-    </div>
+        <!-- CENTER STAGE (Video) -->
+        <div class="flex-1 flex flex-col relative bg-black">
+             <!-- Video Container -->
+             <div class="flex-1 relative overflow-hidden flex items-center justify-center" id="videoContainer">
+                  <video id="sessionVideo" 
+                               autoplay 
+                               playsinline 
+                               muted="@State.IsLecturer"
+                               controls="@(!State.IsLecturer)"
+                               class="w-full h-full object-contain"></video>
+
+                   @if (State.IsLoading)
+                    {
+                        <div class="absolute inset-0 flex flex-col items-center justify-center bg-black/80 text-white z-20">
+                            <div class="w-10 h-10 border-4 border-primary/30 border-t-primary rounded-full animate-spin mb-4"></div>
+                            <p>@(State.IsLecturer ? "Starting camera..." : "Connecting...")</p>
+                        </div>
+                    }
+                    else if (!State.IsLecturer && !State.IsStreamLoaded && State.IsSessionStarted)
+                    {
+                        <div class="absolute inset-0 flex flex-col items-center justify-center bg-zinc-900/90 text-white z-10">
+                             <div class="w-16 h-16 rounded-full bg-zinc-800 flex items-center justify-center mb-4">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-zinc-500 animate-pulse"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+                             </div>
+                            <p class="text-zinc-400">Waiting for lecturer stream...</p>
+                        </div>
+                    }
+             </div>
+
+             <!-- Controls Bar -->
+             <div class="h-16 bg-zinc-900 border-t border-zinc-800 flex items-center justify-between px-4 sm:px-6">
+                 @if (State.IsLecturer && State.IsWebcamActive)
+                 {
+                      <div class="flex items-center gap-2">
+                           <button @onclick="ToggleScreenShare" disabled="@State.IsLoading" class="h-10 w-10 rounded-full flex items-center justify-center bg-zinc-800 hover:bg-zinc-700 text-white transition-colors">
+                                @if (State.IsScreenSharing) {
+                                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+                                } else {
+                                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>
+                                }
+                           </button>
+                      </div>
+                      <button @onclick="EndSession" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md font-medium text-sm">
+                           End Session
+                      </button>
+                 }
+                 else if (State.IsLecturer && !State.IsSessionStarted)
+                 {
+                     <div class="w-full flex justify-center">
+                         <button @onclick="StartSession" disabled="@State.IsLoading" class="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-full font-bold shadow-lg shadow-green-900/20 hover:shadow-green-900/40 transition-all transform hover:scale-105">
+                              Start Session
+                         </button>
+                     </div>
+                 }
+                 else if (!State.IsLecturer)
+                 {
+                     <!-- Student Controls (Issues) -->
+                     <IssueButtons HubConnection="@_hubConnection" />
+                 }
+             </div>
+        </div>
+
+        <!-- RIGHT SIDEBAR (Chat) -->
+        <div class="hidden lg:flex w-96 flex-col border-l border-border bg-card">
+              <MessagingPanel SessionId="@SessionId"
+                                               IsLecturer="@State.IsLecturer"
+                                               HubConnection="@_hubConnection"
+                                               CurrentUserId="@(State.CurrentUser?.MatricNo ?? "")" />
+        </div>
+     </div>
 
     <!-- Engagement Modal (Student Only) -->
     @if (!State.IsLecturer)
@@ -240,6 +203,7 @@ else
                          ShouldShow="@_showEngagementModal"
                          OnHidden="@HideEngagementModal" />
     }
+</div>
 }
 
 @code {

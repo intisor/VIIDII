@@ -5,17 +5,27 @@
 @inject IJSRuntime JSRuntime
 @inject ISessionJsInterop SessionJsInterop
 
-<div class="messaging-panel">
+<div class="flex flex-col h-full bg-white">
+    <!-- Header -->
+    <div class="p-4 border-b border-border flex items-center justify-between flex-shrink-0">
+        <h2 class="font-medium flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>
+            Discussion
+        </h2>
+    </div>
+
     <!-- Messages List -->
-    <div class="messages-container" @ref="_messagesContainer">
+    <div class="flex-1 overflow-y-auto p-4 space-y-6 messages-wrapper scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent">
         @if (!Messages.Any())
         {
-            <div class="empty-state">
-                <i class="fas fa-comments"></i>
+            <div class="flex flex-col items-center justify-center h-full text-muted-foreground">
+                <div class="w-12 h-12 rounded-full bg-secondary flex items-center justify-center mb-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>
+                </div>
                 <p>No messages yet</p>
                 @if (IsLecturer)
                 {
-                    <p class="hint">Start the conversation by posting a message below</p>
+                    <p class="text-sm mt-1">Start the conversation below</p>
                 }
             </div>
         }
@@ -23,71 +33,77 @@
         {
             @foreach (var message in GetPostMessages())
             {
-                <!-- Lecturer Post -->
-                <div class="message-card lecturer-post">
-                    <div class="message-header">
-                        <div class="user-info">
-                            <div class="user-avatar">@GetInitials(message.UserName)</div>
-                            <div>
-                                <span class="user-name">@message.UserName</span>
-                                <span class="lecturer-badge">Lecturer</span>
-                            </div>
-                        </div>
-                        <span class="timestamp">@FormatTimestamp(message.createdAt)</span>
-                    </div>
+                <div class="group">
+                    <!-- Post -->
+                     <div class="flex gap-3">
+                         <div class="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-[#8338EC] to-[#C19BF5] text-white flex items-center justify-center text-xs font-bold">
+                             @GetInitials(message.UserName)
+                         </div>
+                         <div class="flex-1 min-w-0">
+                             <div class="flex items-center gap-2 mb-1">
+                                 <span class="font-semibold text-sm">@message.UserName</span>
+                                 <span class="px-1.5 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-medium uppercase">Lecturer</span>
+                                 <span class="text-xs text-muted-foreground ml-auto">@FormatTimestamp(message.createdAt)</span>
+                             </div>
+                             
+                             <div class="bg-secondary/30 rounded-lg p-3 text-sm text-foreground/90">
+                                 @if (message.messageType == MessageType.File)
+                                 {
+                                     <div class="flex items-center gap-2 p-2 bg-background border border-border rounded">
+                                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+                                         <span class="flex-1 truncate font-medium">@message.content.Replace("File: ", "")</span>
+                                         @if (!IsLecturer)
+                                         {
+                                             <button class="p-1 hover:bg-secondary rounded" data-file-id="@message.id">
+                                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+                                             </button>
+                                         }
+                                     </div>
+                                 }
+                                 else
+                                 {
+                                     <p class="whitespace-pre-wrap">@message.content</p>
+                                 }
+                             </div>
 
-                    <div class="message-content">
-                        @if (message.messageType == MessageType.File)
-                        {
-                            <div class="file-attachment">
-                                <i class="fas fa-file"></i>
-                                <span>@message.content.Replace("File: ", "")</span>
-                                @if (!IsLecturer)
+                             <!-- Actions -->
+                             <div class="flex items-center gap-3 mt-1 ml-1">
+                                 <button class="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors @(message.HasUserReacted(CurrentUserId) ? "text-primary font-medium" : "")"
+                                        @onclick="() => ToggleReaction(message.id)">
+                                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2h0a3.13 3.13 0 0 1 3 3.88Z"/></svg>
+                                     @if (message.ThumbsUpCount > 0) { <span>@message.ThumbsUpCount</span> }
+                                 </button>
+                                 
+                                 @if (!IsLecturer)
                                 {
-                                    <button class="btn-download" data-file-id="@message.id">
-                                        <i class="fas fa-download"></i> Download
+                                    <button class="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors" @onclick="() => StartReply(message.id)">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
+                                        Reply
                                     </button>
                                 }
-                            </div>
-                        }
-                        else
-                        {
-                            <p>@message.content</p>
-                        }
-                    </div>
+                             </div>
+                         </div>
+                     </div>
 
-                    <div class="message-footer">
-                        <button class="btn-reaction @(message.HasUserReacted(CurrentUserId) ? "reacted" : "")"
-                                @onclick="() => ToggleReaction(message.id)">
-                            <i class="fas fa-thumbs-up"></i>
-                            @if (message.ThumbsUpCount > 0)
-                            {
-                                <span>@message.ThumbsUpCount</span>
-                            }
-                        </button>
-
-                        @if (!IsLecturer)
-                        {
-                            <button class="btn-reply" @onclick="() => StartReply(message.id)">
-                                <i class="fas fa-reply"></i> Reply
-                            </button>
-                        }
-                    </div>
-
-                    <!-- Comments (Student Replies) -->
-                    @foreach (var comment in GetComments(message.id))
+                    <!-- Replies (Comments) -->
+                    @if (GetComments(message.id).Any())
                     {
-                        <div class="comment-card">
-                            <div class="comment-header">
-                                <div class="user-info">
-                                    <div class="user-avatar small">@GetInitials(comment.UserName)</div>
-                                    <span class="user-name">@comment.UserName</span>
+                        <div class="ml-11 mt-3 space-y-3 border-l-2 border-border pl-4">
+                             @foreach (var comment in GetComments(message.id))
+                            {
+                                <div class="flex gap-2.5">
+                                    <div class="flex-shrink-0 w-6 h-6 rounded-full bg-secondary text-secondary-foreground flex items-center justify-center text-[10px] font-bold">
+                                        @GetInitials(comment.UserName)
+                                    </div>
+                                    <div class="flex-1 min-w-0">
+                                        <div class="flex items-baseline gap-2">
+                                            <span class="font-medium text-xs">@comment.UserName</span>
+                                            <span class="text-[10px] text-muted-foreground">@FormatTimestamp(comment.createdAt)</span>
+                                        </div>
+                                        <p class="text-sm mt-0.5 text-foreground/80">@comment.content</p>
+                                    </div>
                                 </div>
-                                <span class="timestamp">@FormatTimestamp(comment.createdAt)</span>
-                            </div>
-                            <div class="comment-content">
-                                <p>@comment.content</p>
-                            </div>
+                            }
                         </div>
                     }
                 </div>
@@ -98,56 +114,60 @@
     <!-- Input Section -->
     @if (IsLecturer)
     {
-        <div class="input-section">
-            <div class="input-row">
-                <InputFile id="fileInput" @ref="_fileInput" OnChange="HandleFileSelected" accept="*/*" style="display: none;" />
-                <button class="btn-attach" @onclick="TriggerFileInput" disabled="@IsUploadingFile">
-                    <i class="fas fa-paperclip"></i>
+        <div class="p-4 border-t border-border bg-white flex-shrink-0">
+            <div class="flex items-end gap-2">
+                <InputFile id="fileInput" class="hidden" @ref="_fileInput" OnChange="HandleFileSelected" accept="*/*" />
+                <button class="p-2.5 text-muted-foreground hover:bg-secondary rounded-lg transition-colors" @onclick="TriggerFileInput" disabled="@IsUploadingFile" title="Attach file">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
                 </button>
+                
                 <input type="text" 
-                       class="message-input" 
-                       placeholder="Type a message or announcement..." 
+                       class="flex-1 min-h-[44px] max-h-32 p-2.5 bg-secondary/50 rounded-lg text-sm border-0 focus:ring-2 focus:ring-primary focus:bg-background transition-all placeholder:text-muted-foreground" 
+                       placeholder="Type a message..." 
                        @bind="NewMessageContent"
                        @onkeypress="HandleKeyPress"
                        disabled="@IsUploadingFile" />
-                <button class="btn-send" @onclick="SendMessage" disabled="@(string.IsNullOrWhiteSpace(NewMessageContent) || IsUploadingFile)">
-                    <i class="fas fa-paper-plane"></i>
+                       
+                <button class="p-2.5 bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg transition-colors disabled:opacity-50 disabled:pointer-events-none" 
+                        @onclick="SendMessage" 
+                        disabled="@(string.IsNullOrWhiteSpace(NewMessageContent) || IsUploadingFile)">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" x2="11" y1="2" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
                 </button>
             </div>
 
             @if (IsUploadingFile)
             {
-                <div class="upload-progress">
-                    <div class="progress-info">
+                <div class="mt-2 text-xs text-muted-foreground">
+                    <div class="flex justify-between mb-1">
                         <span>Sending @SelectedFileName...</span>
                         <span>@UploadProgress.ToString("F0")%</span>
                     </div>
-                    <div class="progress-bar">
-                        <div class="progress-fill" style="width: @(UploadProgress)%"></div>
+                    <div class="h-1 bg-secondary rounded-full overflow-hidden">
+                        <div class="h-full bg-primary transition-all duration-300" style="width: @(UploadProgress)%"></div>
                     </div>
                 </div>
             }
         </div>
     }
 
-    <!-- Reply Dialog (Students Only) -->
+    <!-- Reply Dialog (Students) -->
     @if (!IsLecturer && !string.IsNullOrEmpty(ReplyingToMessageId))
     {
-        <div class="reply-dialog">
-            <div class="reply-header">
+        <div class="p-4 border-t border-border bg-muted/30 flex-shrink-0">
+            <div class="flex items-center justify-between mb-2 text-xs text-muted-foreground">
                 <span>Replying to lecturer</span>
-                <button class="btn-close" @onclick="CancelReply">
-                    <i class="fas fa-times"></i>
+                <button @onclick="CancelReply" class="hover:text-foreground">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" x2="6" y1="6" y2="18"/><line x1="6" x2="18" y1="6" y2="18"/></svg>
                 </button>
             </div>
-            <div class="reply-input-row">
-                <input type="text" 
-                       class="reply-input" 
+            <div class="flex items-end gap-2">
+                 <input type="text" 
+                       class="flex-1 p-2.5 bg-white rounded-lg text-sm border border-input focus:ring-2 focus:ring-primary focus:border-primary placeholder:text-muted-foreground" 
                        placeholder="Type your reply..." 
                        @bind="ReplyContent"
                        @onkeypress="HandleReplyKeyPress" />
-                <button class="btn-send-reply" @onclick="SendReply" disabled="@string.IsNullOrWhiteSpace(ReplyContent)">
-                    <i class="fas fa-paper-plane"></i>
+                <button class="p-2.5 bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg transition-colors disabled:opacity-50" @onclick="SendReply" disabled="@string.IsNullOrWhiteSpace(ReplyContent)">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" x2="11" y1="2" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
                 </button>
             </div>
         </div>
@@ -164,7 +184,6 @@
     private string NewMessageContent = "";
     private string ReplyContent = "";
     private string? ReplyingToMessageId = null;
-    private ElementReference _messagesContainer;
     private InputFile? _fileInput;
     private IBrowserFile? SelectedFile;
     private string SelectedFileName = "";
