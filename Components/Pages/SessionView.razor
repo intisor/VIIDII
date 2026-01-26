@@ -101,124 +101,127 @@ else
             </div>
         }
 
-        <!-- Video Section -->
+        <!-- Main Content Area: Video + Panels Side-by-Side -->
         @if (State.IsSessionStarted || State.IsTestingCamera)
         {
-            <div class="video-section">
-                <div class="video-container" id="videoContainer">
-                    <!-- Main Video Element -->
-                    <video id="sessionVideo" 
-                           autoplay 
-                           playsinline 
-                           muted="@State.IsLecturer"
-                           controls="@(!State.IsLecturer)"
-                           class="session-video">
-                    </video>
+            <div class="session-main-content">
+                <!-- Left: Video Section -->
+                <div class="video-section">
+                    <div class="video-container" id="videoContainer">
+                        <!-- Main Video Element -->
+                        <video id="sessionVideo" 
+                               autoplay 
+                               playsinline 
+                               muted="@State.IsLecturer"
+                               controls="@(!State.IsLecturer)"
+                               class="session-video">
+                        </video>
 
-                    <!-- Loading Overlay (combined loading/waiting states) -->
-                    @if (State.IsLoading)
-                    {
-                        <div class="loading-overlay">
-                            <div class="spinner"></div>
-                            <p>@(State.IsLecturer ? "Starting camera..." : "Connecting to lecturer...")</p>
-                        </div>
-                    }
-                    else if (!State.IsLecturer && !State.IsStreamLoaded && State.IsSessionStarted)
-                    {
-                        <div class="waiting-overlay">
-                            <div class="spinner"></div>
-                            <p>Waiting for lecturer's stream...</p>
-                        </div>
-                    }
-
-                    <!-- Mobile Play Overlay -->
-                    @if (State.ShowMobilePlayOverlay && !State.IsLecturer)
-                    {
-                        <div class="mobile-play-overlay" @onclick="PlayVideo">
-                            <div class="play-button">
-                                <i class="fas fa-play"></i>
-                                <p>Tap to start video</p>
+                        <!-- Loading Overlay (combined loading/waiting states) -->
+                        @if (State.IsLoading)
+                        {
+                            <div class="loading-overlay">
+                                <div class="spinner"></div>
+                                <p>@(State.IsLecturer ? "Starting camera..." : "Connecting to lecturer...")</p>
                             </div>
-                        </div>
-                    }
+                        }
+                        else if (!State.IsLecturer && !State.IsStreamLoaded && State.IsSessionStarted)
+                        {
+                            <div class="waiting-overlay">
+                                <div class="spinner"></div>
+                                <p>Waiting for lecturer's stream...</p>
+                            </div>
+                        }
 
-                    <!-- Stream Type Indicator -->
-                    @if (State.IsLecturer && State.IsWebcamActive)
-                    {
-                        <div class="stream-indicator">
-                            <i class="fas fa-@(State.IsScreenSharing ? "desktop" : "video")"></i>
-                            <span>@(State.IsScreenSharing ? "Screen Sharing" : "Camera")</span>
-                        </div>
-                    }
+                        <!-- Mobile Play Overlay -->
+                        @if (State.ShowMobilePlayOverlay && !State.IsLecturer)
+                        {
+                            <div class="mobile-play-overlay" @onclick="PlayVideo">
+                                <div class="play-button">
+                                    <i class="fas fa-play"></i>
+                                    <p>Tap to start video</p>
+                                </div>
+                            </div>
+                        }
+
+                        <!-- Stream Type Indicator -->
+                        @if (State.IsLecturer && State.IsWebcamActive)
+                        {
+                            <div class="stream-indicator">
+                                <i class="fas fa-@(State.IsScreenSharing ? "desktop" : "video")"></i>
+                                <span>@(State.IsScreenSharing ? "Screen Sharing" : "Camera")</span>
+                            </div>
+                        }
+                    </div>
+
+                    <!-- Video Controls (Below Video) -->
+                    <div class="video-controls-container">
+                        @if (State.IsLecturer && State.IsWebcamActive)
+                        {
+                            <div class="video-controls">
+                                <button class="btn-control" @onclick="ToggleScreenShare" disabled="@State.IsLoading">
+                                    <i class="fas fa-@(State.IsScreenSharing ? "video" : "desktop")"></i>
+                                    <span class="control-label">@(State.IsScreenSharing ? "Camera" : "Share Screen")</span>
+                                </button>
+                                
+                                <button class="btn-control btn-danger" @onclick="EndSession">
+                                    <i class="fas fa-stop"></i>
+                                    <span class="control-label">End Session</span>
+                                </button>
+                            </div>
+                        }
+                        else if (State.IsLecturer && !State.IsSessionStarted)
+                        {
+                            <div class="video-controls">
+                                <button class="btn btn-success btn-lg" @onclick="StartSession" disabled="@State.IsLoading">
+                                    <i class="fas fa-play"></i> Start Session
+                                </button>
+                            </div>
+                        }
+                    </div>
                 </div>
 
-                <!-- Video Controls (Below Video) -->
-                <div class="video-controls-container">
-                    @if (State.IsLecturer && State.IsWebcamActive)
-                    {
-                        <div class="video-controls">
-                            <button class="btn-control" @onclick="ToggleScreenShare" disabled="@State.IsLoading">
-                                <i class="fas fa-@(State.IsScreenSharing ? "video" : "desktop")"></i>
-                                <span class="control-label">@(State.IsScreenSharing ? "Camera" : "Share Screen")</span>
+                <!-- Right: Panels Section (Messages & Participants) -->
+                @if (State.IsSessionStarted)
+                {
+                    <div class="panels-section @(State.IsTabExpanded ? "expanded" : "")">
+                        <!-- Tab Headers -->
+                        <div class="tab-headers">
+                            <button class="tab-header @(State.ActiveTab == "messages" ? "active" : "")" 
+                                    @onclick='() => State.SetTab("messages")'>
+                                <i class="fas fa-comments"></i>
+                                <span>Messages</span>
                             </button>
-                            
-                            <button class="btn-control btn-danger" @onclick="EndSession">
-                                <i class="fas fa-stop"></i>
-                                <span class="control-label">End Session</span>
+                            <button class="tab-header @(State.ActiveTab == "participants" ? "active" : "")" 
+                                    @onclick='() => State.SetTab("participants")'>
+                                <i class="fas fa-users"></i>
+                                <span>Participants (@State.ParticipantCount)</span>
+                            </button>
+                            <button class="tab-toggle" @onclick="ToggleTabExpansion">
+                                <i class="fas fa-@(State.IsTabExpanded ? "compress" : "expand")"></i>
                             </button>
                         </div>
-                    }
-                    else if (State.IsLecturer && !State.IsSessionStarted)
-                    {
-                        <div class="video-controls">
-                            <button class="btn btn-success btn-lg" @onclick="StartSession" disabled="@State.IsLoading">
-                                <i class="fas fa-play"></i> Start Session
-                            </button>
+
+                        <!-- Tab Content -->
+                        <div class="tab-content">
+                            @if (State.ActiveTab == "messages")
+                            {
+                                <MessagingPanel SessionId="@SessionId"
+                                               IsLecturer="@State.IsLecturer"
+                                               HubConnection="@_hubConnection"
+                                               CurrentUserId="@(State.CurrentUser?.MatricNo ?? "")" />
+                            }
+                            else
+                            {
+                                <ParticipantPanel Participants="@State.Participants"
+                                                 ParticipantStatuses="@State.ParticipantStatuses"
+                                                 HubConnection="@_hubConnection"
+                                                 SessionId="@SessionId"
+                                                 IsLecturer="@State.IsLecturer" />
+                            }
                         </div>
-                    }
-                </div>
-            </div>
-        }
-
-        <!-- Tab Section (Messages & Participants) -->
-        @if (State.IsSessionStarted)
-        {
-            <div class="tab-section @(State.IsTabExpanded ? "expanded" : "")">
-                <!-- Tab Headers -->
-                <div class="tab-headers">
-                    <button class="tab-header @(State.ActiveTab == "messages" ? "active" : "")" 
-                            @onclick='() => State.SetTab("messages")'>
-                        <i class="fas fa-comments"></i>
-                        <span>Messages</span>
-                    </button>
-                    <button class="tab-header @(State.ActiveTab == "participants" ? "active" : "")" 
-                            @onclick='() => State.SetTab("participants")'>
-                        <i class="fas fa-users"></i>
-                        <span>Participants (@State.ParticipantCount)</span>
-                    </button>
-                    <button class="tab-toggle" @onclick="ToggleTabExpansion">
-                        <i class="fas fa-@(State.IsTabExpanded ? "compress" : "expand")"></i>
-                    </button>
-                </div>
-
-                <!-- Tab Content -->
-                <div class="tab-content">
-                    @if (State.ActiveTab == "messages")
-                    {
-                        <MessagingPanel SessionId="@SessionId"
-                                       IsLecturer="@State.IsLecturer"
-                                       HubConnection="@_hubConnection"
-                                       CurrentUserId="@(State.CurrentUser?.MatricNo ?? "")" />
-                    }
-                    else
-                    {
-                        <ParticipantPanel Participants="@State.Participants"
-                                         ParticipantStatuses="@State.ParticipantStatuses"
-                                         HubConnection="@_hubConnection"
-                                         SessionId="@SessionId"
-                                         IsLecturer="@State.IsLecturer" />
-                    }
-                </div>
+                    </div>
+                }
             </div>
         }
 

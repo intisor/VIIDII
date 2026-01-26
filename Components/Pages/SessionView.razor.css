@@ -23,12 +23,34 @@
 
 /* ===== CONTAINER & LAYOUT ===== */
 .session-container {
-    max-width: 1400px;
+    max-width: 1600px;
     margin: 0 auto;
     padding: 1rem;
     display: grid;
     grid-template-columns: 1fr;
     gap: 1.5rem;
+}
+
+/* Main content area: Video + Panels side-by-side on desktop */
+.session-main-content {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+}
+
+/* Desktop: Side-by-side layout */
+@media (min-width: 992px) {
+    .session-main-content {
+        grid-template-columns: 1fr 400px;
+        gap: 1.5rem;
+    }
+}
+
+/* Large screens: More space for panels */
+@media (min-width: 1400px) {
+    .session-main-content {
+        grid-template-columns: 1fr 450px;
+    }
 }
 
 /* ===== SESSION HEADER ===== */
@@ -379,19 +401,31 @@
     transform: none;
 }
 
-/* ===== TAB SECTION ===== */
-.tab-section {
+/* ===== PANELS SECTION (Messages & Participants - Right Side) ===== */
+.panels-section {
     background: white;
     border-radius: 1rem;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
     overflow: hidden;
     transition: all 0.3s ease;
+    display: flex;
+    flex-direction: column;
+    height: fit-content;
 }
 
-.tab-section.expanded {
-    position: fixed;
-    top: 50%;
-    left: 50%;
+/* Desktop: Fixed height to match video */
+@media (min-width: 992px) {
+    .panels-section {
+        height: calc(100vh - 250px);
+        max-height: 700px;
+        min-height: 500px;
+    }
+}
+
+.panels-section.expanded {
+position: fixed;
+top: 50%;
+left: 50%;
     transform: translate(-50%, -50%);
     width: 90vw;
     max-width: 900px;
@@ -450,9 +484,18 @@
     padding: 1.5rem;
     max-height: 400px;
     overflow-y: auto;
+    flex: 1;
 }
 
-.tab-section.expanded .tab-content {
+/* Desktop: Allow content to fill available height */
+@media (min-width: 992px) {
+    .tab-content {
+        max-height: none;
+        height: 100%;
+    }
+}
+
+.panels-section.expanded .tab-content {
     max-height: calc(80vh - 60px);
 }
 
