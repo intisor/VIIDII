@@ -389,55 +389,77 @@
         if (SelectedFile.Size > 50 * 1024 * 1024)
         {
             Console.WriteLine("File too large (max 50MB)");
-            // TODO: Show error to user
             return;
         }
 
         IsUploadingFile = true;
         UploadProgress = 0;
-        string? messageId = null;
+        StateHasChanged();
 
         try
         {
             // Create file message first
             await HubConnection!.SendAsync("CreatePost", SessionId, $"File: {SelectedFileName}", true);
             
-            // Wait a moment for message to be created and get its ID
-            await Task.Delay(200);
+            // Wait for message to be created
+            await Task.Delay(300);
             
-            // Get the latest file message ID (the one we just created)
+            // Get the latest file message ID
             var latestFileMessage = Messages.LastOrDefault(m => m.messageType == MessageType.File);
-            messageId = latestFileMessage?.id;
+            var messageId = latestFileMessage?.id;
 
             if (string.IsNullOrEmpty(messageId))
             {
                 Console.WriteLine("Failed to get message ID for file");
+                IsUploadingFile = false;
                 return;
             }
 
-            // Convert IBrowserFile to a format JS can use
-            // We'll pass the file via a stream reference
+            // Open stream and send via P2P
             using var stream = SelectedFile.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024);
             var dotNetStreamRef = new DotNetStreamReference(stream);
 
-            // Send file via P2P
+            // Send file via P2P with progress tracking
             var result = await SessionJsInterop.SendFileToStudentsAsync(dotNetStreamRef, messageId);
 
             Console.WriteLine($"File transfer initiated: {SelectedFileName}");
             UploadProgress = 100;
+            StateHasChanged();
+            
+            // Auto-clear after a moment
+            await Task.Delay(1500);
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Error uploading file: {ex.Message}");
-            // TODO: Show error to user
         }
         finally
         {
             IsUploadingFile = false;
             SelectedFile = null;
             SelectedFileName = "";
+            UploadProgress = 0;
             StateHasChanged();
         }
+    }
+
+    [JSInvokable]
+    public void OnFileUploadProgress(double progress)
+    {
+        UploadProgress = progress;
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void OnFileDownloadComplete(string messageId, string fileName)
+    {
+        Console.WriteLine($"File download complete: {fileName}");
+    }
+
+    [JSInvokable]
+    public void OnFileDownloadError(string messageId, string error)
+    {
+        Console.WriteLine($"File download error for {messageId}: {error}");
     }
 
     // Helper Methods

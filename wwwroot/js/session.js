@@ -781,36 +781,14 @@ connection.on("PostCreated", (postId) => {
     // those can be handled here. For example, temporarily disabling the post button until confirmation.
 });
 
+
 // Engagement Tracking
+// Note: Engagement modal is now handled by EngagementModal.razor component
+// This legacy code is kept for reference but modal interaction is managed in Blazor
 connection.on("AreYouThere", () => {
-    if (window.isSessionLecturer) return;
-    const activityModal = document.getElementById("activityModal");
-    if (!activityModal) {
-        console.error("Activity modal not found in DOM");
-        return;
-    }
-    let bsModal = bootstrap.Modal.getInstance(activityModal) || new bootstrap.Modal(activityModal, { backdrop: false });
-    bsModal.show();
-    const confirmButton = document.getElementById("confirmActive");
-    const closeButton = activityModal.querySelector(".btn-close");
-    const hideModal = () => {
-        bsModal.hide();
-        const backdrop = document.querySelector(".modal-backdrop");
-        if (backdrop) backdrop.remove();
-        document.body.classList.remove("modal-open");
-    };
-    if (!confirmButton.dataset.listener) {
-        confirmButton.addEventListener("click", () => {
-            connection.invoke("ConfirmActive").catch(err => console.error("Failed to confirm active:", err));
-            hideModal();
-        });
-        confirmButton.dataset.listener = "true";
-    }
-    if (!closeButton.dataset.listener) {
-        closeButton.addEventListener("click", hideModal);
-        closeButton.dataset.listener = "true";
-    }
+    console.log("AreYouThere event received - handled by EngagementModal.razor component");
 });
+
 
 document.addEventListener("visibilitychange", () => {
     if (window.isSessionLecturer) return;

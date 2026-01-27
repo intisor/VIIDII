@@ -51,6 +51,8 @@ namespace VIIDII.Hubs
                         Console.WriteLine($"JoinSession failed: {error}");
                         return;
                     }
+                    // Refresh session to get updated participant list
+                    session = joinedSession;
                     Console.WriteLine($"Student {matricNo} joined session {sessionId}, ParticipantIds: {string.Join(", ", session.ParticipantIds)}");
                 }
                 if (!string.IsNullOrEmpty(session.LecturerConnectionId))
@@ -83,6 +85,8 @@ namespace VIIDII.Hubs
                     Console.WriteLine($"JoinSession failed: {error}");
                     return;
                 }
+                // Refresh session to get updated participant list
+                session = joinedSession;
                 Console.WriteLine($"Student {matricNo} joined session {sessionId}, ParticipantIds: {string.Join(", ", session.ParticipantIds)}");
             }
 
@@ -94,7 +98,8 @@ namespace VIIDII.Hubs
 
             if (!string.IsNullOrEmpty(session.LecturerConnectionId))
             {
-                var participants = session.ParticipantIds.ToDictionary(id => id, id => id);
+                // Send participant names instead of just IDs (consistent with StartSession)
+                var participants = session.ParticipantIds.ToDictionary(id => id, id => MockApiService.GetUsers().FirstOrDefault(u => u.MatricNo == id)?.Name ?? id);
                 await Clients.Client(session.LecturerConnectionId).SendAsync("ReceiveParticipants", participants);
                 Console.WriteLine($"Sent participants to lecturer: {string.Join(", ", participants.Keys)}");
             }
@@ -157,8 +162,22 @@ namespace VIIDII.Hubs
         {
             var httpContext = Context.GetHttpContext();
             var matricNo = httpContext?.Session.GetString("MatricNo");
-            var userName = MockApiService.GetUsers().FirstOrDefault(s => s.MatricNo == matricNo).Name;
-            var post = _messageService.CreatePost(sessionId, matricNo, userName, content, true,isFile);
+            
+            if (string.IsNullOrEmpty(matricNo))
+            {
+                await Clients.Caller.SendAsync("Error", "Session expired. Please log in again.");
+                return;
+            }
+            
+            var user = MockApiService.GetUsers().FirstOrDefault(s => s.MatricNo == matricNo);
+            if (user == null)
+            {
+                await Clients.Caller.SendAsync("Error", "User not found.");
+                return;
+            }
+            
+            var userName = user.Name;
+            var post = _messageService.CreatePost(sessionId, matricNo, userName, content, true, isFile);
             await Clients.Group(sessionId).SendAsync("ReceivePost", post); // Changed from Clients.Others to Clients.Group(sessionId)
             // Optionally, PostCreated can still be sent if the caller needs specific confirmation beyond receiving the post itself.
             // For now, let's assume ReceivePost is sufficient for the caller to see their own post.
@@ -171,7 +190,21 @@ namespace VIIDII.Hubs
         {
             var httpContext = Context.GetHttpContext();
             var matricNo = httpContext?.Session.GetString("MatricNo");
-            var userName = MockApiService.GetUsers().FirstOrDefault(s => s.MatricNo == matricNo).Name;
+            
+            if (string.IsNullOrEmpty(matricNo))
+            {
+                await Clients.Caller.SendAsync("Error", "Session expired. Please log in again.");
+                return;
+            }
+            
+            var user = MockApiService.GetUsers().FirstOrDefault(s => s.MatricNo == matricNo);
+            if (user == null)
+            {
+                await Clients.Caller.SendAsync("Error", "User not found.");
+                return;
+            }
+            
+            var userName = user.Name;
             var isLecturer = IsSessionLecturer(sessionId, matricNo);
             var comment = _messageService.CreateComment(sessionId, matricNo, userName, content, postId, isLecturer);
             await Clients.Group(sessionId).SendAsync("ReceiveComment", comment);

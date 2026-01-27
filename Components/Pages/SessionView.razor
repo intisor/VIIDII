@@ -301,9 +301,14 @@ else
                 await SessionJsInterop.InitializeAsync(SessionId, State.IsLecturer, _dotNetRef);
 
                 // Setup tab visibility listener for students
-                if (!State.IsLecturer)
+                if (!State.IsLecturer && State.IsSessionStarted)
                 {
+                    Console.WriteLine("Setting up tab visibility listener for student");
                     await SessionJsInterop.SetupTabVisibilityListenerAsync();
+                }
+                else
+                {
+                    Console.WriteLine($"Tab visibility not setup: IsLecturer={State.IsLecturer}, SessionStarted={State.IsSessionStarted}");
                 }
 
                 // If student and session already started, setup peer
@@ -836,13 +841,18 @@ else
     // Engagement Handler
     private async Task OnAreYouThere()
     {
-        Console.WriteLine("AreYouThere prompt received from lecturer");
+        Console.WriteLine($"AreYouThere event received. IsLecturer={State.IsLecturer}");
 
         await InvokeAsync(() =>
         {
             if (!State.IsLecturer)
             {
+                Console.WriteLine("Showing engagement modal for student");
                 _showEngagementModal = true;
+            }
+            else
+            {
+                Console.WriteLine("WARNING: AreYouThere received by lecturer - ignoring");
             }
 
             StateHasChanged();
@@ -851,6 +861,7 @@ else
 
     private void HideEngagementModal()
     {
+        Console.WriteLine("Hiding engagement modal");
         _showEngagementModal = false;
         StateHasChanged();
     }
@@ -1016,10 +1027,17 @@ else
     [JSInvokable]
     public async Task OnTabVisibilityChanged(bool isVisible)
     {
-        if (State.IsLecturer) return;
+        // Only track for students in active sessions
+        if (State.IsLecturer || !State.IsSessionStarted)
+        {
+            Console.WriteLine($"Tab visibility ignored: IsLecturer={State.IsLecturer}, SessionStarted={State.IsSessionStarted}");
+            return;
+        }
 
-        // Report to SignalR for engagement tracking (Phase 4)
-        if (_hubConnection != null)
+        Console.WriteLine($"Student tab visibility changed: {isVisible}");
+
+        // Report to SignalR for engagement tracking
+        if (_hubConnection != null && _hubConnection.State == HubConnectionState.Connected)
         {
             try
             {
