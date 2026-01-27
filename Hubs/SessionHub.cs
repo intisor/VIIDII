@@ -32,14 +32,18 @@ namespace VIIDII.Hubs
             }
             
             await Groups.AddToGroupAsync(Context.ConnectionId, sessionId);
-            await Clients.Group(sessionId).SendAsync("StartSession", sessionId);
             var session = _sessionService.GetSessionById(sessionId);
+            
             if(session != null)
             {
                 if (IsSessionLecturer(sessionId,matricNo))
                 {
+                    // CRITICAL: Set LecturerConnectionId BEFORE broadcasting
                     session.LecturerConnectionId = Context.ConnectionId;
                     Console.WriteLine($"Lecturer {matricNo} set LecturerConnectionId: {session.LecturerConnectionId}");
+
+                    // NOW broadcast StartSession to all (lecturer will handle this in JS)
+                    await Clients.Group(sessionId).SendAsync("StartSession", sessionId);
 
                     // If session is already started, send current scores and statuses to lecturer
                     if (session.Status == SessionStatus.Started)
@@ -166,12 +170,14 @@ namespace VIIDII.Hubs
                 Console.WriteLine($"Unauthorized stream change attempt by {matricNo} in session {sessionId}");
             }
         }
-        public Task SendMessage(string user, string message) => Clients.Others.SendAsync("ReceiveMessage", user, message);
         public async Task SendPeerId(string sessionId, string peerId)
         {
             var userId = Context.GetHttpContext()?.Session.GetString("MatricNo");
 
-            await Clients.Group(sessionId).SendAsync("ReceivePeerId", userId, peerId);
+            // Only send to others in the group (not back to sender)
+            // This prevents the lecturer from receiving their own peer ID
+            await Clients.OthersInGroup(sessionId).SendAsync("ReceivePeerId", userId, peerId);
+            Console.WriteLine($"Sent peer ID {peerId} for user {userId} to others in session {sessionId}");
         }
 
         public async Task CreatePost(string sessionId, string content, bool isFile)
