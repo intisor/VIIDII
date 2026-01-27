@@ -1,0 +1,11 @@
+@using Microsoft.AspNetCore.SignalR.Client
+@using VIIDII.Models
+
+<div class="h-screen bg-background flex flex-col overflow-hidden">
+    @ChildContent
+</div>
+
+@code {
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+}

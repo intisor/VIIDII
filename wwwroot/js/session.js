@@ -35,9 +35,21 @@ connection.onreconnected(() => {
     console.log("SignalR reconnected, rejoining session...");
     const { sessionId } = window.sessionState || {};
     if (sessionId && !window.isSessionLecturer) {
-        console.log("Reconnecting to session:", sessionId);
+        console.log("Reconnecting to session as student:", sessionId);
         connection.invoke("JoinSession", sessionId);
-        tryConnect(sessionId);
+        
+        // Force peer reconnection for students
+        if (peer && !peer.destroyed) {
+            console.log("Destroying old peer for fresh connection");
+            peer.destroy();
+            peer = null;
+        }
+        
+        // Setup fresh peer connection
+        const video = document.getElementById("sessionVideo");
+        if (video) {
+            setupStudentPeer(sessionId, video);
+        }
     }
 });
 
@@ -259,95 +271,128 @@ connection.on("StartSession", (sessionId) => {
 });
 
 function setupStudentPeer(sessionId, video) {
-    if (peer && !peer.disconnected) {
-        console.log("Student peer exists:", peer.id);
-        tryConnect(sessionId);
-        return;
+// Clean up existing peer if any to allow fresh reconnection
+if (peer && !peer.destroyed) {
+    console.log("Cleaning up existing peer before creating new one");
+    peer.destroy();
+    peer = null;
+}
+    
+// Reset stream state for fresh connection
+isStreamAttached = false;
+attachedStreamId = null;
+    
+console.log("Setting up fresh student peer connection");
+    
+peer = new Peer({
+    config: {
+        iceServers: [
+            { urls: "stun:stun.l.google.com:19302" },
+            { urls: "stun:freestun.net:3478" },
+            {
+                urls: ["turn:openrelay.metered.ca:80", "turn:openrelay.metered.ca:443"],
+                username: "openrelayproject",
+                credential: "openrelayproject"
+            },
+            {
+                urls: "turn:freestun.net:3478",
+                username: "free",
+                credential: "free"
+            }
+        ]
     }
-    peer = new Peer({
-        config: {
-            iceServers: [
-                { urls: "stun:stun.l.google.com:19302" },
-                { urls: "stun:freestun.net:3478" },
-                {
-                    urls: ["turn:openrelay.metered.ca:80", "turn:openrelay.metered.ca:443"],
-                    username: "openrelayproject",
-                    credential: "openrelayproject"
-                },
-                {
-                    urls: "turn:freestun.net:3478",
-                    username: "free",
-                    credential: "free"
+});
+    
+peer.on("open", (id) => {
+    console.log("Student peer open with ID:", id);
+    connection.invoke("SendPeerId", sessionId, id)
+        .then(() => console.log("Peer ID sent to server successfully"))
+        .catch(err => console.error("Failed to send peer ID:", err));
+        
+    // Try to connect immediately after peer opens
+    setTimeout(() => tryConnect(sessionId), 500);
+});
+    
+peer.on("call", (call) => {
+    console.log("Received call from lecturer, peer:", call.peer);
+    call.answer();
+        
+    let streamTimeout = setTimeout(() => {
+        if (!isStreamAttached) {
+            console.warn("No stream received after 10s, retrying connection...");
+            call.close();
+            setTimeout(() => tryConnect(sessionId), 2000);
+        }
+    }, 10000);
+        
+    call.on("stream", (remoteStream) => {
+        clearTimeout(streamTimeout);
+        console.log("Received lecturer stream with ID:", remoteStream.id);
+            
+        if (remoteStream.id === attachedStreamId) {
+            console.log("Ignoring duplicate stream, ID:", remoteStream.id);
+            return;
+        }
+            
+        if (isStreamAttached) {
+            console.log("Replacing existing stream with new stream:", remoteStream.id);
+        }
+            
+        isStreamAttached = true;
+        attachedStreamId = remoteStream.id;
+            
+        if (video) {
+            console.log("Attaching remote stream to video element");
+            video.srcObject = remoteStream;
+            video.play().catch(err => {
+                console.error("Playback failed:", err.message);
+                if (isMobile) {
+                    console.log("Mobile playback failed, waiting for user interaction");
+                } else {
+                    console.error("Desktop playback failed");
                 }
-            ]
+            });
         }
     });
-    peer.on("open", (id) => {
-        console.log("Student peer open:", id);
-        connection.invoke("SendPeerId", sessionId, id).catch(err => console.error("Failed to send peer ID:", err));
-        tryConnect(sessionId);
+        
+    call.on("close", () => {
+        console.log("Call closed, cleaning up");
+        window.currentCall = null;
+        isStreamAttached = false;
+        attachedStreamId = null;
+        if (video) {
+            video.srcObject = null;
+        }
     });
-    peer.on("call", (call) => {
-        console.log("Received lecturer call:", call.peer);
-        call.answer();
-        let streamTimeout = setTimeout(() => {
-            if (!isStreamAttached) {
-                console.warn("No stream received after 10s, retrying...");
-                call.close();
-                tryConnect(sessionId);
-            }
-        }, 10000);
-        call.on("stream", (remoteStream) => {
-            clearTimeout(streamTimeout);
-            console.log("Received lecturer stream:", remoteStream);
-            if (remoteStream.id === attachedStreamId) {
-                console.log("Ignoring duplicate stream, ID:", remoteStream.id);
-                return;
-            }
-            if (isStreamAttached) {
-                console.log("Stream already attached, ignoring new stream:", remoteStream.id);
-                return;
-            }
-            isStreamAttached = true;
-            attachedStreamId = remoteStream.id;
-            if (video) {
-                console.log("Attaching remote stream to video element.");
-                video.srcObject = remoteStream;
-                video.play().catch(err => {
-                    console.error("Playback failed:", err.message);
-                    if (isMobile) {
-                        // Rely on play overlay for mobile
-                        console.log("Mobile playback failed, waiting for user interaction.");
-                    } else {
-                        alert("Failed to play video. Please check your connection.");
-                    }
-                });
-            }
-        });
-        call.on("close", () => {
-            console.log("Call closed.");
-            window.currentCall = null;
-            isStreamAttached = false;
-            attachedStreamId = null;
-            if (video) {
-                video.srcObject = null;
-            }
-        });
-        call.on("error", (err) => console.error("Call error:", err));
-        // Store call for stream change handling
-        window.currentCall = call;
+        
+    call.on("error", (err) => {
+        console.error("Call error:", err);
+        clearTimeout(streamTimeout);
     });
+        
+    // Store call for stream change handling
+    window.currentCall = call;
+});
    
-    peer.on("error", (err) => {
-        console.error("Peer error:", err);
-        if (err.type === "peer-unavailable") {
-            console.warn("Lecturer not available, retrying...");
-            setTimeout(() => tryConnect(sessionId), 3000);
-        } else if (err.type === "server-disconnected") {
-            console.warn("PeerServer disconnected, reconnecting...");
-            peer.reconnect();
-        }
-    });
+peer.on("error", (err) => {
+    console.error("Peer error:", err);
+    if (err.type === "peer-unavailable") {
+        console.warn("Lecturer not available, retrying in 3s...");
+        setTimeout(() => tryConnect(sessionId), 3000);
+    } else if (err.type === "server-disconnected") {
+        console.warn("PeerServer disconnected, reconnecting...");
+        peer.reconnect();
+    } else if (err.type === "network") {
+        console.error("Network error, will retry on next attempt");
+    }
+});
+    
+peer.on("disconnected", () => {
+    console.warn("Peer disconnected, attempting to reconnect...");
+    if (!peer.destroyed) {
+        peer.reconnect();
+    }
+});
 
     // Handle stream change
     connection.on("ReceiveStreamChange", (streamType) => {

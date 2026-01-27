@@ -14,94 +14,72 @@
 
 <PageTitle>Session - @SessionId</PageTitle>
 
-@if (_isNavigating)
+<LoadingSpinner IsVisible="@_isNavigating" Message="Loading session..." />
+
+@if (!_isNavigating)
 {
-    <div class="loading-screen">
-        <div class="spinner"></div>
-        <p>Loading session...</p>
-    </div>
-}
-else if (State.CurrentUser == null)
-{
-    <div class="alert alert-warning">Please log in first.</div>
-}
-else if (CurrentSession == null)
-{
-    <div class="alert alert-danger">Session not found or you don't have access.</div>
-}
-else
-{
-<div class="h-screen bg-background flex flex-col overflow-hidden">
-<!-- Header -->
-<SessionHeader Title="@CurrentSession.Title"
-               SessionId="@SessionId"
-               IsLecturer="@State.IsLecturer"
-               ParticipantCount="@State.ParticipantCount"
-               OnBackClick="@(() => Navigation.NavigateTo(State.IsLecturer ? "/lecturer/home" : "/student/home"))" />
-
-    <!-- Main Content -->
-     <div class="flex-1 flex overflow-hidden relative">
-        <!-- ERROR BANNER -->
-        <ErrorBanner ErrorMessage="@State.ErrorMessage"
-                     HasExceededMaxAttempts="@State.HasExceededMaxAttempts"
-                     IsLecturer="@State.IsLecturer"
-                     OnRetry="@RetryConnection"
-                     OnRefresh="@RefreshPage" />
-
-        <!-- TEST CAMERA MODE -->
-        <CameraTestModal IsVisible="@(State.IsLecturer && !State.IsSessionStarted && State.ShowTestCameraSection)"
-                         IsTesting="@State.IsTestingCamera"
-                         OnTestCamera="@TestCamera"
-                         OnStopTest="@StopTestCamera"
-                         OnStartSession="@StartSessionWithCamera" />
-
-        <!-- LEFT SIDEBAR (Participants) -->
-        <div class="hidden lg:flex w-80 flex-col border-r border-border bg-card">
-              <ParticipantPanel Participants="@State.Participants"
-                                                 ParticipantStatuses="@State.ParticipantStatuses"
-                                                 HubConnection="@_hubConnection"
-                                                 SessionId="@SessionId"
-                                                 IsLecturer="@State.IsLecturer" />
-        </div>
-
-        <!-- CENTER STAGE (Video) -->
-        <div class="flex-1 flex flex-col relative bg-black">
-             <!-- Video Container -->
-             <VideoPlayer IsLecturer="@State.IsLecturer"
-                          IsLoading="@State.IsLoading"
-                          IsStreamLoaded="@State.IsStreamLoaded"
-                          IsSessionStarted="@State.IsSessionStarted" />
-
-             <!-- Controls Bar -->
-             <ControlsBar IsLecturer="@State.IsLecturer"
-                          IsWebcamActive="@State.IsWebcamActive"
-                          IsScreenSharing="@State.IsScreenSharing"
-                          IsSessionStarted="@State.IsSessionStarted"
-                          IsLoading="@State.IsLoading"
-                          HubConnection="@_hubConnection"
-                          OnToggleScreenShare="@ToggleScreenShare"
-                          OnEndSession="@EndSession"
-                          OnStartSession="@StartSession" />
-        </div>
-
-        <!-- RIGHT SIDEBAR (Chat) -->
-        <div class="hidden lg:flex w-96 flex-col border-l border-border bg-card">
-              <MessagingPanel SessionId="@SessionId"
-                                               IsLecturer="@State.IsLecturer"
-                                               HubConnection="@_hubConnection"
-                                               CurrentUserId="@(State.CurrentUser?.MatricNo ?? "")" />
-        </div>
-     </div>
-
-    <!-- Engagement Modal (Student Only) -->
-    @if (!State.IsLecturer)
+    @if (State.CurrentUser == null)
     {
-        <EngagementModal HubConnection="@_hubConnection"
-                         IsStudent="true"
-                         ShouldShow="@_showEngagementModal"
-                         OnHidden="@HideEngagementModal" />
+        <AlertMessage Message="Please log in first." Type="warning" />
     }
-</div>
+    else if (CurrentSession == null)
+    {
+        <AlertMessage Message="Session not found or you don't have access." Type="danger" />
+    }
+    else
+    {
+        <SessionLayout>
+            <SessionHeader Title="@CurrentSession.Title"
+                           SessionId="@SessionId"
+                           IsLecturer="@State.IsLecturer"
+                           ParticipantCount="@State.ParticipantCount"
+                           OnBackClick="@(() => Navigation.NavigateTo(State.IsLecturer ? "/lecturer/home" : "/student/home"))" />
+
+            <SessionMainContent>
+                <ErrorBanner ErrorMessage="@State.ErrorMessage"
+                             HasExceededMaxAttempts="@State.HasExceededMaxAttempts"
+                             IsLecturer="@State.IsLecturer"
+                             OnRetry="@RetryConnection"
+                             OnRefresh="@RefreshPage" />
+
+                <CameraTestModal IsVisible="@(State.IsLecturer && !State.IsSessionStarted && State.ShowTestCameraSection)"
+                                 IsTesting="@State.IsTestingCamera"
+                                 OnTestCamera="@TestCamera"
+                                 OnStopTest="@StopTestCamera"
+                                 OnStartSession="@StartSessionWithCamera" />
+
+                <ParticipantSidebar Participants="@State.Participants"
+                                    ParticipantStatuses="@State.ParticipantStatuses"
+                                    HubConnection="@_hubConnection"
+                                    SessionId="@SessionId"
+                                    IsLecturer="@State.IsLecturer" />
+
+                <VideoStage IsLecturer="@State.IsLecturer"
+                            IsLoading="@State.IsLoading"
+                            IsStreamLoaded="@State.IsStreamLoaded"
+                            IsSessionStarted="@State.IsSessionStarted"
+                            IsWebcamActive="@State.IsWebcamActive"
+                            IsScreenSharing="@State.IsScreenSharing"
+                            HubConnection="@_hubConnection"
+                            OnToggleScreenShare="@ToggleScreenShare"
+                            OnEndSession="@EndSession"
+                            OnStartSession="@StartSession" />
+
+                <MessagingSidebar SessionId="@SessionId"
+                                  IsLecturer="@State.IsLecturer"
+                                  HubConnection="@_hubConnection"
+                                  CurrentUserId="@(State.CurrentUser?.MatricNo ?? "")" />
+            </SessionMainContent>
+
+            @if (!State.IsLecturer)
+            {
+                <EngagementModal HubConnection="@_hubConnection"
+                                 IsStudent="true"
+                                 ShouldShow="@_showEngagementModal"
+                                 OnHidden="@HideEngagementModal" />
+            }
+        </SessionLayout>
+    }
 }
 
 @code {
@@ -209,9 +187,13 @@ else
                     Console.WriteLine($"Tab visibility not setup: IsLecturer={State.IsLecturer}, SessionStarted={State.IsSessionStarted}");
                 }
 
-                // If student and session already started, setup peer
+                // If student and session already started, setup peer connection
                 if (!State.IsLecturer && State.IsSessionStarted)
                 {
+                    Console.WriteLine("Student joining active session - setting up peer connection");
+                    // Reset connection state to allow fresh connection on refresh
+                    State.ConnectionAttempts = 0;
+                    State.MyPeerId = null;
                     await SetupStudentPeerConnectionAsync();
                 }
 
@@ -526,14 +508,18 @@ else
         try
         {
             _isSettingUpPeer = true;
-            State.StartLoading("Setting up connection...");
+            State.StartLoading("Connecting to session...");
 
+            // Clear any previous peer state to ensure fresh connection
+            Console.WriteLine("Setting up fresh peer connection for student");
+            
             var result = await SessionJsInterop.SetupStudentPeerAsync();
             
             // Result will have { success: true, peerId: "..." }
-            Console.WriteLine("Student peer setup initiated");
+            Console.WriteLine("Student peer setup initiated successfully");
 
             State.StopLoading();
+            State.ClearError(); // Clear any previous errors on successful setup
         }
         catch (Exception ex)
         {
@@ -543,13 +529,16 @@ else
             if (State.ShouldRetryConnection() && !State.HasExceededMaxAttempts)
             {
                 // Retry after backoff delay
-                await Task.Delay((int)(Math.Pow(2, State.ConnectionAttempts - 1) * 1000));
+                var delayMs = (int)(Math.Pow(2, State.ConnectionAttempts - 1) * 1000);
+                Console.WriteLine($"Retrying connection in {delayMs}ms (attempt {State.ConnectionAttempts})");
+                await Task.Delay(delayMs);
                 _isSettingUpPeer = false; // Reset flag for retry
                 await SetupStudentPeerConnectionAsync();
             }
             else if (State.HasExceededMaxAttempts)
             {
                 State.SetError("Unable to connect to session. Please refresh the page.");
+                State.StopLoading();
             }
         }
         finally
@@ -1027,12 +1016,8 @@ else
                         {
                             var timeSinceJoin = DateTime.UtcNow - joinedAt;
                             
-                            // For development: 2 minutes, Production: 30 minutes
-                            #if DEBUG
-                            var expiryMinutes = 2;
-                            #else
+                            // Session expires after 30 minutes
                             var expiryMinutes = 30;
-                            #endif
                             
                             if (timeSinceJoin.TotalMinutes > expiryMinutes)
                             {

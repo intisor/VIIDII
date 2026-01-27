@@ -1,0 +1,27 @@
+@using Microsoft.AspNetCore.SignalR.Client
+@using VIIDII.Models
+
+<div class="hidden lg:flex w-80 flex-col border-r border-border bg-card">
+    <ParticipantPanel Participants="@Participants"
+                      ParticipantStatuses="@ParticipantStatuses"
+                      HubConnection="@HubConnection"
+                      SessionId="@SessionId"
+                      IsLecturer="@IsLecturer" />
+</div>
+
+@code {
+    [Parameter]
+    public Dictionary<string, string> Participants { get; set; } = new();
+
+    [Parameter]
+    public Dictionary<string, Session.StudentStatus> ParticipantStatuses { get; set; } = new();
+
+    [Parameter]
+    public HubConnection? HubConnection { get; set; }
+
+    [Parameter]
+    public string SessionId { get; set; } = string.Empty;
+
+    [Parameter]
+    public bool IsLecturer { get; set; }
+}
