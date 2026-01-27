@@ -39,10 +39,10 @@ public class AuthService
                 return (false, "Matric No and Password are required", null);
             }
             
-            var users = MockApiService.GetUsers();
-            Console.WriteLine($"[AuthService] Total users in system: {users.Count}");
+            //var users = MockApiService.GetUsers();
+            //Console.WriteLine($"[AuthService] Total users in system: {users.Count}");
             
-            var user = users.FirstOrDefault(u => u.MatricNo == matricNo);
+            var user = MockApiService.GetUsers().FirstOrDefault(u => u.MatricNo == matricNo);
 
             if (user == null)
             {
@@ -64,6 +64,21 @@ public class AuthService
             // Store in-memory for current circuit
             _currentUser = user;
             Console.WriteLine($"[AuthService] User stored in memory for {matricNo}");
+            
+            // Store MatricNo in HTTP session for SignalR hub access
+            var httpContext = _httpContextAccessor.HttpContext;
+            if (httpContext?.Session != null)
+            {
+                try
+                {
+                    httpContext.Session.SetString("MatricNo", matricNo);
+                    Console.WriteLine($"[AuthService] MatricNo stored in HTTP session for {matricNo}");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[AuthService] Could not store MatricNo in session: {ex.Message}");
+                }
+            }
             
             // Return user; state is kept in-memory for the Blazor circuit
             return (true, null, user);

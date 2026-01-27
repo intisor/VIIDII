@@ -1,0 +1,70 @@
+@using Microsoft.AspNetCore.SignalR.Client
+
+<div class="h-16 bg-zinc-900 border-t border-zinc-800 flex items-center justify-between px-4 sm:px-6">
+    @if (IsLecturer && IsWebcamActive)
+    {
+        <div class="flex items-center gap-2">
+            <button @onclick="OnToggleScreenShare" disabled="@IsLoading" class="h-10 w-10 rounded-full flex items-center justify-center bg-zinc-800 hover:bg-zinc-700 text-white transition-colors">
+                @if (IsScreenSharing)
+                {
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M23 7l-7 5 7 5V7z"/>
+                        <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+                    </svg>
+                }
+                else
+                {
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+                        <line x1="8" x2="16" y1="21" y2="21"/>
+                        <line x1="12" x2="12" y1="17" y2="21"/>
+                    </svg>
+                }
+            </button>
+        </div>
+        <button @onclick="OnEndSession" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md font-medium text-sm">
+            End Session
+        </button>
+    }
+    else if (IsLecturer && !IsSessionStarted)
+    {
+        <div class="w-full flex justify-center">
+            <button @onclick="OnStartSession" disabled="@IsLoading" class="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-full font-bold shadow-lg shadow-green-900/20 hover:shadow-green-900/40 transition-all transform hover:scale-105">
+                Start Session
+            </button>
+        </div>
+    }
+    else if (!IsLecturer)
+    {
+        <IssueButtons HubConnection="@HubConnection" />
+    }
+</div>
+
+@code {
+    [Parameter]
+    public bool IsLecturer { get; set; }
+
+    [Parameter]
+    public bool IsWebcamActive { get; set; }
+
+    [Parameter]
+    public bool IsScreenSharing { get; set; }
+
+    [Parameter]
+    public bool IsSessionStarted { get; set; }
+
+    [Parameter]
+    public bool IsLoading { get; set; }
+
+    [Parameter]
+    public HubConnection? HubConnection { get; set; }
+
+    [Parameter]
+    public EventCallback OnToggleScreenShare { get; set; }
+
+    [Parameter]
+    public EventCallback OnEndSession { get; set; }
+
+    [Parameter]
+    public EventCallback OnStartSession { get; set; }
+}

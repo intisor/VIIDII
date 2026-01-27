@@ -46,8 +46,8 @@ public class SessionService
         var session = new Session(lecturerId)
         {
             Title = title,
-            AllowedDepartments = allowedDepartments ?? new List<User.Departments>(),
-            AllowedLevels = allowedLevels ?? new List<User.Levels>()
+            AllowedDepartments = allowedDepartments ?? [],
+            AllowedLevels = allowedLevels ?? []
         };
 
         session.AllowedDepartments = session.AllowedDepartments.Contains(User.Departments.Any) ? [.. Enum.GetValues<User.Departments>()] : session.AllowedDepartments;
@@ -106,7 +106,7 @@ public class SessionService
         {
             if (!session.ParticipantEvents.ContainsKey(participantId))
             {
-                session.ParticipantEvents[participantId] = new List<(Session.StudentStatus status, DateTime timeStamp)>(); // Changed DateTimeOffset to DateTime
+                session.ParticipantEvents[participantId] = []; // Changed DateTimeOffset to DateTime
             }
             var joinTime = DateTime.UtcNow.AddHours(1); // Changed DateTimeOffset to DateTime
             if (joinTime > session.StartTime)
@@ -156,7 +156,7 @@ public class SessionService
             {
                 if (!session.ParticipantEvents.ContainsKey(participantId))
                 {
-                    session.ParticipantEvents[participantId] = new List<(Session.StudentStatus status, DateTime timeStamp)>(); // Changed DateTimeOffset to DateTime
+                    session.ParticipantEvents[participantId] = []; // Changed DateTimeOffset to DateTime
                 }
                 // Add initial active event at session start time
                 session.ParticipantEvents[participantId].Add((Session.StudentStatus.Active, session.StartTime));
@@ -197,7 +197,7 @@ public class SessionService
             // Log the event
             if (!session.ParticipantEvents.ContainsKey(participantId))
             {
-                session.ParticipantEvents[participantId] = new List<(Session.StudentStatus status, DateTime timeStamp)>(); // Changed DateTimeOffset to DateTime
+                session.ParticipantEvents[participantId] = []; // Changed DateTimeOffset to DateTime
             }
             var eventTimestamp = DateTime.UtcNow.AddHours(1); // Changed DateTimeOffset to DateTime
             session.ParticipantEvents[participantId].Add((status, eventTimestamp));
@@ -259,7 +259,7 @@ public class SessionService
         _userDetailsCache ??= MockApiService.GetUsers().ToDictionary(u => u.MatricNo, u => u.Name);
 
         // Single-pass participant ID collection, including past participants with events/statuses
-        var allParticipantIds = new HashSet<string>(session.ParticipantIds);
+        HashSet<string> allParticipantIds = [..session.ParticipantIds];
         allParticipantIds.UnionWith(session.ParticipantEvents.Keys);
         allParticipantIds.UnionWith(session.ParticipantStatuses.Keys);
 

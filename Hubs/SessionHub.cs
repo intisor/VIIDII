@@ -23,6 +23,14 @@ namespace VIIDII.Hubs
         public async Task StartSession(string sessionId)
         {
             var matricNo = Context.GetHttpContext()?.Session.GetString("MatricNo");
+            
+            if (string.IsNullOrEmpty(matricNo))
+            {
+                Console.WriteLine($"StartSession failed: MatricNo not found in session");
+                await Clients.Caller.SendAsync("Error", "Session expired. Please log in again.");
+                return;
+            }
+            
             await Groups.AddToGroupAsync(Context.ConnectionId, sessionId);
             await Clients.Group(sessionId).SendAsync("StartSession", sessionId);
             var session = _sessionService.GetSessionById(sessionId);
@@ -68,6 +76,14 @@ namespace VIIDII.Hubs
         public async Task JoinSession(string sessionId)
         {
             var matricNo = Context.GetHttpContext()?.Session.GetString("MatricNo");
+            
+            if (string.IsNullOrEmpty(matricNo))
+            {
+                Console.WriteLine($"JoinSession failed: MatricNo not found in session");
+                await Clients.Caller.SendAsync("Error", "Session expired. Please log in again.");
+                return;
+            }
+            
             var session = _sessionService.GetSessionById(sessionId);
             if (session == null || session.Status == SessionStatus.Ended)
             {

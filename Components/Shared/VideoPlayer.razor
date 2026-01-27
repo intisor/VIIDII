@@ -1,0 +1,42 @@
+<div class="flex-1 relative overflow-hidden flex items-center justify-center" id="videoContainer">
+    <video id="sessionVideo" 
+           autoplay 
+           playsinline 
+           muted="@IsLecturer"
+           controls="@(!IsLecturer)"
+           class="w-full h-full object-contain"></video>
+
+    @if (IsLoading)
+    {
+        <div class="absolute inset-0 flex flex-col items-center justify-center bg-black/80 text-white z-20">
+            <div class="w-10 h-10 border-4 border-primary/30 border-t-primary rounded-full animate-spin mb-4"></div>
+            <p>@(IsLecturer ? "Starting camera..." : "Connecting...")</p>
+        </div>
+    }
+    else if (!IsLecturer && !IsStreamLoaded && IsSessionStarted)
+    {
+        <div class="absolute inset-0 flex flex-col items-center justify-center bg-zinc-900/90 text-white z-10">
+            <div class="w-16 h-16 rounded-full bg-zinc-800 flex items-center justify-center mb-4">
+                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-zinc-500 animate-pulse">
+                    <path d="M23 7l-7 5 7 5V7z"/>
+                    <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+                </svg>
+            </div>
+            <p class="text-zinc-400">Waiting for lecturer stream...</p>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public bool IsLecturer { get; set; }
+
+    [Parameter]
+    public bool IsLoading { get; set; }
+
+    [Parameter]
+    public bool IsStreamLoaded { get; set; }
+
+    [Parameter]
+    public bool IsSessionStarted { get; set; }
+}

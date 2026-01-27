@@ -1,0 +1,32 @@
+<div class="page-header">
+    <h1>@Title</h1>
+    <p>@Subtitle</p>
+</div>
+
+<style>
+    .page-header {
+        background: linear-gradient(135deg, #8338EC 0%, #C19BF5 100%);
+        color: white;
+        padding: 2rem;
+        border-radius: 1rem;
+        margin-bottom: 2rem;
+        box-shadow: 0 8px 24px rgba(131, 56, 236, 0.2);
+    }
+
+    .page-header h1 {
+        margin: 0;
+        font-size: 2rem;
+    }
+
+    .page-header p {
+        margin: 0.5rem 0 0 0;
+    }
+</style>
+
+@code {
+    [Parameter]
+    public string Title { get; set; } = string.Empty;
+
+    [Parameter]
+    public string Subtitle { get; set; } = string.Empty;
+}
