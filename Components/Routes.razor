@@ -1,5 +1,7 @@
 @using Microsoft.AspNetCore.Components.Routing
 @using VIIDII.Components.Layout
+@using VIIDII.Services
+@inject AuthService AuthService
 
 <Router AppAssembly="@typeof(Program).Assembly">
     <Found Context="routeData">
@@ -15,3 +17,19 @@
         </LayoutView>
     </NotFound>
 </Router>
+
+@code {
+    private bool _hasInitialized = false;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_hasInitialized)
+        {
+            _hasInitialized = true;
+            // Initialize AuthService to restore user from browser storage
+            // Must be in OnAfterRenderAsync because ProtectedLocalStorage uses JS interop
+            await AuthService.InitializeAsync();
+            StateHasChanged(); // Trigger re-render after auth state loaded
+        }
+    }
+}

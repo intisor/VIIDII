@@ -201,7 +201,7 @@ else
             SuccessMessage = $"Successfully joined {session.Title}!";
             
             await Task.Delay(500);
-            Navigation.NavigateTo($"/session/{session.SessionId}");
+            Navigation.NavigateTo($"/session/student/{session.SessionId}");
         }
         catch (Exception ex)
         {

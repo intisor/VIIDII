@@ -35,6 +35,7 @@ public class SessionState
     // Participant Management (for lecturer)
     public Dictionary<string, string> Participants { get; set; } = new(); // MatricNo -> Name
     public Dictionary<string, Session.StudentStatus> ParticipantStatuses { get; set; } = new();
+    public List<VIIDII.Services.SessionService.ParticipantScoreDetails> ParticipantScores { get; set; } = new();
     public int ParticipantCount => Participants.Count;
 
     // UI State

@@ -33,14 +33,17 @@
                            SessionId="@SessionId"
                            IsLecturer="@State.IsLecturer"
                            ParticipantCount="@State.ParticipantCount"
-                           OnBackClick="@(() => Navigation.NavigateTo(State.IsLecturer ? "/lecturer/home" : "/student/home"))" />
+                           OnBackClick="@_backClickHandler" />
 
             <SessionMainContent>
-                <ErrorBanner ErrorMessage="@State.ErrorMessage"
-                             HasExceededMaxAttempts="@State.HasExceededMaxAttempts"
-                             IsLecturer="@State.IsLecturer"
-                             OnRetry="@RetryConnection"
-                             OnRefresh="@RefreshPage" />
+                @if (!string.IsNullOrEmpty(State.ErrorMessage) || State.HasExceededMaxAttempts)
+                {
+                    <ErrorBanner ErrorMessage="@State.ErrorMessage"
+                                 HasExceededMaxAttempts="@State.HasExceededMaxAttempts"
+                                 IsLecturer="@State.IsLecturer"
+                                 OnRetry="@RetryConnection"
+                                 OnRefresh="@RefreshPage" />
+                }
 
                 <CameraTestModal IsVisible="@(State.IsLecturer && !State.IsSessionStarted && State.ShowTestCameraSection)"
                                  IsTesting="@State.IsTestingCamera"
@@ -95,8 +98,21 @@
     private bool _isDisposed = false;
     private bool _isNavigating = false; // Prevent render after navigation
     private bool IsLecturer => State.IsLecturer;
+    private Action? _backClickHandler;
 
     // Lifecycle Methods
+    protected override bool ShouldRender()
+    {
+        // Skip rendering if navigating away
+        if (_isNavigating)
+        {
+            return false;
+        }
+        
+        // Allow render
+        return true;
+    }
+
     protected override async Task OnInitializedAsync()
     {
         try
@@ -141,6 +157,10 @@
             State.Status = CurrentSession.Status;
             State.IsSessionStarted = CurrentSession.IsSessionStarted;
             State.IsLecturer = CurrentSession.LecturerId == State.CurrentUser.MatricNo;
+
+            // Initialize memoized back click handler
+            _backClickHandler = () => Navigation.NavigateTo(
+                State.IsLecturer ? "/lecturer/home" : "/student/home");
 
             // Show test camera for lecturer before session starts
             if (State.IsLecturer && !State.IsSessionStarted)
@@ -654,21 +674,43 @@
                 State.AddStudentPeer(peerId, userId);
                 StateHasChanged();
 
-                // Wait for student's DOM to be fully ready
+                // Wait for student's DOM and peer event handlers to be fully ready
                 // Student needs time to render video element and attach event handlers
                 Console.WriteLine($"Waiting for student {userId} DOM to stabilize...");
-                await Task.Delay(500); // Give student time to prepare
+                await Task.Delay(800); // Increased delay to ensure student is ready
 
                 // Call the student to initiate WebRTC connection
                 try
                 {
+                    Console.WriteLine($"=====================================");
                     Console.WriteLine($"Lecturer calling student {userId} at peer {peerId}");
+                    Console.WriteLine($"=====================================");
+                    
                     var result = await SessionJsInterop.CallStudentAsync(peerId);
-                    Console.WriteLine($"Call to student {userId} initiated: {System.Text.Json.JsonSerializer.Serialize(result)}");
+                    
+                    var resultJson = System.Text.Json.JsonSerializer.Serialize(result);
+                    Console.WriteLine($"Call result: {resultJson}");
+                    
+                    // Parse result to check success
+                    var resultDict = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, System.Text.Json.JsonElement>>(resultJson);
+                    if (resultDict != null && resultDict.ContainsKey("success"))
+                    {
+                        var success = resultDict["success"].GetBoolean();
+                        if (!success)
+                        {
+                            var error = resultDict.ContainsKey("error") ? resultDict["error"].GetString() : "Unknown error";
+                            Console.WriteLine($"Failed to call student {userId}: {error}");
+                        }
+                        else
+                        {
+                            Console.WriteLine($"Successfully initiated call to student {userId}");
+                        }
+                    }
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Error calling student {userId}: {ex.Message}");
+                    Console.WriteLine($"Exception calling student {userId}: {ex.Message}");
+                    Console.WriteLine($"Stack trace: {ex.StackTrace}");
                 }
             }
         });
@@ -811,6 +853,7 @@
         if (_hubConnection != null)
         {
             await _hubConnection.SendAsync("SendPeerId", SessionId, peerId);
+            Console.WriteLine($"Sent peer ID {peerId} to lecturer via SignalR");
         }
 
         StateHasChanged();
@@ -893,14 +936,14 @@
     {
         Console.WriteLine($"File upload progress: {progress:F0}% ({sentChunks}/{totalChunks})");
         // State can track progress here if needed
-        StateHasChanged();
+        // StateHasChanged(); // Only call when actually displaying progress
     }
 
     [JSInvokable]
     public void OnFileDownloadComplete(string messageId, string fileName)
     {
         Console.WriteLine($"File download complete: {fileName}");
-        StateHasChanged();
+        // StateHasChanged(); // Only call when actually displaying download status
     }
 
     [JSInvokable]
@@ -908,6 +951,15 @@
     {
         Console.WriteLine($"File download error for message {messageId}: {error}");
         State.SetError($"File download failed: {error}");
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void OnScreenShareStopped()
+    {
+        Console.WriteLine("Screen share stopped (called from JS)");
+        State.IsScreenSharing = false;
+        State.CurrentStreamType = "webcam";
         StateHasChanged();
     }
 

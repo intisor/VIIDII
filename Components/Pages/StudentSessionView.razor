@@ -1,0 +1,395 @@
+@page "/session/student/{SessionId}"
+@inherits SessionViewBase
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using VIIDII.Models
+@using Microsoft.AspNetCore.SignalR.Client
+
+<PageTitle>Session - @SessionId</PageTitle>
+
+<LoadingSpinner IsVisible="@_isNavigating" Message="Loading session..." />
+
+@if (!_isNavigating)
+{
+    @if (State.CurrentUser == null)
+    {
+        <AlertMessage Message="Please log in first." Type="warning" />
+    }
+    else if (CurrentSession == null)
+    {
+        <AlertMessage Message="Session not found or you don't have access." Type="danger" />
+    }
+    else
+    {
+        <SessionLayout>
+            <SessionHeader Title="@CurrentSession.Title"
+                           SessionId="@SessionId"
+                           IsLecturer="false"
+                           ParticipantCount="@State.ParticipantCount"
+                           OnBackClick="@_backClickHandler" />
+
+            <SessionMainContent>
+                @if (!string.IsNullOrEmpty(State.ErrorMessage) || State.HasExceededMaxAttempts)
+                {
+                    <ErrorBanner ErrorMessage="@State.ErrorMessage"
+                                 HasExceededMaxAttempts="@State.HasExceededMaxAttempts"
+                                 IsLecturer="false"
+                                 OnRetry="@RetryConnection"
+                                 OnRefresh="@RefreshPage" />
+                }
+
+                <ParticipantSidebar Participants="@State.Participants"
+                                    ParticipantStatuses="@State.ParticipantStatuses"
+                                    HubConnection="@_hubConnection"
+                                    SessionId="@SessionId"
+                                    IsLecturer="false" />
+
+                <VideoStage IsLecturer="false"
+                            IsLoading="@State.IsLoading"
+                            IsStreamLoaded="@State.IsStreamLoaded"
+                            IsSessionStarted="@State.IsSessionStarted"
+                            IsWebcamActive="@State.IsWebcamActive"
+                            IsScreenSharing="@State.IsScreenSharing"
+                            HubConnection="@_hubConnection"
+                            OnToggleScreenShare="@(() => {})"
+                            OnEndSession="@(() => {})"
+                            OnStartSession="@(() => {})" />
+
+                <MessagingSidebar SessionId="@SessionId"
+                                  IsLecturer="false"
+                                  HubConnection="@_hubConnection"
+                                  CurrentUserId="@(State.CurrentUser?.MatricNo ?? "")" />
+            </SessionMainContent>
+
+            <EngagementModal HubConnection="@_hubConnection"
+                             IsStudent="true"
+                             ShouldShow="@_showEngagementModal"
+                             OnHidden="@HideEngagementModal" />
+        </SessionLayout>
+    }
+}
+
+@code {
+private bool _showEngagementModal = false;
+private bool _isSettingUpPeer = false;
+private DotNetObjectReference<StudentSessionView>? _dotNetRef;
+
+protected override bool IsLecturer => false;
+protected override string BackNavigationUrl => "/student/home";
+
+protected override async Task OnRoleSpecificInitializeAsync()
+{
+    // Student-specific initialization
+    await Task.CompletedTask;
+}
+
+protected override async Task OnRoleSpecificAfterRenderAsync()
+{
+    // Initialize JS interop with proper type reference
+    _dotNetRef = DotNetObjectReference.Create(this);
+    await SessionJsInterop.InitializeAsync(SessionId, false, _dotNetRef);
+        
+    // Setup tab visibility listener for students
+    if (State.IsSessionStarted)
+    {
+        await SetupTabVisibilityAsync();
+    }
+
+    // Setup peer connection if session already started
+    if (State.IsSessionStarted && !_isSettingUpPeer)
+    {
+        await SetupStudentPeerConnectionAsync();
+    }
+}
+
+protected override async Task OnRoleSpecificDisposeAsync()
+{
+    _dotNetRef?.Dispose();
+    await Task.CompletedTask;
+}
+
+    protected override void RegisterRoleSpecificHubHandlers()
+    {
+        if (_hubConnection == null) return;
+
+        // Session lifecycle
+        _hubConnection.On<string>("SessionStarted", OnSessionStarted);
+
+        // Stream changes
+        _hubConnection.On<string>("ReceiveStreamChange", OnStreamChange);
+
+        // Engagement tracking (student only)
+        _hubConnection.On("AreYouThere", OnAreYouThere);
+    }
+
+    // Student-Specific Methods
+    private async Task SetupStudentPeerConnectionAsync()
+    {
+        if (_isSettingUpPeer) return;
+
+        try
+        {
+            _isSettingUpPeer = true;
+            State.StartLoading("Connecting to session...");
+
+            Console.WriteLine("Setting up fresh peer connection for student");
+            
+            var result = await SessionJsInterop.SetupStudentPeerAsync();
+            
+            Console.WriteLine("Student peer setup initiated successfully");
+
+            State.StopLoading();
+            State.ClearError();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error setting up student peer: {ex.Message}");
+            State.RecordConnectionAttempt();
+
+            if (State.ShouldRetryConnection() && !State.HasExceededMaxAttempts)
+            {
+                var delayMs = (int)(Math.Pow(2, State.ConnectionAttempts - 1) * 1000);
+                Console.WriteLine($"Retrying connection in {delayMs}ms (attempt {State.ConnectionAttempts})");
+                await Task.Delay(delayMs);
+                _isSettingUpPeer = false;
+                await SetupStudentPeerConnectionAsync();
+            }
+            else if (State.HasExceededMaxAttempts)
+            {
+                State.SetError("Unable to connect to session. Please refresh the page.");
+                State.StopLoading();
+            }
+        }
+        finally
+        {
+            _isSettingUpPeer = false;
+        }
+    }
+
+    private async Task SetupTabVisibilityAsync()
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("eval", @"
+                document.addEventListener('visibilitychange', async () => {
+                    const isActive = !document.hidden;
+                    if (window.hubConnection && window.hubConnection.state === 'Connected') {
+                        try {
+                            await window.hubConnection.invoke('UpdateTabStatus', isActive);
+                        } catch (err) {
+                            console.error('Error updating tab status:', err);
+                        }
+                    }
+                });
+            ");
+            Console.WriteLine("Tab visibility listener setup complete");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error setting up tab visibility: {ex.Message}");
+        }
+    }
+
+    private async Task PlayVideo()
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("eval", @"
+                const video = document.getElementById('sessionVideo');
+                if (video) video.play();
+            ");
+
+            State.ShowMobilePlayOverlay = false;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error playing video: {ex.Message}");
+        }
+    }
+
+    private async Task RetryConnection()
+    {
+        State.ClearError();
+        State.ConnectionAttempts = 0;
+        await SetupStudentPeerConnectionAsync();
+    }
+
+    private void HideEngagementModal()
+    {
+        _showEngagementModal = false;
+        StateHasChanged();
+    }
+
+    // SignalR Event Handlers
+    [JSInvokable]
+    public async Task OnSessionStarted(string sessionId)
+    {
+        Console.WriteLine($"SessionStarted event received: {sessionId}");
+
+        await InvokeAsync(async () =>
+        {
+            if (sessionId == SessionId)
+            {
+                State.IsSessionStarted = true;
+                StateHasChanged();
+                
+                Console.WriteLine("Session started - will setup peer after render");
+                
+                // Setup peer connection after DOM is ready
+                await Task.Delay(500);
+                await SetupStudentPeerConnectionAsync();
+            }
+        });
+    }
+
+    [JSInvokable]
+    public void OnStreamChange(string streamType)
+    {
+        Console.WriteLine($"Stream changed to: {streamType}");
+        InvokeAsync(() =>
+        {
+            State.IsScreenSharing = streamType == "screen";
+            StateHasChanged();
+        });
+    }
+
+    [JSInvokable]
+    public async Task OnAreYouThere()
+    {
+        Console.WriteLine("Received 'AreYouThere' ping from lecturer");
+        
+        await InvokeAsync(() =>
+        {
+            _showEngagementModal = true;
+            StateHasChanged();
+        });
+
+        // Auto-hide after 10 seconds if not manually hidden
+        await Task.Delay(10000);
+        if (_showEngagementModal)
+        {
+            await InvokeAsync(() =>
+            {
+                _showEngagementModal = false;
+                StateHasChanged();
+            });
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnStreamLoaded()
+    {
+        Console.WriteLine("Video stream loaded successfully");
+        
+        await InvokeAsync(() =>
+        {
+            State.IsStreamLoaded = true;
+            State.StopLoading();
+            State.ClearError();
+            
+            // Show play overlay on mobile
+            if (State.IsMobileDevice)
+            {
+                State.ShowMobilePlayOverlay = true;
+            }
+            
+            StateHasChanged();
+        });
+    }
+
+    [JSInvokable]
+    public async Task OnStreamError(string error)
+    {
+        Console.WriteLine($"Stream error: {error}");
+        
+        await InvokeAsync(() =>
+        {
+            State.SetError($"Connection lost: {error}");
+            State.IsStreamLoaded = false;
+            StateHasChanged();
+        });
+    }
+
+    // Battery and Data Issue Handlers
+    [JSInvokable]
+    public async Task OnBatteryLow()
+    {
+        if (_hubConnection != null && _hubConnection.State == HubConnectionState.Connected)
+        {
+            await _hubConnection.SendAsync("FlagIssue", "BatteryLow");
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnDataFinished()
+    {
+        if (_hubConnection != null && _hubConnection.State == HubConnectionState.Connected)
+        {
+            await _hubConnection.SendAsync("FlagIssue", "DataFinished");
+        }
+    }
+
+    // JSInvokable methods called from JavaScript
+    [JSInvokable]
+    public async Task OnStudentPeerReady(string peerId)
+    {
+        Console.WriteLine($"[StudentSessionView] Student peer ready: {peerId}");
+        State.MyPeerId = peerId;
+
+        // Send peer ID to SignalR so lecturer can connect
+        if (_hubConnection != null && _hubConnection.State == HubConnectionState.Connected)
+        {
+            await _hubConnection.SendAsync("SendPeerId", SessionId, peerId);
+            Console.WriteLine($"[StudentSessionView] Sent peer ID {peerId} to lecturer via SignalR");
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public void OnStreamReceived()
+    {
+        Console.WriteLine("[StudentSessionView] Stream received");
+        InvokeAsync(() =>
+        {
+            State.IsStreamLoaded = true;
+            State.IsPeerConnected = true;
+            State.ShowMobilePlayOverlay = State.IsMobileDevice;
+            State.StopLoading();
+            StateHasChanged();
+        });
+    }
+
+    [JSInvokable]
+    public void OnStreamLost()
+    {
+        Console.WriteLine("[StudentSessionView] Stream lost");
+        InvokeAsync(() =>
+        {
+            State.IsStreamLoaded = false;
+            State.SetError("Connection to lecturer lost. Reconnecting...");
+            StateHasChanged();
+        });
+    }
+
+    [JSInvokable]
+    public void OnPeerError(string errorType)
+    {
+        Console.WriteLine($"[StudentSessionView] Peer error: {errorType}");
+        InvokeAsync(() =>
+        {
+            State.RecordConnectionAttempt();
+
+            if (State.ShouldRetryConnection() && !State.HasExceededMaxAttempts)
+            {
+                State.SetError("Connection issue. Retrying...");
+            }
+            else if (State.HasExceededMaxAttempts)
+            {
+                State.SetError("Unable to establish connection. Please refresh the page.");
+            }
+
+            StateHasChanged();
+        });
+    }
+}

@@ -1,5 +1,6 @@
 ﻿let localStream = null;
 let peer = null;
+let lecturerPeerId = null; // Store lecturer's peer ID for student connections
 let isStreamAttached = false;
 let attachedStreamId = null;
 let hasJoinedSession = false;
@@ -177,6 +178,11 @@ connection.on("StartSession", (sessionId) => {
                     try {
                         const webcamStream = originalStream || await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
                         await notifyAndRestartCalls(webcamStream, "webcam");
+                        
+                        // Notify Blazor component
+                        if (window.dotNetRef) {
+                            await window.dotNetRef.invokeMethodAsync('OnScreenShareStopped');
+                        }
                     } catch (err) {
                         console.error("Failed to revert to webcam:", err);
                         alert("Failed to revert to webcam. Check permissions.");
@@ -410,17 +416,25 @@ peer.on("disconnected", () => {
 
 
 function tryConnect(sessionId, attempt = 1, maxAttempts = 15) {
-    console.log(`Attempting to connect to lecturer, attempt ${attempt}/${maxAttempts}`);
-    if (!peer || peer.disconnected) {
-        console.warn("Student peer not initialized or disconnected, reinitializing...");
-        const video = document.getElementById("sessionVideo");
-        setupStudentPeer(sessionId, video);
-        return;
-    }
-    const conn = peer.connect(sessionId);
+console.log(`Attempting to connect to lecturer peer ${lecturerPeerId}, attempt ${attempt}/${maxAttempts}`);
+    
+if (!peer || peer.disconnected) {
+    console.warn("Student peer not initialized or disconnected, reinitializing...");
+    const video = document.getElementById("sessionVideo");
+    setupStudentPeer(sessionId, video);
+    return;
+}
+    
+if (!lecturerPeerId) {
+    console.warn("No lecturer peer ID available yet, waiting...");
+    setTimeout(() => tryConnect(sessionId, attempt, maxAttempts), 1000);
+    return;
+}
+    
+const conn = peer.connect(lecturerPeerId);
 
     conn.on("open", () => {
-        console.log("Connected to lecturer:", sessionId);
+        console.log("Connected to lecturer:", lecturerPeerId);
         conn.send({ type: "studentReady", studentId: peer.id });
     });
     conn.on("data", (data) => {
@@ -906,10 +920,17 @@ document.getElementById("flagDataFinished")?.addEventListener("click", async () 
 
 connection.on("ReceivePeerId", (userId, peerId) => {
     console.log(`Received peer ID: ${peerId} for user: ${userId}`);
-    if (!window.isSessionLecturer) return;
-    if (!studentPeers.includes(peerId)) {
-        console.log(`Adding student peer ID: ${peerId}`);
-        studentPeers.push(peerId);
+    
+    if (window.isSessionLecturer) {
+        // Lecturer tracks student peers
+        if (!studentPeers.includes(peerId)) {
+            console.log(`Adding student peer ID: ${peerId}`);
+            studentPeers.push(peerId);
+        }
+    } else {
+        // Student stores lecturer peer ID
+        lecturerPeerId = peerId;
+        console.log("Stored lecturer peer ID:", lecturerPeerId);
     }
 });
 connection.on("ReceiveParticipants", (participants) => {

@@ -264,7 +264,7 @@
     }
 
     private void GoHome() => Navigation.NavigateTo("/lecturer/home");
-    private void GoToSession() => Navigation.NavigateTo($"/session/{CreatedSession?.SessionId}");
+    private void GoToSession() => Navigation.NavigateTo($"/session/lecturer/{CreatedSession?.SessionId}");
     private void CreateAnother()
     {
         CreatedSession = null;

@@ -21,6 +21,10 @@ window.sessionInterop = (function () {
         currentSessionId = sessionId;
         isLecturer = isLecturerRole;
         dotNetRef = dotNetReference;
+        
+        // Expose globally for session.js compatibility
+        window.dotNetRef = dotNetReference;
+        console.log("DotNetRef exposed globally for cross-script access");
 
         // Setup beforeunload cleanup
         if (!window.sessionInteropCleanupRegistered) {
@@ -113,22 +117,16 @@ window.sessionInterop = (function () {
 
     function handleStudentConnection(conn) {
         conn.on("open", () => {
-            console.log("Student connected, peer ID:", conn.peer);
+            console.log("*** DATA CONNECTION OPENED WITH STUDENT:", conn.peer, "***");
             if (!conn.peer) {
-                console.warn("Invalid student peer ID, skipping call");
+                console.warn("Invalid student peer ID, skipping");
                 return;
             }
             studentConnections.set(conn.peer, conn);
-
-            const call = peer.call(conn.peer, localStream);
-            call.on("open", () => {
-                console.log("Call to student opened:", conn.peer);
-                // Notify Blazor of successful connection
-                if (dotNetRef) {
-                    dotNetRef.invokeMethodAsync('OnStudentConnected', conn.peer);
-                }
-            });
-            call.on("error", (err) => console.error("Call error:", err));
+            
+            // DON'T call student here - let Blazor do it via CallStudentAsync
+            // This prevents duplicate calls and race conditions
+            console.log("Data connection established, waiting for Blazor to initiate media call");
         });
 
         conn.on("data", (data) => {
@@ -309,52 +307,85 @@ window.sessionInterop = (function () {
         });
 
         return new Promise((resolve, reject) => {
+            let connectionTimeout = setTimeout(() => {
+                reject(new Error("Peer initialization timeout"));
+            }, 10000);
+
             peer.on("open", (id) => {
-                console.log("Student peer open:", id);
+                clearTimeout(connectionTimeout);
+                console.log("*** STUDENT PEER OPEN:", id, "***");
                 
                 // Notify Blazor with peer ID so it can send to SignalR
                 if (dotNetRef) {
-                    dotNetRef.invokeMethodAsync('OnStudentPeerReady', id);
+                    dotNetRef.invokeMethodAsync('OnStudentPeerReady', id)
+                        .then(() => {
+                            console.log("Peer ID sent to Blazor successfully");
+                        })
+                        .catch(err => {
+                            console.error("Failed to notify Blazor of peer ready:", err);
+                        });
                 }
 
                 resolve({ success: true, peerId: id });
             });
 
             peer.on("call", (call) => {
-                console.log("Received lecturer call:", call.peer);
+                console.log("*** STUDENT RECEIVED CALL FROM LECTURER ***");
+                console.log("Caller peer ID:", call.peer);
+                console.log("Call object:", { type: call.type, connectionId: call.connectionId });
                 handleIncomingCall(call, video);
             });
 
             peer.on("error", (err) => {
-                console.error("Peer error:", err);
+                clearTimeout(connectionTimeout);
+                console.error("Peer error during setup:", err);
                 handlePeerError(err);
                 reject(err);
             });
+
+            // Set a timeout for the peer to open
+            setTimeout(() => {
+                if (!peer || peer.disconnected) {
+                    reject(new Error("Peer failed to open within timeout"));
+                }
+            }, 8000);
         });
     }
 
     function handleIncomingCall(call, video) {
-        call.answer();
+        console.log("Answering incoming call from:", call.peer);
+        call.answer(); // Answer WITHOUT sending a stream back
 
         let streamTimeout = setTimeout(() => {
             if (!isStreamAttached) {
-                console.warn("No stream received after 10s, retrying...");
-                call.close();
+                console.warn("No stream received after 10s, connection may have issues");
+                // Don't close the call yet, give it more time
+                if (dotNetRef) {
+                    dotNetRef.invokeMethodAsync('OnPeerError', 'stream-timeout');
+                }
             }
         }, 10000);
 
         call.on("stream", (remoteStream) => {
             clearTimeout(streamTimeout);
-            console.log("Received lecturer stream:", remoteStream);
+            console.log("Received lecturer stream:", remoteStream.id, "Active tracks:", remoteStream.getTracks().map(t => t.kind + ':' + t.enabled).join(', '));
 
-            if (remoteStream.id === attachedStreamId) {
+            // Check if stream has active tracks
+            const activeTracks = remoteStream.getTracks().filter(t => t.enabled && t.readyState === 'live');
+            if (activeTracks.length === 0) {
+                console.error("Received stream has no active tracks!");
+                return;
+            }
+
+            // If this is the same stream ID AND it's already attached, skip duplicate
+            if (remoteStream.id === attachedStreamId && isStreamAttached) {
                 console.log("Ignoring duplicate stream, ID:", remoteStream.id);
                 return;
             }
 
-            if (isStreamAttached) {
-                console.log("Stream already attached, ignoring new stream:", remoteStream.id);
-                return;
+            // Replace existing stream (e.g., when lecturer switches from webcam to screen share)
+            if (isStreamAttached && remoteStream.id !== attachedStreamId) {
+                console.log("Replacing existing stream (ID:", attachedStreamId, ") with new stream (ID:", remoteStream.id, ")");
             }
 
             isStreamAttached = true;
@@ -368,18 +399,24 @@ window.sessionInterop = (function () {
                 video.muted = false;
                 video.volume = 1.0;
                 
-                video.play().catch(err => {
-                    console.error("Playback failed:", err.message);
-                    // If autoplay fails, show play button for user interaction
-                    if (dotNetRef) {
-                        dotNetRef.invokeMethodAsync('OnStreamReceived');
-                    }
-                });
+                video.play()
+                    .then(() => {
+                        console.log("Video playback started successfully");
+                    })
+                    .catch(err => {
+                        console.error("Playback failed:", err.message);
+                        // If autoplay fails, notify Blazor to show play button
+                        if (dotNetRef) {
+                            dotNetRef.invokeMethodAsync('OnStreamReceived');
+                        }
+                    });
 
                 // Notify Blazor that stream is attached
                 if (dotNetRef) {
                     dotNetRef.invokeMethodAsync('OnStreamReceived');
                 }
+            } else {
+                console.error("Video element not found when trying to attach stream!");
             }
         });
 
@@ -425,7 +462,8 @@ window.sessionInterop = (function () {
             return { success: false, error: "No local stream" };
         }
 
-        console.log(`Calling student: ${studentPeerId}`);
+        console.log(`*** LECTURER CALLING STUDENT: ${studentPeerId} ***`);
+        console.log("Local stream tracks:", localStream.getTracks().map(t => t.kind + ':' + t.enabled + ':' + t.readyState).join(', '));
 
         try {
             const call = peer.call(studentPeerId, localStream);
@@ -435,9 +473,11 @@ window.sessionInterop = (function () {
                 return { success: false, error: "Failed to create call" };
             }
 
+            console.log("Call object created:", { connectionId: call.connectionId, peer: call.peer });
+
             call.on("stream", (remoteStream) => {
-                console.log(`Call established with student ${studentPeerId}`);
-                // Students don't send stream back, so this won't trigger
+                console.log(`Received stream from student ${studentPeerId} (unexpected)`);
+                // Students don't send stream back, so this typically won't trigger
             });
 
             call.on("close", () => {
@@ -449,10 +489,13 @@ window.sessionInterop = (function () {
 
             call.on("error", (err) => {
                 console.error(`Call error with student ${studentPeerId}:`, err);
+                if (dotNetRef) {
+                    dotNetRef.invokeMethodAsync('OnPeerError', err.type || 'call-error');
+                }
             });
 
-            console.log(`Call initiated to student ${studentPeerId}`);
-            return { success: true, peerId: studentPeerId };
+            console.log(`Call initiated successfully to student ${studentPeerId}`);
+            return { success: true, peerId: studentPeerId, callId: call.connectionId };
 
         } catch (err) {
             console.error(`Exception calling student ${studentPeerId}:`, err);
@@ -877,6 +920,7 @@ window.sessionInterop = (function () {
         studentPeers = [];
         studentConnections.clear();
         dotNetRef = null;
+        window.dotNetRef = null; // Clear global reference
         currentSessionId = null;
 
         console.log("Cleanup completed");
