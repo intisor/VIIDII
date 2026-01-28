@@ -218,16 +218,16 @@ public abstract class SessionViewBase : ComponentBase, IAsyncDisposable
                 if (_hubConnection?.State == HubConnectionState.Connected && !_isDisposed)
                 {
                     await _hubConnection.SendAsync("KeepAlive");
-                    Console.WriteLine($"[KeepAlive] Ping sent at {DateTime.Now:HH:mm:ss}");
+                    Console.WriteLine($"[KeepAlive-{(IsLecturer ? "Lecturer" : "Student")}] Ping sent at {DateTime.Now:HH:mm:ss}");
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[KeepAlive] Error sending ping: {ex.Message}");
+                Console.WriteLine($"[KeepAlive-{(IsLecturer ? "Lecturer" : "Student")}] Error sending ping: {ex.Message}");
             }
         }, null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
 
-        Console.WriteLine("[KeepAlive] Timer started - will ping every 30 seconds");
+        Console.WriteLine($"[KeepAlive-{(IsLecturer ? "Lecturer" : "Student")}] Timer started - will ping every 30 seconds");
     }
 
     protected virtual void RegisterSharedHubHandlers()
