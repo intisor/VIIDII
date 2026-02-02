@@ -6,7 +6,11 @@
     {
         <div class="form-group">
             <label class="form-label">@InputLabel</label>
-            <input type="text" class="form-control" @bind="InputValue" placeholder="@InputPlaceholder" />
+            <input type="text" 
+                   class="form-control" 
+                   @bind="InputValue"
+                   @bind:event="oninput"
+                   placeholder="@InputPlaceholder" />
         </div>
     }
     

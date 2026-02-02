@@ -2,44 +2,84 @@
 @using VIIDII.Services
 @inject ISessionJsInterop SessionJsInterop
 
-<div class="issue-buttons">
-    <div class="issue-header">
-        <span>Having Issues?</span>
-    </div>
+<div class="flex items-center gap-3 flex-wrap">
+    <span class="text-sm font-medium text-muted-foreground">Having Issues?</span>
     
-    <div class="buttons-row">
-        <button class="btn-issue battery" 
-                @onclick="FlagBatteryLow" 
-                disabled="@(BatteryFlagged || IsChecking)">
-            <i class="fas fa-battery-quarter"></i>
-            <span>@(BatteryFlagged ? "Battery Flagged" : "Low Battery")</span>
-        </button>
+    <button class="btn-issue battery" 
+            @onclick="FlagBatteryLow" 
+            disabled="@(BatteryFlagged || IsChecking || HubConnection == null)"
+            title="@(HubConnection == null ? "Connecting..." : "Report low battery to lecturer")">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect width="16" height="10" x="2" y="7" rx="2" ry="2"/>
+            <line x1="22" x2="22" y1="11" y2="13"/>
+            <line x1="6" x2="6" y1="11" y2="13"/>
+        </svg>
+        <span>@(BatteryFlagged ? "Battery Flagged" : "Low Battery")</span>
+    </button>
 
-        <button class="btn-issue network" 
-                @onclick="FlagDataFinished" 
-                disabled="@(NetworkFlagged || IsChecking)">
-            <i class="fas fa-signal"></i>
-            <span>@(NetworkFlagged ? "Network Flagged" : "Poor Network")</span>
-        </button>
-    </div>
+    <button class="btn-issue network" 
+            @onclick="FlagDataFinished" 
+            disabled="@(NetworkFlagged || IsChecking || HubConnection == null)"
+            title="@(HubConnection == null ? "Connecting..." : "Report poor network to lecturer")">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 13a10 10 0 0 1 14 0"/>
+            <path d="M8.5 16.5a5 5 0 0 1 7 0"/>
+            <line x1="12" x2="12.01" y1="20" y2="20"/>
+        </svg>
+        <span>@(NetworkFlagged ? "Network Flagged" : "Poor Network")</span>
+    </button>
 
-    @if (!string.IsNullOrEmpty(StatusMessage))
+    @if (HubConnection == null)
     {
-        <div class="status-message @MessageType">
-            <i class="fas fa-@(MessageType == "success" ? "check-circle" : "info-circle")"></i>
-            <span>@StatusMessage</span>
-        </div>
+        <span class="text-xs text-yellow-600 dark:text-yellow-500 flex items-center gap-1">
+            <svg class="animate-spin" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+            </svg>
+            Connecting...
+        </span>
     }
 </div>
 
-@code {
-    [Parameter] public HubConnection? HubConnection { get; set; }
+@if (!string.IsNullOrEmpty(StatusMessage))
+{
+    <div class="status-message @MessageType mt-3">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            @if (MessageType == "success")
+            {
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                <polyline points="22 4 12 14.01 9 11.01"/>
+            }
+            else
+            {
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="12" x2="12" y1="16" y2="12"/>
+                <line x1="12" x2="12.01" y1="8" y2="8"/>
+            }
+        </svg>
+        <span>@StatusMessage</span>
+    </div>
+}
 
-    private bool BatteryFlagged = false;
-    private bool NetworkFlagged = false;
-    private bool IsChecking = false;
-    private string StatusMessage = "";
-    private string MessageType = "info"; // "success" or "info"
+@code {
+[Parameter] public HubConnection? HubConnection { get; set; }
+
+private bool BatteryFlagged = false;
+private bool NetworkFlagged = false;
+private bool IsChecking = false;
+private string StatusMessage = "";
+private string MessageType = "info"; // "success" or "info"
+private bool _isInitialized = false;
+
+protected override async Task OnParametersSetAsync()
+{
+    // This runs when HubConnection parameter changes (including when it first becomes available)
+    if (HubConnection != null && !_isInitialized)
+    {
+        _isInitialized = true;
+        Console.WriteLine("[IssueButtons] HubConnection available, component ready");
+        await InvokeAsync(StateHasChanged);
+    }
+}
 
     private async Task FlagBatteryLow()
     {

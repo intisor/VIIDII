@@ -10,7 +10,7 @@ namespace VIIDII.Services
     public class Reaction
     {
         public required string UserId { get; set; }
-        public required string Emoji { get; set; } // For now: just "??"
+        public required string Emoji { get; set; } // Thumbs up: ??
         public DateTime Timestamp { get; set; } = DateTime.UtcNow;
     }
 

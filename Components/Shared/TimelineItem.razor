@@ -1,0 +1,61 @@
+@* Timeline Item Component *@
+
+<div class="flex gap-4 group">
+    <!-- Timeline Line & Badge -->
+    <div class="relative flex flex-col items-center">
+        <div class="@GetBadgeClasses() rounded-full flex items-center justify-center z-10">
+            @if (IsSpecial)
+            {
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/>
+                    <line x1="4" x2="4" y1="22" y2="15"/>
+                </svg>
+            }
+            else
+            {
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                    <circle cx="12" cy="12" r="10"/>
+                </svg>
+            }
+        </div>
+        <div class="w-0.5 flex-1 bg-border mt-2"></div>
+    </div>
+
+    <!-- Event Content -->
+    <div class="flex-1 pb-8">
+        <div class="bg-secondary/30 border border-border rounded-lg p-4 hover:bg-secondary/50 transition-colors">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-xs font-medium text-primary">
+                    @Event.Timestamp.AddHours(1).ToString("h:mm tt")
+                </span>
+                @if (IsSpecial)
+                {
+                    <span class="px-2 py-0.5 bg-primary/10 text-primary text-xs font-medium rounded-full">
+                        Milestone
+                    </span>
+                }
+            </div>
+            <p class="text-sm text-foreground">@Event.Description</p>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public (DateTime Timestamp, string Description, bool IsSpecial) Event { get; set; }
+
+    [Parameter]
+    public bool IsSpecial { get; set; }
+
+    private string GetBadgeClasses()
+    {
+        var baseClasses = "w-8 h-8 border-2";
+        
+        if (IsSpecial)
+        {
+            return $"{baseClasses} bg-primary border-primary text-primary-foreground";
+        }
+        
+        return $"{baseClasses} bg-card border-border text-muted-foreground";
+    }
+}

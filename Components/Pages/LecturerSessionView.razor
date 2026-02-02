@@ -20,6 +20,10 @@
     }
     else
     {
+        <ConnectionStatusBanner Status="@State.ConnectionStatus"
+                                Message="@State.ConnectionMessage"
+                                IsLecturer="true" />
+
         <SessionLayout>
             <SessionHeader Title="@CurrentSession.Title"
                            SessionId="@SessionId"
@@ -357,7 +361,8 @@ protected override async Task OnRoleSpecificDisposeAsync()
             State.StopLoading();
 
             _isNavigating = true;
-            Navigation.NavigateTo("/lecturer/home", forceLoad: true);
+            // Navigate to session recap page instead of home
+            Navigation.NavigateTo($"/session-recap/{SessionId}", forceLoad: true);
         }
         catch (Exception ex)
         {

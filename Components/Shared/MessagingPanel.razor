@@ -4,6 +4,7 @@
 @using Microsoft.AspNetCore.Components.Forms
 @inject IJSRuntime JSRuntime
 @inject ISessionJsInterop SessionJsInterop
+@implements IDisposable
 
 <div class="flex flex-col h-full bg-card">
     <!-- Header -->
@@ -125,12 +126,13 @@
                        class="flex-1 min-h-[44px] max-h-32 p-2.5 bg-secondary/50 rounded-lg text-sm border-0 focus:ring-2 focus:ring-primary focus:bg-background transition-all placeholder:text-muted-foreground" 
                        placeholder="Type a message..." 
                        @bind="NewMessageContent"
+                       @bind:event="oninput"
                        @onkeypress="HandleKeyPress"
                        disabled="@IsUploadingFile" />
                        
                 <button class="p-2.5 bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg transition-colors disabled:opacity-50 disabled:pointer-events-none" 
                         @onclick="SendMessage" 
-                        disabled="@(string.IsNullOrWhiteSpace(NewMessageContent) || IsUploadingFile)">
+                        disabled="@(string.IsNullOrWhiteSpace(NewMessageContent) || IsUploadingFile || HubConnection == null)">
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" x2="11" y1="2" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
                 </button>
             </div>
@@ -165,8 +167,11 @@
                        class="flex-1 p-2.5 bg-card rounded-lg text-sm border border-input focus:ring-2 focus:ring-primary focus:border-primary placeholder:text-muted-foreground" 
                        placeholder="Type your reply..." 
                        @bind="ReplyContent"
+                       @bind:event="oninput"
                        @onkeypress="HandleReplyKeyPress" />
-                <button class="p-2.5 bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg transition-colors disabled:opacity-50" @onclick="SendReply" disabled="@string.IsNullOrWhiteSpace(ReplyContent)">
+                <button class="p-2.5 bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg transition-colors disabled:opacity-50" 
+                        @onclick="SendReply" 
+                        disabled="@(string.IsNullOrWhiteSpace(ReplyContent) || HubConnection == null)">
                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" x2="11" y1="2" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
                 </button>
             </div>
@@ -190,26 +195,77 @@
     private bool IsUploadingFile = false;
     private double UploadProgress = 0;
 
+    private bool _handlersRegistered = false;
+    private HubConnection? _registeredConnection = null;
+
     protected override async Task OnInitializedAsync()
     {
-        if (HubConnection == null) return;
+        await Task.CompletedTask;
+    }
 
-        // Register SignalR handlers
-        HubConnection.On<Message>("ReceivePost", HandleReceivePost);
-        HubConnection.On<Message>("ReceiveComment", HandleReceiveComment);
-        HubConnection.On<List<Message>>("ReceiveMessages", HandleReceiveMessages);
-        HubConnection.On<string, string, string, bool>("ReceiveReaction", HandleReceiveReaction);
-        HubConnection.On<string>("PostCreated", HandlePostCreated);
+    protected override async Task OnParametersSetAsync()
+    {
+        // Only register handlers if:
+        // 1. HubConnection is not null
+        // 2. Handlers haven't been registered yet, OR the connection instance has changed
+        if (HubConnection != null && (!_handlersRegistered || _registeredConnection != HubConnection))
+        {
+            // Unregister old handlers if connection changed
+            if (_registeredConnection != null && _registeredConnection != HubConnection)
+            {
+                Console.WriteLine($"[MessagingPanel] Connection changed, unregistering old handlers");
+                UnregisterHandlers(_registeredConnection);
+            }
 
-        // Load existing messages
+            Console.WriteLine($"[MessagingPanel] Registering handlers for {(IsLecturer ? "Lecturer" : "Student")}");
+            HubConnection.On<Message>("ReceivePost", HandleReceivePost);
+            HubConnection.On<Message>("ReceiveComment", HandleReceiveComment);
+            HubConnection.On<List<Message>>("ReceiveMessages", HandleReceiveMessages);
+            HubConnection.On<string, string, string, bool>("ReceiveReaction", HandleReceiveReaction);
+            HubConnection.On<string>("PostCreated", HandlePostCreated);
+            
+            _handlersRegistered = true;
+            _registeredConnection = HubConnection;
+
+            // Load existing messages
+            try
+            {
+                await HubConnection.SendAsync("GetMessages", SessionId);
+                Console.WriteLine($"[MessagingPanel] Requested existing messages");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[MessagingPanel] Error loading messages: {ex.Message}");
+            }
+        }
+    }
+
+    private void UnregisterHandlers(HubConnection connection)
+    {
         try
         {
-            await HubConnection.SendAsync("GetMessages", SessionId);
+            connection.Remove("ReceivePost");
+            connection.Remove("ReceiveComment");
+            connection.Remove("ReceiveMessages");
+            connection.Remove("ReceiveReaction");
+            connection.Remove("PostCreated");
+            Console.WriteLine($"[MessagingPanel] Handlers unregistered");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error loading messages: {ex.Message}");
+            Console.WriteLine($"[MessagingPanel] Error unregistering handlers: {ex.Message}");
         }
+    }
+
+    public void Dispose()
+    {
+        if (_registeredConnection != null)
+        {
+            Console.WriteLine($"[MessagingPanel] Disposing - unregistering handlers");
+            UnregisterHandlers(_registeredConnection);
+            _registeredConnection = null;
+        }
+        _handlersRegistered = false;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -223,29 +279,50 @@
     // SignalR Handlers
     private async Task HandleReceivePost(Message message)
     {
-        if (message.sessionId != SessionId) return;
+        if (message.sessionId != SessionId)
+        {
+            return;
+        }
+
+        // Prevent duplicates
+        if (Messages.Any(m => m.id == message.id))
+        {
+            Console.WriteLine($"[MessagingPanel] Duplicate post skipped: {message.id}");
+            return;
+        }
 
         Messages.Add(message);
-        StateHasChanged();
+        await InvokeAsync(StateHasChanged);
         await ScrollToBottom();
     }
 
     private async Task HandleReceiveComment(Message comment)
     {
-        if (comment.sessionId != SessionId) return;
+        if (comment.sessionId != SessionId)
+        {
+            return;
+        }
+
+        // Prevent duplicates
+        if (Messages.Any(m => m.id == comment.id))
+        {
+            Console.WriteLine($"[MessagingPanel] Duplicate comment skipped: {comment.id}");
+            return;
+        }
 
         Messages.Add(comment);
-        StateHasChanged();
+        await InvokeAsync(StateHasChanged);
         await ScrollToBottom();
     }
 
-    private void HandleReceiveMessages(List<Message> messages)
+    private async Task HandleReceiveMessages(List<Message> messages)
     {
         Messages = messages.Where(m => m.sessionId == SessionId).ToList();
-        StateHasChanged();
+        Console.WriteLine($"[MessagingPanel] Loaded {Messages.Count} existing messages");
+        await InvokeAsync(StateHasChanged);
     }
 
-    private void HandleReceiveReaction(string messageId, string userId, string emoji, bool isAdd)
+    private async Task HandleReceiveReaction(string messageId, string userId, string emoji, bool isAdd)
     {
         var message = Messages.FirstOrDefault(m => m.id == messageId);
         if (message == null) return;
@@ -271,25 +348,44 @@
             }
         }
 
-        StateHasChanged();
+        await InvokeAsync(StateHasChanged);
     }
 
-    private void HandlePostCreated(string postId)
+    private async Task HandlePostCreated(string postId)
     {
         // Clear input after successful post
         NewMessageContent = "";
-        StateHasChanged();
+        await InvokeAsync(StateHasChanged);
     }
 
     // Message Sending
     private async Task SendMessage()
     {
-        if (string.IsNullOrWhiteSpace(NewMessageContent) || HubConnection == null || !IsLecturer)
+        Console.WriteLine($"SendMessage called - Content: '{NewMessageContent}', HubConnection: {HubConnection != null}, IsLecturer: {IsLecturer}");
+        
+        if (string.IsNullOrWhiteSpace(NewMessageContent))
+        {
+            Console.WriteLine("Message is empty or whitespace");
             return;
+        }
+        
+        if (HubConnection == null)
+        {
+            Console.WriteLine("HubConnection is null");
+            return;
+        }
+        
+        if (!IsLecturer)
+        {
+            Console.WriteLine("User is not lecturer");
+            return;
+        }
 
         try
         {
+            Console.WriteLine($"Sending post to hub: '{NewMessageContent}'");
             await HubConnection.SendAsync("CreatePost", SessionId, NewMessageContent, false);
+            Console.WriteLine("Post sent successfully");
             // Input cleared in PostCreated handler
         }
         catch (Exception ex)
@@ -491,7 +587,7 @@
         try
         {
             await JSRuntime.InvokeVoidAsync("eval", @"
-                const container = document.querySelector('.messages-container');
+                const container = document.querySelector('.messages-wrapper');
                 if (container) {
                     container.scrollTop = container.scrollHeight;
                 }

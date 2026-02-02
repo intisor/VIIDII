@@ -46,14 +46,25 @@ public class SessionState
     public string ActiveTab { get; set; } = "messages"; // "messages" or "participants"
     public bool IsTabExpanded { get; set; }
 
+
     // Connection State
     public bool IsHubConnected { get; set; }
     public bool IsPeerConnected { get; set; }
     public int ConnectionAttempts { get; set; }
     public DateTime? LastConnectionAttempt { get; set; }
+    public ConnectionStatusType ConnectionStatus { get; set; } = ConnectionStatusType.Connected;
+    public string ConnectionMessage { get; set; } = string.Empty;
 
     // Browser Persistence
     public bool IsRestoredFromStorage { get; set; }
+
+    public enum ConnectionStatusType
+    {
+        Connected,
+        Reconnecting,
+        Reconnected,
+        Disconnected
+    }
 
     // Methods
     public void Reset()

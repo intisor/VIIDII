@@ -117,7 +117,7 @@
             }
         }, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
 
-        StateHasChanged();
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task ConfirmActive()
@@ -139,7 +139,7 @@
     private async Task AutoDismiss()
     {
         Console.WriteLine("Engagement timeout - student did not respond");
-        await Hide();
+        await InvokeAsync(async () => await Hide());
     }
 
     private async Task Hide()
@@ -149,10 +149,17 @@
         IsShown = false;
         TimeRemaining = 0;
 
-        await JSRuntime.InvokeVoidAsync("modalInterop.hide", "engagementModal");
-        await OnHidden.InvokeAsync();
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("modalInterop.hide", "engagementModal");
+            await OnHidden.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error hiding engagement modal: {ex.Message}");
+        }
 
-        StateHasChanged();
+        await InvokeAsync(StateHasChanged);
     }
 
     public async ValueTask DisposeAsync()

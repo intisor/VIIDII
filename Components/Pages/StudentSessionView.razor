@@ -20,6 +20,10 @@
     }
     else
     {
+        <ConnectionStatusBanner Status="@State.ConnectionStatus"
+                                Message="@State.ConnectionMessage"
+                                IsLecturer="false" />
+
         <SessionLayout>
             <SessionHeader Title="@CurrentSession.Title"
                            SessionId="@SessionId"
@@ -54,6 +58,11 @@
                             OnEndSession="@(() => {})"
                             OnStartSession="@(() => {})" />
 
+                <!-- Issue Buttons for Students (moved outside video controls) -->
+                <div class="px-4 py-3 bg-card border-t border-border">
+                    <IssueButtons HubConnection="@_hubConnection" />
+                </div>
+
                 <MessagingSidebar SessionId="@SessionId"
                                   IsLecturer="false"
                                   HubConnection="@_hubConnection"
@@ -72,6 +81,8 @@
 private bool _showEngagementModal = false;
 private bool _isSettingUpPeer = false;
 private DotNetObjectReference<StudentSessionView>? _dotNetRef;
+private DateTime _lastTabStatusUpdate = DateTime.MinValue;
+private static readonly TimeSpan TabStatusThrottle = TimeSpan.FromSeconds(50); // 50 seconds throttle to avoid spamming lecturer
 
 protected override bool IsLecturer => false;
 protected override string BackNavigationUrl => "/student/home";
@@ -95,8 +106,11 @@ protected override async Task OnRoleSpecificAfterRenderAsync()
     }
 
     // Setup peer connection if session already started
+    // Add delay to ensure DOM is fully rendered (especially important for Blazor Server)
     if (State.IsSessionStarted && !_isSettingUpPeer)
     {
+        // Wait for next render cycle to ensure video element is in DOM
+        await Task.Delay(100);
         await SetupStudentPeerConnectionAsync();
     }
 }
@@ -169,23 +183,41 @@ protected override async Task OnRoleSpecificDisposeAsync()
     {
         try
         {
-            await JSRuntime.InvokeVoidAsync("eval", @"
-                document.addEventListener('visibilitychange', async () => {
-                    const isActive = !document.hidden;
-                    if (window.hubConnection && window.hubConnection.state === 'Connected') {
-                        try {
-                            await window.hubConnection.invoke('UpdateTabStatus', isActive);
-                        } catch (err) {
-                            console.error('Error updating tab status:', err);
-                        }
-                    }
-                });
-            ");
+            // Use the proper sessionInterop method which calls back to our JSInvokable method
+            await SessionJsInterop.SetupTabVisibilityListenerAsync();
             Console.WriteLine("Tab visibility listener setup complete");
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Error setting up tab visibility: {ex.Message}");
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnTabVisibilityChanged(bool isVisible)
+    {
+        // Throttle tab visibility updates to 50 seconds to avoid spamming the lecturer
+        var now = DateTime.UtcNow;
+        if (now - _lastTabStatusUpdate < TabStatusThrottle)
+        {
+            Console.WriteLine($"Tab visibility change throttled (last update: {(now - _lastTabStatusUpdate).TotalSeconds:F1}s ago)");
+            return;
+        }
+        
+        _lastTabStatusUpdate = now;
+        Console.WriteLine($"Tab visibility changed: {(isVisible ? "visible" : "hidden")}");
+        
+        if (_hubConnection?.State == HubConnectionState.Connected)
+        {
+            try
+            {
+                await _hubConnection.SendAsync("UpdateTabStatus", isVisible);
+                Console.WriteLine($"Tab status updated to {(isVisible ? "active" : "inactive")}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error updating tab status: {ex.Message}");
+            }
         }
     }
 
@@ -214,10 +246,10 @@ protected override async Task OnRoleSpecificDisposeAsync()
         await SetupStudentPeerConnectionAsync();
     }
 
-    private void HideEngagementModal()
+    private async Task HideEngagementModal()
     {
         _showEngagementModal = false;
-        StateHasChanged();
+        await InvokeAsync(StateHasChanged);
     }
 
     // SignalR Event Handlers

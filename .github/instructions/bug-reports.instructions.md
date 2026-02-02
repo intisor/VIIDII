@@ -476,3 +476,586 @@ private string? GetMatricNoForConnection()
 
 
 
+
+
+## BUG-004: Student Engagement Tracking - Duplicate Models and Missing Throttling
+
+**Date:** 2025-01-30  
+**Severity:** ?? Medium  
+**Component:** Engagement Tracking / Tab Visibility
+
+### Problem
+During implementation of student engagement tracking for attendance system, several issues were discovered:
+
+1. **Duplicate Models Created**: New models (`StudentEngagementStatus`, `ParticipantInfo`, `EngagementService`) were created that duplicated existing functionality
+2. **Missing Tab Visibility Throttling**: Tab status updates were sent on every visibility change without throttling, causing potential UI spam for lecturers
+3. **Debugging Pain**: `StateHasChanged()` calls caused debugger to step into framework code repeatedly
+
+### Root Cause
+
+**Issue 1: Overlooked Existing Implementation**
+The system already had complete engagement tracking implemented:
+- `Session.StudentStatus` enum (in Models/User.cs) with 5 states
+- `ParticipantPingService` - Background service sending "AreYouThere" every 2-5 minutes (randomized)
+- All SignalR hub methods (`UpdateTabStatus`, `FlagIssue`, `ConfirmActive`)
+- All UI components (`ParticipantPanel`, `EngagementModal`, `IssueButtons`)
+- All JavaScript functions (`getBatteryLevel`, `getNetworkStatus`, `setupTabVisibilityListener`)
+
+**Issue 2: Removed UX Throttling**
+Original JavaScript implementation had **50-second throttle** for tab visibility changes.
+
+**Issue 3: Framework Code Stepping**
+Multiple `InvokeAsync(StateHasChanged)` calls caused debugger to step into Blazor framework internals.
+
+### Solution
+
+**Fix 1: Remove Duplicate Models**
+Deleted duplicate files:
+- Models/StudentEngagementStatus.cs
+- Models/ParticipantInfo.cs
+- Services/EngagementService.cs
+
+**Fix 2: Restore Tab Visibility Throttling**
+Added 50-second throttle back to StudentSessionView.razor
+
+**Fix 3: Add DebuggerStepThrough Helper**
+Created UpdateUI() helper method in SessionViewBase.cs
+
+**Fix 4: Add ReceiveParticipantStatuses Handler**
+Added missing handler to SessionViewBase.cs
+
+**Files Modified:**
+- Components/Pages/StudentSessionView.razor - Added tab visibility throttling
+- Components/Pages/SessionViewBase.cs - Added UpdateUI() helper and status handler
+- Program.cs - Removed duplicate EngagementService registration
+
+### Prevention
+- Search thoroughly for existing implementations before creating new ones
+- Preserve throttling/debouncing patterns from original code
+- Enable "Just My Code" in Visual Studio debugging settings
+- Use [DebuggerStepThrough] for wrapper methods
+
+---
+
+## BUG-005: Video Element Not Found for 3rd+ Student Connections
+
+**Date:** 2025-01-30  
+**Severity:** ?? High  
+**Component:** Blazor Server Rendering / PeerJS Integration
+
+### Problem
+When 3 or more students joined a session simultaneously, the 3rd+ students failed to establish peer connections because JavaScript couldn't find the video element.
+
+### Root Cause
+**Blazor Server Rendering Timing Issue** - For 3rd+ students, server under load, SignalR queueing delays, DOM updates not reaching browser before JavaScript executes.
+
+**Specific Issues:**
+1. C# code had no wait for DOM stability
+2. JavaScript only retried once with 200ms timeout
+
+### Solution
+
+**Two-Layer Fix:**
+1. C# Pre-Render Delay: Added 100ms delay before calling JS
+2. JS Robust Retries: Implemented 5-retry loop with 300ms intervals (up to 1.5s total)
+
+**Files Modified:**
+- Components/Pages/StudentSessionView.razor - Added 100ms delay
+- wwwroot/js/sessionInterop.js - Implemented 5-retry loop
+
+### Prevention
+- Always add small delay (100ms) in OnAfterRenderAsync before calling JS that needs DOM
+- Implement retry logic in JavaScript for DOM element access (5 retries, 300ms each)
+- Account for Blazor Server's async rendering and SignalR batching
+- Test with 5+ concurrent connections to catch timing issues
+
+---
+
+## BUG-006: Lecturer Session Ends on Reconnection
+
+**Date:** 2025-01-30  
+**Severity:** ?? Critical  
+**Component:** Session Persistence / SignalR Reconnection
+
+### Problem
+When a lecturer refreshed the page or experienced a temporary disconnection, the entire session would end for all students. This created a poor UX where a simple network hiccup or accidental refresh would disrupt the entire class.
+
+### Root Cause
+While the backend correctly preserved sessions (OnDisconnectedAsync only handled students), the frontend lacked proper reconnection handling for lecturers. Additionally, there was no visual feedback to reassure lecturers that the session continued during reconnection.
+
+### Solution
+
+**Fix 1: Automatic Lecturer Reconnection**
+Updated SessionHub.StartSession to handle lecturer reconnection:
+```csharp
+if (IsSessionLecturer(sessionId, userMatricNo))
+{
+    session.LecturerConnectionId = Context.ConnectionId; // Update connection ID
+    
+    // Send current scores/statuses if session already started
+    if (session.Status == SessionStatus.Started)
+    {
+        var currentScores = _sessionService.CalculateAttendanceScore(sessionId);
+        await Clients.Caller.SendAsync("ReceiveParticipantScoreDetails", currentScores);
+        var currentStatuses = _sessionService.GetParticipantStatus(sessionId);
+        await Clients.Caller.SendAsync("ReceiveParticipantStatuses", currentStatuses);
+    }
+}
+```
+
+**Fix 2: Progressive Reconnection Strategy**
+```csharp
+.WithAutomaticReconnect(new[] { 
+    TimeSpan.Zero,           // Immediate
+    TimeSpan.FromSeconds(2),  // 2s
+    TimeSpan.FromSeconds(5),  // 5s
+    TimeSpan.FromSeconds(10)  // 10s
+})
+```
+
+**Fix 3: Reconnection Event Handlers**
+```csharp
+_hubConnection.Reconnecting += OnReconnecting;  // Show "Reconnecting..."
+_hubConnection.Reconnected += OnReconnected;    // Auto-rejoin session
+_hubConnection.Closed += OnConnectionClosed;    // Show error
+```
+
+**Fix 4: Visual Feedback Component**
+Created ConnectionStatusBanner.razor:
+- Yellow banner: "Reconnecting..." with spinner
+- Green banner: "Reconnected successfully - Students are still in session" (auto-dismiss 3s)
+- Red banner: "Connection lost"
+
+**Fix 5: Role-Specific Error Messages**
+```csharp
+if (IsLecturer)
+{
+    State.SetError("Reconnected but failed to rejoin. Students can still see your stream.");
+}
+else
+{
+    State.SetError("Reconnected but failed to rejoin session. Please refresh.");
+}
+```
+
+**Files Modified:**
+- Components/Pages/SessionViewBase.cs - Added reconnection handlers, 4-retry strategy
+- Components/Shared/ConnectionStatusBanner.razor - New visual feedback component
+- Models/SessionState.cs - Added ConnectionStatus and ConnectionMessage properties
+- Components/Pages/LecturerSessionView.razor - Added connection status banner
+- Components/Pages/StudentSessionView.razor - Added connection status banner
+
+### Prevention
+- Always preserve session state server-side independent of connection state
+- Implement automatic reconnection with progressive backoff
+- Provide clear visual feedback during reconnection
+- Test reconnection scenarios: refresh, network drop, server restart
+- Different error messages for different roles (lecturer vs student)
+
+---
+
+## BUG-007: Browser Tab Throttling Causes Disconnections
+
+**Date:** 2025-01-30  
+**Severity:** ?? High  
+**Component:** Blazor Server / Browser Lifecycle
+
+### Problem
+When users switched to another browser tab, the Blazor Server connection would timeout after 30 seconds, causing disconnections. Modern browsers throttle background tabs, delaying JavaScript timers and network requests.
+
+### Root Cause
+Blazor Server uses SignalR/WebSocket connections that require periodic "keep-alive" messages. When a tab is backgrounded:
+1. Browser throttles JavaScript timers to 1-second minimum
+2. Network requests are deprioritized
+3. Keep-alive messages may be delayed beyond server timeout (30s)
+4. Server considers circuit dead and disconnects
+
+### Solution
+
+**Fix 1: Keep-Alive with Tab Visibility Check**
+```csharp
+private void StartKeepAliveTimer()
+{
+    _keepAliveTimer = new System.Threading.Timer(async _ =>
+    {
+        try
+        {
+            if (_hubConnection?.State == HubConnectionState.Connected && !_isDisposed)
+            {
+                bool isVisible = await IsTabVisibleAsync();
+                await _hubConnection.SendAsync("KeepAlive");
+                
+                if (isVisible)
+                {
+                    Console.WriteLine($"[KeepAlive] Ping sent at {DateTime.Now:HH:mm:ss}");
+                }
+                else
+                {
+                    Console.WriteLine($"[KeepAlive] Ping sent while tab hidden at {DateTime.Now:HH:mm:ss}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[KeepAlive] Error: {ex.Message}");
+        }
+    }, null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+}
+```
+
+**Fix 2: Automatic Reconnection Handlers**
+Added OnReconnecting, OnReconnected, OnConnectionClosed handlers to automatically rejoin session after reconnection with MatricNo preservation.
+
+**Fix 3: State Preservation on Reconnection**
+```csharp
+private async Task OnReconnected(string? connectionId)
+{
+    var matricNo = State.CurrentUser?.MatricNo;
+    if (!string.IsNullOrEmpty(matricNo))
+    {
+        await _hubConnection!.SendAsync("StartSession", SessionId, matricNo);
+        // Session state restored automatically
+    }
+}
+```
+
+**Files Modified:**
+- Components/Pages/SessionViewBase.cs - Enhanced keep-alive timer, added reconnection handlers
+
+### Prevention
+- Use System.Threading.Timer (not JavaScript-based) for critical timers
+- Implement automatic reconnection with state preservation
+- Log tab visibility status for debugging
+- Test with tab backgrounding for 2+ minutes
+- Consider increasing server timeout in production (currently 5min for testing)
+
+---
+
+## BUG-008: Excessive UI Re-renders from Engagement Tracking
+
+**Date:** 2025-01-30  
+**Severity:** ?? Medium  
+**Component:** UI Performance / State Management
+
+### Problem
+When multiple students became inactive simultaneously (not responding to "Are You There?"), the lecturer's UI would re-render multiple times in quick succession, causing performance issues and debugger stepping into framework code repeatedly.
+
+### Root Cause
+The ReceiveParticipantStatuses SignalR handler called StateHasChanged() immediately for every status update:
+```
+Student 1 inactive -> StateHasChanged()
+Student 2 inactive -> StateHasChanged() (100ms later)
+Student 3 inactive -> StateHasChanged() (100ms later)
+... 5 re-renders in 500ms
+```
+
+### Solution
+
+**Fix 1: Debounced UI Update Helper**
+```csharp
+[System.Diagnostics.DebuggerStepThrough]
+protected void UpdateUIDebounced(Action updateAction, int delayMs = 500)
+{
+    _debounceTimer?.Dispose();
+    updateAction(); // Update state immediately
+    
+    // Debounce only the StateHasChanged call
+    _debounceTimer = new System.Threading.Timer(_ =>
+    {
+        InvokeAsync(StateHasChanged);
+        _debounceTimer?.Dispose();
+        _debounceTimer = null;
+    }, null, delayMs, Timeout.Infinite);
+}
+```
+
+**Fix 2: Applied to Participant Status Handler**
+```csharp
+_hubConnection.On<Dictionary<string, Session.StudentStatus>>("ReceiveParticipantStatuses", statuses =>
+{
+    UpdateUIDebounced(() =>
+    {
+        State.ParticipantStatuses = statuses;
+        Console.WriteLine($"Received participant statuses update: {statuses.Count} participants");
+    }, delayMs: 300); // 300ms debounce
+}
+```
+
+**Result:**
+- Before: 5 students going inactive = 5 re-renders
+- After: 5 students going inactive = 1 re-render (batched)
+
+**Files Modified:**
+- Components/Pages/SessionViewBase.cs - Added UpdateUIDebounced helper, applied to status handler
+
+### Prevention
+- Use debouncing for updates that can arrive in rapid succession
+- Keep UpdateUI() for immediate updates (single events)
+- Use UpdateUIDebounced() for batch updates (multiple simultaneous events)
+- Add [DebuggerStepThrough] to wrapper methods
+- Monitor console for excessive "StateHasChanged" logs
+
+---
+
+## BUG-009: Messaging UI Broken - Messages Not Displaying
+
+**Date:** 2025-01-30  
+**Severity:** ?? High  
+**Component:** MessagingPanel / SignalR Integration
+
+### Problem
+The messaging system appeared broken with multiple issues:
+1. Messages sent but not displayed in UI
+2. Emoji reactions showing as ?? instead of thumbs up
+3. Auto-scroll not working
+4. Messages not updating in real-time
+
+### Root Cause
+
+**Issue 1: SignalR Handler Threading**
+Handlers were calling StateHasChanged() synchronously instead of using InvokeAsync:
+```csharp
+// WRONG - Can cause threading issues
+private async Task HandleReceivePost(Message message)
+{
+    Messages.Add(message);
+    StateHasChanged(); // Synchronous call from SignalR thread
+}
+```
+
+**Issue 2: Emoji Encoding**
+Emoji was using placeholder string "??" instead of actual Unicode emoji character.
+
+**Issue 3: Wrong DOM Selector**
+JavaScript was targeting .messages-container but actual element was .messages-wrapper.
+
+### Solution
+
+**Fix 1: Thread-Safe SignalR Handlers**
+```csharp
+private async Task HandleReceivePost(Message message)
+{
+    if (message.sessionId != SessionId) return;
+    Messages.Add(message);
+    await InvokeAsync(StateHasChanged); // Thread-safe
+    await ScrollToBottom();
+}
+
+private async Task HandleReceiveMessages(List<Message> messages)
+{
+    Messages = messages.Where(m => m.sessionId == SessionId).ToList();
+    await InvokeAsync(StateHasChanged); // Thread-safe
+}
+```
+
+**Fix 2: Fixed Emoji Rendering**
+```csharp
+// MessagingPanel.razor
+await HubConnection.SendAsync("AddReaction", SessionId, messageId, "??");
+
+// MessageService.cs
+public int ThumbsUpCount => Reactions.Count(r => r.Emoji == "??");
+```
+
+**Fix 3: Fixed Auto-Scroll**
+```javascript
+const container = document.querySelector('.messages-wrapper'); // Corrected selector
+if (container) {
+    container.scrollTop = container.scrollHeight;
+}
+```
+
+**Files Modified:**
+- Components/Shared/MessagingPanel.razor - Fixed handlers, emoji, scroll selector
+- Services/MessageService.cs - Fixed emoji in ThumbsUpCount property
+
+### Prevention
+- Always use InvokeAsync(StateHasChanged) in SignalR handlers
+- Test emoji rendering in different browsers
+- Verify DOM selectors match actual element classes
+- Test messaging with multiple users simultaneously
+
+---
+
+## BUG-010: Send Button Not Clickable in Messaging UI
+
+**Date:** 2025-01-30  
+**Severity:** ?? Critical  
+**Component:** MessagingPanel / Input Binding
+
+### Problem
+Lecturer could type messages but the send button remained disabled (grayed out). Clicking had no effect.
+
+### Root Cause
+Blazor's @bind directive uses onchange event by default, which only fires when the input loses focus (user clicks away). The button's disabled condition checked NewMessageContent, which wasn't updating in real-time as the user typed.
+
+**Sequence:**
+1. User types "hello"
+2. NewMessageContent still empty (waiting for blur event)
+3. Button stays disabled: string.IsNullOrWhiteSpace(NewMessageContent) == true
+4. User clicks away -> NewMessageContent updates -> Button enables
+5. User confused why button didn't work while typing
+
+### Solution
+
+**Fix 1: Real-Time Input Binding**
+```razor
+<!-- Before - Updates on blur -->
+<input @bind="NewMessageContent" />
+
+<!-- After - Updates on every keystroke -->
+<input @bind="NewMessageContent" @bind:event="oninput" />
+```
+
+**Fix 2: Added HubConnection Check**
+```razor
+disabled="@(string.IsNullOrWhiteSpace(NewMessageContent) || IsUploadingFile || HubConnection == null)"
+```
+
+**Fix 3: Added Debug Logging**
+```csharp
+private async Task SendMessage()
+{
+    Console.WriteLine($"SendMessage called - Content: '{NewMessageContent}', HubConnection: {HubConnection != null}, IsLecturer: {IsLecturer}");
+    
+    if (string.IsNullOrWhiteSpace(NewMessageContent))
+    {
+        Console.WriteLine("Message is empty or whitespace");
+        return;
+    }
+    // ... rest of validation
+}
+```
+
+**Files Modified:**
+- Components/Shared/MessagingPanel.razor - Fixed input binding, added debug logging
+
+### Prevention
+- Use @bind:event="oninput" for inputs that control button states
+- Use @bind:event="onchange" (default) for forms submitted via Enter or button
+- Test UI interactions without clicking away from inputs
+- Add debug logging for user-facing features
+
+---
+
+## BUG-011: Application Crash from EngagementModal Threading Issue
+
+**Date:** 2025-01-30  
+**Severity:** ?? Critical - Application Crash  
+**Component:** EngagementModal / Threading
+
+### Problem
+Application crashed with unhandled exception when students didn't respond to "Are You There?" modal:
+```
+System.InvalidOperationException: The current thread is not associated with the Dispatcher. 
+Use InvokeAsync() to switch execution to the Dispatcher when triggering rendering or component state.
+   at Microsoft.AspNetCore.Components.ComponentBase.StateHasChanged()
+   at VIIDII.Components.Shared.EngagementModal.Hide()
+   at VIIDII.Components.Shared.EngagementModal.AutoDismiss()
+```
+
+### Root Cause
+The EngagementModal used System.Threading.Timer for the 30-second countdown. When the timer expired, it called AutoDismiss() -> Hide() -> StateHasChanged() directly from a background thread. Blazor requires all UI updates to happen on the Dispatcher thread, causing an immediate crash.
+
+**Why It Crashed:**
+1. Student doesn't respond to modal
+2. After 30 seconds, System.Threading.Timer fires on background thread
+3. AutoDismiss() calls Hide() on same background thread
+4. Hide() calls StateHasChanged() on background thread
+5. Blazor detects thread violation -> throws InvalidOperationException -> app crashes
+
+### Solution
+
+**Fix 1: Thread-Safe Hide Method**
+```csharp
+// Before - CRASHES
+private async Task Hide()
+{
+    _timer?.Dispose();
+    IsShown = false;
+    await JSRuntime.InvokeVoidAsync("modalInterop.hide", "engagementModal");
+    await OnHidden.InvokeAsync();
+    StateHasChanged(); // Called on background thread
+}
+
+// After - SAFE
+private async Task Hide()
+{
+    _timer?.Dispose();
+    IsShown = false;
+    try
+    {
+        await JSRuntime.InvokeVoidAsync("modalInterop.hide", "engagementModal");
+        await OnHidden.InvokeAsync();
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Error hiding engagement modal: {ex.Message}");
+    }
+    await InvokeAsync(StateHasChanged); // Marshals to UI thread
+}
+```
+
+**Fix 2: Thread-Safe AutoDismiss**
+```csharp
+// Before
+private async Task AutoDismiss()
+{
+    Console.WriteLine("Engagement timeout - student did not respond");
+    await Hide(); // Still on background thread
+}
+
+// After
+private async Task AutoDismiss()
+{
+    Console.WriteLine("Engagement timeout - student did not respond");
+    await InvokeAsync(async () => await Hide()); // Switch to UI thread first
+}
+```
+
+**Fix 3: Thread-Safe Show Method**
+```csharp
+await InvokeAsync(StateHasChanged); // Changed from StateHasChanged()
+```
+
+**Fix 4: Thread-Safe HideEngagementModal Callback**
+```csharp
+// StudentSessionView.razor
+private async Task HideEngagementModal()
+{
+    _showEngagementModal = false;
+    await InvokeAsync(StateHasChanged); // Changed from StateHasChanged()
+}
+```
+
+**Files Modified:**
+- Components/Shared/EngagementModal.razor - Fixed all StateHasChanged calls
+- Components/Pages/StudentSessionView.razor - Fixed HideEngagementModal callback
+
+### Prevention
+- **CRITICAL RULE**: Never call StateHasChanged() directly from System.Threading.Timer callbacks
+- Always use InvokeAsync(StateHasChanged) when:
+  - Called from background threads
+  - Called from timers (System.Threading.Timer, System.Timers.Timer)
+  - Called from Task.Run() or thread pool threads
+  - Unsure about thread context
+- Use InvokeAsync() for safety - it's a no-op if already on UI thread
+- Test timeout/auto-dismiss scenarios thoroughly
+- Monitor console for threading exceptions during testing
+
+**Blazor Threading Golden Rules:**
+```csharp
+// ? SAFE - Always works
+await InvokeAsync(StateHasChanged);
+
+// ? UNSAFE - Crashes if called from background thread
+StateHasChanged();
+
+// ? SAFE - Timer callbacks need InvokeAsync
+_timer = new System.Threading.Timer(async _ =>
+{
+    await InvokeAsync(StateHasChanged);
+}, null, 1000, 1000);
+```
+
+---

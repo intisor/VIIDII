@@ -250,26 +250,31 @@ window.sessionInterop = (function () {
             console.log(`  Video ${i}: id="${v.id}", class="${v.className}"`);
         });
 
-        const video = document.getElementById("sessionVideo");
-        if (!video) {
-            console.error("Video element #sessionVideo not found - waiting for DOM...");
-            // Wait and retry
-            await new Promise(resolve => setTimeout(resolve, 200));
-            const videoRetry = document.getElementById("sessionVideo");
-            if (!videoRetry) {
-                console.error("Video element still not found after retry");
-                
-                // Debug: List all elements with IDs
-                const allIds = document.querySelectorAll('[id]');
-                console.log(`All elements with IDs on page (${allIds.length}):`);
-                allIds.forEach(el => console.log(`  - ${el.tagName}#${el.id}`));
-                
-                return { success: false, error: "Video element #sessionVideo not found. Make sure the session view is rendered." };
-            }
-            // Use retry element
-            return setupStudentPeerWithElement(videoRetry);
+        // Try to find video element with retries (important for Blazor Server rendering)
+        let video = document.getElementById("sessionVideo");
+        let retries = 0;
+        const maxRetries = 5;
+        const retryDelay = 300; // ms
+
+        while (!video && retries < maxRetries) {
+            console.log(`Video element not found, retry ${retries + 1}/${maxRetries}...`);
+            await new Promise(resolve => setTimeout(resolve, retryDelay));
+            video = document.getElementById("sessionVideo");
+            retries++;
         }
 
+        if (!video) {
+            console.error(`Video element #sessionVideo not found after ${maxRetries} retries`);
+            
+            // Debug: List all elements with IDs
+            const allIds = document.querySelectorAll('[id]');
+            console.log(`All elements with IDs on page (${allIds.length}):`);
+            allIds.forEach(el => console.log(`  - ${el.tagName}#${el.id}`));
+            
+            return { success: false, error: "Video element #sessionVideo not found after multiple retries. Please refresh the page." };
+        }
+
+        console.log("Video element found, proceeding with peer setup");
         return setupStudentPeerWithElement(video);
     }
 

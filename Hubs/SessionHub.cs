@@ -279,11 +279,10 @@ namespace VIIDII.Hubs
             
             var userName = user.Name;
             var post = _messageService.CreatePost(sessionId, matricNo, userName, content, true, isFile);
-            await Clients.Group(sessionId).SendAsync("ReceivePost", post); // Changed from Clients.Others to Clients.Group(sessionId)
-            // Optionally, PostCreated can still be sent if the caller needs specific confirmation beyond receiving the post itself.
-            // For now, let's assume ReceivePost is sufficient for the caller to see their own post.
-            // If specific UI updates are needed only for the caller upon their post creation (e.g. clearing input), PostCreated can be kept.
-            // Let's keep PostCreated for now, as it might be used for UI cues like clearing the input field or showing a 'sent' status.
+            
+            Console.WriteLine($"[CreatePost] {userName} posted in {sessionId}: \"{content.Substring(0, Math.Min(50, content.Length))}{(content.Length > 50 ? "..." : "")}\"");
+            
+            await Clients.Group(sessionId).SendAsync("ReceivePost", post);
             await Clients.Caller.SendAsync("PostCreated", post.id);
         }
 
@@ -445,6 +444,40 @@ namespace VIIDII.Hubs
         public static bool TryGetLastSeen(string participantId, out DateTime lastSeen) =>
             _lastSeen.TryGetValue(participantId, out lastSeen);
 
+        /// <summary>
+        /// Manually prompt all students in a session to confirm they are still active.
+        /// Called by lecturer via "Prompt All" button.
+        /// </summary>
+        public async Task PromptEngagement(string sessionId)
+        {
+            var matricNo = await GetMatricNoForConnectionAsync();
+            
+            if (string.IsNullOrEmpty(matricNo))
+            {
+                await Clients.Caller.SendAsync("Error", "Session expired. Please log in again.");
+                return;
+            }
+            
+            // Verify lecturer is calling this
+            if (!IsSessionLecturer(sessionId, matricNo))
+            {
+                Console.WriteLine($"[SessionHub] Unauthorized PromptEngagement attempt by {matricNo} for session {sessionId}");
+                return;
+            }
+            
+            var session = _sessionService.GetSessionById(sessionId);
+            if (session == null || session.Status != SessionStatus.Started)
+            {
+                Console.WriteLine($"[SessionHub] PromptEngagement failed: Session {sessionId} not active");
+                return;
+            }
+            
+            // Send "AreYouThere" to all students (not lecturer)
+            await Clients.GroupExcept(sessionId, Context.ConnectionId).SendAsync("AreYouThere");
+            
+            Console.WriteLine($"[SessionHub] Lecturer {matricNo} prompted engagement for session {sessionId}");
+        }
+
         // Messaging - Reaction Methods
         public async Task AddReaction(string sessionId, string messageId, string emoji)
         {
@@ -471,21 +504,6 @@ namespace VIIDII.Hubs
                 // Broadcast reaction removal to all in session
                 await Clients.Group(sessionId).SendAsync("ReceiveReaction", messageId, matricNo, emoji, false);
                 Console.WriteLine($"Reaction removed: {matricNo} unreacted {emoji} from message {messageId}");
-            }
-        }
-
-        // Engagement - Prompt Methods
-        public async Task PromptEngagement(string sessionId)
-        {
-            var matricNo = Context.GetHttpContext()?.Session.GetString("MatricNo");
-            var session = _sessionService.GetSessionById(sessionId);
-
-            // Only lecturer can prompt engagement
-            if (session != null && IsSessionLecturer(sessionId, matricNo))
-            {
-                // Broadcast "Are You There?" to all students in session (except lecturer)
-                await Clients.GroupExcept(sessionId, Context.ConnectionId).SendAsync("AreYouThere");
-                Console.WriteLine($"Lecturer {matricNo} prompted engagement for session {sessionId}");
             }
         }
     }
