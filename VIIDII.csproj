@@ -8,6 +8,20 @@
     <InvariantGlobalization>false</InvariantGlobalization>
     <NoWarn>$(NoWarn);CS8602;CS8603;CS8604;CS8618;CS8619;CS8629;CS8714</NoWarn>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="figma\**" />
+    <Content Remove="figma\**" />
+    <EmbeddedResource Remove="figma\**" />
+    <None Remove="figma\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include=".github\instructions\bug-reports.instructions.md" />
+    <None Include=".github\instructions\bug-template.instructions.md" />
+    <None Include=".github\instructions\copilot-instructions.md" />
+    <None Include=".github\instructions\README.md" />
+  </ItemGroup>
 	
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Components.QuickGrid" Version="9.0.0" />

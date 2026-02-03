@@ -1,0 +1,22 @@
+@using Microsoft.AspNetCore.SignalR.Client
+
+<div class="hidden lg:flex w-96 flex-col border-l border-border bg-card">
+    <MessagingPanel SessionId="@SessionId"
+                    IsLecturer="@IsLecturer"
+                    HubConnection="@HubConnection"
+                    CurrentUserId="@CurrentUserId" />
+</div>
+
+@code {
+    [Parameter]
+    public string SessionId { get; set; } = string.Empty;
+
+    [Parameter]
+    public bool IsLecturer { get; set; }
+
+    [Parameter]
+    public HubConnection? HubConnection { get; set; }
+
+    [Parameter]
+    public string CurrentUserId { get; set; } = string.Empty;
+}

@@ -21,6 +21,10 @@ window.sessionInterop = (function () {
         currentSessionId = sessionId;
         isLecturer = isLecturerRole;
         dotNetRef = dotNetReference;
+        
+        // Expose globally for session.js compatibility
+        window.dotNetRef = dotNetReference;
+        console.log("DotNetRef exposed globally for cross-script access");
 
         // Setup beforeunload cleanup
         if (!window.sessionInteropCleanupRegistered) {
@@ -113,22 +117,16 @@ window.sessionInterop = (function () {
 
     function handleStudentConnection(conn) {
         conn.on("open", () => {
-            console.log("Student connected, peer ID:", conn.peer);
+            console.log("*** DATA CONNECTION OPENED WITH STUDENT:", conn.peer, "***");
             if (!conn.peer) {
-                console.warn("Invalid student peer ID, skipping call");
+                console.warn("Invalid student peer ID, skipping");
                 return;
             }
             studentConnections.set(conn.peer, conn);
-
-            const call = peer.call(conn.peer, localStream);
-            call.on("open", () => {
-                console.log("Call to student opened:", conn.peer);
-                // Notify Blazor of successful connection
-                if (dotNetRef) {
-                    dotNetRef.invokeMethodAsync('OnStudentConnected', conn.peer);
-                }
-            });
-            call.on("error", (err) => console.error("Call error:", err));
+            
+            // DON'T call student here - let Blazor do it via CallStudentAsync
+            // This prevents duplicate calls and race conditions
+            console.log("Data connection established, waiting for Blazor to initiate media call");
         });
 
         conn.on("data", (data) => {
@@ -252,26 +250,31 @@ window.sessionInterop = (function () {
             console.log(`  Video ${i}: id="${v.id}", class="${v.className}"`);
         });
 
-        const video = document.getElementById("sessionVideo");
-        if (!video) {
-            console.error("Video element #sessionVideo not found - waiting for DOM...");
-            // Wait and retry
-            await new Promise(resolve => setTimeout(resolve, 200));
-            const videoRetry = document.getElementById("sessionVideo");
-            if (!videoRetry) {
-                console.error("Video element still not found after retry");
-                
-                // Debug: List all elements with IDs
-                const allIds = document.querySelectorAll('[id]');
-                console.log(`All elements with IDs on page (${allIds.length}):`);
-                allIds.forEach(el => console.log(`  - ${el.tagName}#${el.id}`));
-                
-                return { success: false, error: "Video element #sessionVideo not found. Make sure the session view is rendered." };
-            }
-            // Use retry element
-            return setupStudentPeerWithElement(videoRetry);
+        // Try to find video element with retries (important for Blazor Server rendering)
+        let video = document.getElementById("sessionVideo");
+        let retries = 0;
+        const maxRetries = 5;
+        const retryDelay = 300; // ms
+
+        while (!video && retries < maxRetries) {
+            console.log(`Video element not found, retry ${retries + 1}/${maxRetries}...`);
+            await new Promise(resolve => setTimeout(resolve, retryDelay));
+            video = document.getElementById("sessionVideo");
+            retries++;
         }
 
+        if (!video) {
+            console.error(`Video element #sessionVideo not found after ${maxRetries} retries`);
+            
+            // Debug: List all elements with IDs
+            const allIds = document.querySelectorAll('[id]');
+            console.log(`All elements with IDs on page (${allIds.length}):`);
+            allIds.forEach(el => console.log(`  - ${el.tagName}#${el.id}`));
+            
+            return { success: false, error: "Video element #sessionVideo not found after multiple retries. Please refresh the page." };
+        }
+
+        console.log("Video element found, proceeding with peer setup");
         return setupStudentPeerWithElement(video);
     }
 
@@ -309,52 +312,85 @@ window.sessionInterop = (function () {
         });
 
         return new Promise((resolve, reject) => {
+            let connectionTimeout = setTimeout(() => {
+                reject(new Error("Peer initialization timeout"));
+            }, 10000);
+
             peer.on("open", (id) => {
-                console.log("Student peer open:", id);
+                clearTimeout(connectionTimeout);
+                console.log("*** STUDENT PEER OPEN:", id, "***");
                 
                 // Notify Blazor with peer ID so it can send to SignalR
                 if (dotNetRef) {
-                    dotNetRef.invokeMethodAsync('OnStudentPeerReady', id);
+                    dotNetRef.invokeMethodAsync('OnStudentPeerReady', id)
+                        .then(() => {
+                            console.log("Peer ID sent to Blazor successfully");
+                        })
+                        .catch(err => {
+                            console.error("Failed to notify Blazor of peer ready:", err);
+                        });
                 }
 
                 resolve({ success: true, peerId: id });
             });
 
             peer.on("call", (call) => {
-                console.log("Received lecturer call:", call.peer);
+                console.log("*** STUDENT RECEIVED CALL FROM LECTURER ***");
+                console.log("Caller peer ID:", call.peer);
+                console.log("Call object:", { type: call.type, connectionId: call.connectionId });
                 handleIncomingCall(call, video);
             });
 
             peer.on("error", (err) => {
-                console.error("Peer error:", err);
+                clearTimeout(connectionTimeout);
+                console.error("Peer error during setup:", err);
                 handlePeerError(err);
                 reject(err);
             });
+
+            // Set a timeout for the peer to open
+            setTimeout(() => {
+                if (!peer || peer.disconnected) {
+                    reject(new Error("Peer failed to open within timeout"));
+                }
+            }, 8000);
         });
     }
 
     function handleIncomingCall(call, video) {
-        call.answer();
+        console.log("Answering incoming call from:", call.peer);
+        call.answer(); // Answer WITHOUT sending a stream back
 
         let streamTimeout = setTimeout(() => {
             if (!isStreamAttached) {
-                console.warn("No stream received after 10s, retrying...");
-                call.close();
+                console.warn("No stream received after 10s, connection may have issues");
+                // Don't close the call yet, give it more time
+                if (dotNetRef) {
+                    dotNetRef.invokeMethodAsync('OnPeerError', 'stream-timeout');
+                }
             }
         }, 10000);
 
         call.on("stream", (remoteStream) => {
             clearTimeout(streamTimeout);
-            console.log("Received lecturer stream:", remoteStream);
+            console.log("Received lecturer stream:", remoteStream.id, "Active tracks:", remoteStream.getTracks().map(t => t.kind + ':' + t.enabled).join(', '));
 
-            if (remoteStream.id === attachedStreamId) {
+            // Check if stream has active tracks
+            const activeTracks = remoteStream.getTracks().filter(t => t.enabled && t.readyState === 'live');
+            if (activeTracks.length === 0) {
+                console.error("Received stream has no active tracks!");
+                return;
+            }
+
+            // If this is the same stream ID AND it's already attached, skip duplicate
+            if (remoteStream.id === attachedStreamId && isStreamAttached) {
                 console.log("Ignoring duplicate stream, ID:", remoteStream.id);
                 return;
             }
 
-            if (isStreamAttached) {
-                console.log("Stream already attached, ignoring new stream:", remoteStream.id);
-                return;
+            // Replace existing stream (e.g., when lecturer switches from webcam to screen share)
+            if (isStreamAttached && remoteStream.id !== attachedStreamId) {
+                console.log("Replacing existing stream (ID:", attachedStreamId, ") with new stream (ID:", remoteStream.id, ")");
             }
 
             isStreamAttached = true;
@@ -368,18 +404,24 @@ window.sessionInterop = (function () {
                 video.muted = false;
                 video.volume = 1.0;
                 
-                video.play().catch(err => {
-                    console.error("Playback failed:", err.message);
-                    // If autoplay fails, show play button for user interaction
-                    if (dotNetRef) {
-                        dotNetRef.invokeMethodAsync('OnStreamReceived');
-                    }
-                });
+                video.play()
+                    .then(() => {
+                        console.log("Video playback started successfully");
+                    })
+                    .catch(err => {
+                        console.error("Playback failed:", err.message);
+                        // If autoplay fails, notify Blazor to show play button
+                        if (dotNetRef) {
+                            dotNetRef.invokeMethodAsync('OnStreamReceived');
+                        }
+                    });
 
                 // Notify Blazor that stream is attached
                 if (dotNetRef) {
                     dotNetRef.invokeMethodAsync('OnStreamReceived');
                 }
+            } else {
+                console.error("Video element not found when trying to attach stream!");
             }
         });
 
@@ -425,7 +467,8 @@ window.sessionInterop = (function () {
             return { success: false, error: "No local stream" };
         }
 
-        console.log(`Calling student: ${studentPeerId}`);
+        console.log(`*** LECTURER CALLING STUDENT: ${studentPeerId} ***`);
+        console.log("Local stream tracks:", localStream.getTracks().map(t => t.kind + ':' + t.enabled + ':' + t.readyState).join(', '));
 
         try {
             const call = peer.call(studentPeerId, localStream);
@@ -435,9 +478,11 @@ window.sessionInterop = (function () {
                 return { success: false, error: "Failed to create call" };
             }
 
+            console.log("Call object created:", { connectionId: call.connectionId, peer: call.peer });
+
             call.on("stream", (remoteStream) => {
-                console.log(`Call established with student ${studentPeerId}`);
-                // Students don't send stream back, so this won't trigger
+                console.log(`Received stream from student ${studentPeerId} (unexpected)`);
+                // Students don't send stream back, so this typically won't trigger
             });
 
             call.on("close", () => {
@@ -449,10 +494,13 @@ window.sessionInterop = (function () {
 
             call.on("error", (err) => {
                 console.error(`Call error with student ${studentPeerId}:`, err);
+                if (dotNetRef) {
+                    dotNetRef.invokeMethodAsync('OnPeerError', err.type || 'call-error');
+                }
             });
 
-            console.log(`Call initiated to student ${studentPeerId}`);
-            return { success: true, peerId: studentPeerId };
+            console.log(`Call initiated successfully to student ${studentPeerId}`);
+            return { success: true, peerId: studentPeerId, callId: call.connectionId };
 
         } catch (err) {
             console.error(`Exception calling student ${studentPeerId}:`, err);
@@ -482,16 +530,15 @@ window.sessionInterop = (function () {
         });
 
             conn.on("data", (data) => {
-                console.log("Received data from lecturer:", data);
+                console.log("Received data from lecturer:", data.type || data);
                 
-                // Handle file chunks
-                if (data.type === "fileChunk") {
+                // Handle different message types
+                if (data.type === "fileMetadata") {
+                    handleFileMetadata(data);
+                } else if (data.type === "fileChunk") {
                     handleFileChunk(data);
-                }
-
-                // Forward data to Blazor for handling
-                if (dotNetRef && data.type === "fileChunk") {
-                    dotNetRef.invokeMethodAsync('OnFileChunkReceived', JSON.stringify(data));
+                } else if (data.type === "fileComplete") {
+                    handleFileComplete(data);
                 }
             });
 
@@ -542,71 +589,141 @@ window.sessionInterop = (function () {
         }
     }
 
-    // File chunk handling (for students receiving files)
-    const fileChunks = new Map(); // Map<messageId, Array<ArrayBuffer>>
+    // File transfer handling for students
+    const fileTransfers = new Map(); // Map<messageId, { metadata, chunks, receivedCount }>
 
-    function handleFileChunk(data) {
-        const { messageId, fileName, fileSize, chunk, index, total } = data;
-        const fileKey = messageId;
+    function handleFileMetadata(data) {
+        const { messageId, fileSize, totalChunks, chunkSize } = data;
+        console.log(`Received file metadata: messageId=${messageId}, size=${fileSize}, chunks=${totalChunks}`);
 
-        console.log(`Received chunk ${index + 1}/${total} for ${fileName}`);
+        fileTransfers.set(messageId, {
+            metadata: { fileSize, totalChunks, chunkSize },
+            chunks: new Array(totalChunks),
+            receivedCount: 0
+        });
 
-        // Initialize chunk array if first chunk
-        if (!fileChunks.has(fileKey)) {
-            fileChunks.set(fileKey, new Array(total));
-            console.log(`Initialized chunk array for ${fileName}, expecting ${total} chunks`);
-        }
-
-        // Store chunk
-        fileChunks.get(fileKey)[index] = chunk;
-
-        const received = fileChunks.get(fileKey).filter(c => c !== undefined).length;
-        console.log(`Progress: ${received}/${total} chunks received for ${fileName}`);
-
-        // Check if all chunks received
-        if (received === total) {
-            console.log(`All chunks received for ${fileName}, reassembling...`);
-            reassembleFile(fileKey, fileName, fileChunks.get(fileKey));
-            fileChunks.delete(fileKey);
+        // Update UI to show receiving file
+        const fileMessage = document.querySelector(`[data-file-id="${messageId}"]`);
+        if (fileMessage) {
+            fileMessage.textContent = "Receiving...";
+            fileMessage.disabled = true;
         }
     }
 
-    function reassembleFile(messageId, fileName, chunks) {
+    function handleFileChunk(data) {
+        const { messageId, index, totalChunks, data: chunkData } = data;
+        
+        if (!fileTransfers.has(messageId)) {
+            console.warn(`Received chunk for unknown file: ${messageId}`);
+            return;
+        }
+
+        const transfer = fileTransfers.get(messageId);
+        
+        // Store chunk
+        transfer.chunks[index] = chunkData;
+        transfer.receivedCount++;
+
+        const progress = (transfer.receivedCount / transfer.metadata.totalChunks) * 100;
+        console.log(`Chunk ${index + 1}/${transfer.metadata.totalChunks} received (${progress.toFixed(1)}%)`);
+
+        // Update progress in UI
+        const fileMessage = document.querySelector(`[data-file-id="${messageId}"]`);
+        if (fileMessage) {
+            fileMessage.textContent = `${progress.toFixed(0)}%`;
+        }
+
+        // Check if all chunks received (auto-complete)
+        if (transfer.receivedCount === transfer.metadata.totalChunks) {
+            console.log(`All chunks received, reassembling...`);
+            reassembleFile(messageId, transfer);
+        }
+    }
+
+    function handleFileComplete(data) {
+        const { messageId, totalChunks } = data;
+        console.log(`File transfer complete signal received for ${messageId}`);
+
+        if (!fileTransfers.has(messageId)) {
+            console.warn(`Completion signal for unknown file: ${messageId}`);
+            return;
+        }
+
+        const transfer = fileTransfers.get(messageId);
+        
+        // Check if all chunks received
+        const receivedChunks = transfer.chunks.filter(c => c !== undefined).length;
+        
+        if (receivedChunks === totalChunks) {
+            console.log(`All ${totalChunks} chunks received, reassembling file...`);
+            reassembleFile(messageId, transfer);
+        } else {
+            console.warn(`Missing chunks: ${receivedChunks}/${totalChunks}`);
+            const fileMessage = document.querySelector(`[data-file-id="${messageId}"]`);
+            if (fileMessage) {
+                fileMessage.textContent = "Failed";
+                fileMessage.classList.add("text-red-500");
+            }
+        }
+    }
+
+    function reassembleFile(messageId, transfer) {
         try {
             // Create blob from chunks
-            const blob = new Blob(chunks);
-            console.log(`File ${fileName} reassembled, size: ${blob.size} bytes`);
+            const blob = new Blob(transfer.chunks);
+            console.log(`File reassembled: ${blob.size} bytes`);
 
             // Create download URL
             const url = URL.createObjectURL(blob);
 
-            // Find download button and update it
-            const downloadBtn = document.querySelector(`[data-file-id="${messageId}"]`);
-            if (downloadBtn) {
-                downloadBtn.href = url;
-                downloadBtn.download = fileName;
-                downloadBtn.textContent = "Download";
-                downloadBtn.disabled = false;
-                console.log(`Download button updated for ${fileName}`);
+            // Get filename from message content
+            const messageElement = document.querySelector(`[data-file-id="${messageId}"]`);
+            let fileName = 'download';
+            
+            if (messageElement) {
+                const contentElement = messageElement.closest('.bg-secondary\\/30, .bg-secondary\\/40, [class*="bg-secondary"]');
+                if (contentElement) {
+                    const textContent = contentElement.textContent || '';
+                    fileName = textContent.replace('File:', '').replace('Receiving...', '').trim() || 'download';
+                }
             }
 
-            // Auto-download
-            const tempLink = document.createElement("a");
-            tempLink.href = url;
-            tempLink.download = fileName;
-            document.body.appendChild(tempLink);
-            tempLink.click();
-            document.body.removeChild(tempLink);
-            console.log(`Auto-download triggered for ${fileName}`);
+            // Update download button
+            if (messageElement) {
+                messageElement.onclick = (e) => {
+                    e.preventDefault();
+                    const tempLink = document.createElement("a");
+                    tempLink.href = url;
+                    tempLink.download = fileName;
+                    document.body.appendChild(tempLink);
+                    tempLink.click();
+                    document.body.removeChild(tempLink);
+                };
+                messageElement.textContent = "Download";
+                messageElement.disabled = false;
+                messageElement.classList.remove("text-red-500");
+            }
+
+            // Clean up transfer data
+            fileTransfers.delete(messageId);
+
+            console.log(`File ready for download: ${fileName}`);
 
             // Notify Blazor
             if (dotNetRef) {
                 dotNetRef.invokeMethodAsync('OnFileDownloadComplete', messageId, fileName);
             }
-        } catch (err) {
-            console.error(`Error reassembling file ${fileName}:`, err);
+
+        } catch (error) {
+            console.error("Error reassembling file:", error);
+            const fileMessage = document.querySelector(`[data-file-id="${messageId}"]`);
+            if (fileMessage) {
+                fileMessage.textContent = "Error";
+                fileMessage.classList.add("text-red-500");
+            }
+            
             if (dotNetRef) {
-                dotNetRef.invokeMethodAsync('OnFileDownloadError', messageId, err.message);
+                dotNetRef.invokeMethodAsync('OnFileDownloadError', messageId, error.message);
             }
         }
     }
@@ -652,63 +769,126 @@ window.sessionInterop = (function () {
     }
 
     // Send file to all students in chunks
-    async function sendFileToStudents(file, messageId) {
+    async function sendFileToStudents(dotNetStreamRef, messageId) {
         if (!isLecturer) {
             throw new Error("Only lecturer can send files");
         }
 
-        if (studentPeers.length === 0) {
-            throw new Error("No students connected");
+        if (studentConnections.size === 0) {
+            console.warn("No students connected via data channel");
+            return { success: false, error: "No students connected" };
         }
 
-        const chunkSize = 1024 * 1024; // 1MB chunks
-        const totalChunks = Math.ceil(file.size / chunkSize);
-        let sentChunks = 0;
+        try {
+            // Read stream from .NET
+            const arrayBuffer = await dotNetStreamRef.arrayBuffer();
+            const fileSize = arrayBuffer.byteLength;
+            
+            const chunkSize = 64 * 1024; // 64KB chunks for better reliability
+            const totalChunks = Math.ceil(fileSize / chunkSize);
+            let sentChunks = 0;
 
-        console.log(`Sending file: ${file.name}, size: ${file.size} bytes, chunks: ${totalChunks}`);
+            console.log(`Sending file: size ${fileSize} bytes, chunks: ${totalChunks}`);
 
-        // Read file in chunks and send to all students
-        for (let i = 0; i < totalChunks; i++) {
-            const start = i * chunkSize;
-            const end = Math.min(start + chunkSize, file.size);
-            const chunk = file.slice(start, end);
-
-            // Convert chunk to ArrayBuffer
-            const arrayBuffer = await chunk.arrayBuffer();
-
-            const chunkData = {
-                type: "fileChunk",
-                fileName: file.name,
-                fileSize: file.size,
-                chunk: arrayBuffer,
-                index: i,
-                total: totalChunks,
-                messageId: messageId
+            // Send file metadata first
+            const metadataMessage = {
+                type: "fileMetadata",
+                messageId: messageId,
+                fileSize: fileSize,
+                totalChunks: totalChunks,
+                chunkSize: chunkSize
             };
 
-            // Send to all connected students
-            const result = sendDataToPeers(chunkData);
-            
-            if (result.success) {
+            // Send metadata to all students
+            studentConnections.forEach((conn, peerId) => {
+                if (conn.open) {
+                    try {
+                        conn.send(metadataMessage);
+                        console.log(`Sent metadata to ${peerId}`);
+                    } catch (err) {
+                        console.error(`Failed to send metadata to ${peerId}:`, err);
+                    }
+                }
+            });
+
+            // Wait a bit for students to prepare
+            await new Promise(resolve => setTimeout(resolve, 100));
+
+            // Send chunks
+            for (let i = 0; i < totalChunks; i++) {
+                const start = i * chunkSize;
+                const end = Math.min(start + chunkSize, fileSize);
+                const chunkData = arrayBuffer.slice(start, end);
+
+                const chunkMessage = {
+                    type: "fileChunk",
+                    messageId: messageId,
+                    index: i,
+                    totalChunks: totalChunks,
+                    data: chunkData
+                };
+
+                let successCount = 0;
+                let failCount = 0;
+
+                // Send to all connected students
+                studentConnections.forEach((conn, peerId) => {
+                    if (conn.open) {
+                        try {
+                            conn.send(chunkMessage);
+                            successCount++;
+                        } catch (err) {
+                            console.error(`Failed to send chunk ${i} to ${peerId}:`, err);
+                            failCount++;
+                        }
+                    }
+                });
+
                 sentChunks++;
                 const progress = (sentChunks / totalChunks) * 100;
-                
+
                 // Notify Blazor of progress
-                if (dotNetRef) {
-                    dotNetRef.invokeMethodAsync('OnFileUploadProgress', progress, sentChunks, totalChunks);
+                if (dotNetRef && sentChunks % 5 === 0) { // Update every 5 chunks
+                    dotNetRef.invokeMethodAsync('OnFileUploadProgress', progress);
                 }
 
-                console.log(`Chunk ${i + 1}/${totalChunks} sent to ${result.sentTo} students`);
-            } else {
-                console.error(`Failed to send chunk ${i + 1}/${totalChunks}`);
+                console.log(`Chunk ${i + 1}/${totalChunks} sent to ${successCount} students`);
+
+                // Small delay to prevent overwhelming the connection
+                if (i < totalChunks - 1) {
+                    await new Promise(resolve => setTimeout(resolve, 10));
+                }
             }
 
-            // Small delay between chunks to prevent overwhelming
-            await new Promise(resolve => setTimeout(resolve, 10));
-        }
+            // Send completion message
+            const completionMessage = {
+                type: "fileComplete",
+                messageId: messageId,
+                totalChunks: totalChunks
+            };
 
-        console.log(`File transfer complete: ${file.name}`);
-        return { success: true, totalChunks: totalChunks, fileName: file.name };
+            studentConnections.forEach((conn, peerId) => {
+                if (conn.open) {
+                    try {
+                        conn.send(completionMessage);
+                    } catch (err) {
+                        console.error(`Failed to send completion to ${peerId}:`, err);
+                    }
+                }
+            });
+
+            // Final progress update
+            if (dotNetRef) {
+                dotNetRef.invokeMethodAsync('OnFileUploadProgress', 100);
+            }
+
+            console.log(`File transfer complete: ${totalChunks} chunks sent`);
+            return { success: true, totalChunks: totalChunks, sentTo: studentConnections.size };
+
+        } catch (error) {
+            console.error("Error sending file:", error);
+            throw error;
+        }
     }
 
     // Cleanup all session resources
@@ -745,6 +925,7 @@ window.sessionInterop = (function () {
         studentPeers = [];
         studentConnections.clear();
         dotNetRef = null;
+        window.dotNetRef = null; // Clear global reference
         currentSessionId = null;
 
         console.log("Cleanup completed");

@@ -1,0 +1,10 @@
+@using Microsoft.AspNetCore.SignalR.Client
+
+<div class="flex-1 flex overflow-hidden relative">
+    @ChildContent
+</div>
+
+@code {
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+}

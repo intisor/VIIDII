@@ -1,0 +1,42 @@
+@using VIIDII.Models
+
+<header class="bg-card border-b border-border px-4 py-3 flex items-center justify-between flex-shrink-0 z-10">
+    <div class="flex items-center gap-3">
+        <button @onclick="OnBackClick" class="text-muted-foreground hover:text-foreground transition-colors p-2 hover:bg-secondary rounded-full">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m12 19-7-7 7-7"/>
+                <path d="M19 12H5"/>
+            </svg>
+        </button>
+        <div>
+            <h1 class="text-lg font-semibold leading-tight">@Title</h1>
+            <div class="flex items-center gap-2 text-xs text-muted-foreground">
+                <span class="font-mono bg-secondary px-1.5 py-0.5 rounded">@SessionId</span>
+                @if (IsLecturer && ParticipantCount > 0)
+                {
+                    <span class="flex items-center gap-1 text-green-600">
+                        <span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+                        @ParticipantCount active
+                    </span>
+                }
+            </div>
+        </div>
+    </div>
+</header>
+
+@code {
+    [Parameter]
+    public string Title { get; set; } = string.Empty;
+
+    [Parameter]
+    public string SessionId { get; set; } = string.Empty;
+
+    [Parameter]
+    public bool IsLecturer { get; set; }
+
+    [Parameter]
+    public int ParticipantCount { get; set; }
+
+    [Parameter]
+    public EventCallback OnBackClick { get; set; }
+}

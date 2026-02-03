@@ -6,7 +6,6 @@ namespace VIIDII.Services;
 public class SessionService
 {
     private readonly ConcurrentDictionary<string, Session> _sessions = [];
-    private static Dictionary<string, string> _userDetailsCache = new(); // Static cache for user details
 
     // Define ParticipantScoreDetails here or ensure it's in Models/User.cs or a new Models/ParticipantScoreDetails.cs
     public class ParticipantScoreDetails
@@ -46,8 +45,8 @@ public class SessionService
         var session = new Session(lecturerId)
         {
             Title = title,
-            AllowedDepartments = allowedDepartments ?? new List<User.Departments>(),
-            AllowedLevels = allowedLevels ?? new List<User.Levels>()
+            AllowedDepartments = allowedDepartments ?? [],
+            AllowedLevels = allowedLevels ?? []
         };
 
         session.AllowedDepartments = session.AllowedDepartments.Contains(User.Departments.Any) ? [.. Enum.GetValues<User.Departments>()] : session.AllowedDepartments;
@@ -106,9 +105,9 @@ public class SessionService
         {
             if (!session.ParticipantEvents.ContainsKey(participantId))
             {
-                session.ParticipantEvents[participantId] = new List<(Session.StudentStatus status, DateTime timeStamp)>(); // Changed DateTimeOffset to DateTime
+                session.ParticipantEvents[participantId] = [];
             }
-            var joinTime = DateTime.UtcNow.AddHours(1); // Changed DateTimeOffset to DateTime
+            var joinTime = DateTime.UtcNow; // Pure UTC
             if (joinTime > session.StartTime)
             {
                 var absentDuration = (joinTime - session.StartTime).TotalMinutes;
@@ -137,7 +136,7 @@ public class SessionService
         if (session.LecturerId != lecturerId || (session.Status != SessionStatus.Started && session.Status != SessionStatus.Active))
             return null;
         session.Status = SessionStatus.Ended;
-        session.EndTime = DateTime.UtcNow.AddHours(1); // Changed DateTimeOffset to DateTime
+        session.EndTime = DateTime.UtcNow; // Pure UTC
         // Don't clear participant IDs so we can still calculate scores
         // session.ParticipantIds.Clear();
         session.IsSessionStarted = false;
@@ -150,13 +149,13 @@ public class SessionService
         {
             session.IsSessionStarted = true;
             session.Status = SessionStatus.Started;
-            session.StartTime = DateTime.UtcNow.AddHours(1); // Changed DateTimeOffset to DateTime
+            session.StartTime = DateTime.UtcNow; // Pure UTC
             Console.WriteLine($"StartSession: Session {sessionId} started at {session.StartTime}, Participants: {string.Join(", ", session.ParticipantIds)}");            // Log initial 'Active' status for all current participants
             foreach (var participantId in session.ParticipantIds.ToList()) // ToList to avoid modification issues if any
             {
                 if (!session.ParticipantEvents.ContainsKey(participantId))
                 {
-                    session.ParticipantEvents[participantId] = new List<(Session.StudentStatus status, DateTime timeStamp)>(); // Changed DateTimeOffset to DateTime
+                    session.ParticipantEvents[participantId] = [];
                 }
                 // Add initial active event at session start time
                 session.ParticipantEvents[participantId].Add((Session.StudentStatus.Active, session.StartTime));
@@ -197,9 +196,9 @@ public class SessionService
             // Log the event
             if (!session.ParticipantEvents.ContainsKey(participantId))
             {
-                session.ParticipantEvents[participantId] = new List<(Session.StudentStatus status, DateTime timeStamp)>(); // Changed DateTimeOffset to DateTime
+                session.ParticipantEvents[participantId] = [];
             }
-            var eventTimestamp = DateTime.UtcNow.AddHours(1); // Changed DateTimeOffset to DateTime
+            var eventTimestamp = DateTime.UtcNow; // Pure UTC
             session.ParticipantEvents[participantId].Add((status, eventTimestamp));
             Console.WriteLine($"UpdateParticipantStatus: {participantId} status {status} at {eventTimestamp} in session {sessionId}"); return true; // Indicates a scorable event was logged
         }
@@ -253,15 +252,16 @@ public class SessionService
             return new Dictionary<string, ParticipantScoreDetails>();
         }
 
+
         Console.WriteLine($"CalculateAttendanceScore: Session {sessionId}, Start={session.StartTime}, End={endTime}, Duration={totalSessionMinutes:F1} min");
 
-        // Initialize or use cached user details (all times are UTC for consistency)
-        _userDetailsCache ??= MockApiService.GetUsers().ToDictionary(u => u.MatricNo, u => u.Name);
-
         // Single-pass participant ID collection, including past participants with events/statuses
-        var allParticipantIds = new HashSet<string>(session.ParticipantIds);
+        HashSet<string> allParticipantIds = [..session.ParticipantIds];
         allParticipantIds.UnionWith(session.ParticipantEvents.Keys);
         allParticipantIds.UnionWith(session.ParticipantStatuses.Keys);
+        
+        // IMPORTANT: Exclude the lecturer from participant scoring
+        allParticipantIds.Remove(session.LecturerId);
 
         var result = new Dictionary<string, ParticipantScoreDetails>(allParticipantIds.Count);
         foreach (var participantId in allParticipantIds)
@@ -270,7 +270,7 @@ public class SessionService
                 session,
                 participantId,
                 totalSessionMinutes,
-                _userDetailsCache.GetValueOrDefault(participantId, "Unknown User")
+                participantId  // Just use MatricNo, no need for name lookup
             );
         }
 
@@ -289,7 +289,7 @@ public class SessionService
         Console.WriteLine($"CalculateScore: {participantId}, TotalSessionMinutes={totalSessionMinutes:F1}, StartTime={session.StartTime}");
 
         double totalCreditMinutes = 0;
-        var sessionEnd = session.EndTime ?? DateTime.UtcNow.AddHours(1);
+        var sessionEnd = session.EndTime ?? DateTime.UtcNow; // Pure UTC
         Session.StudentStatus? previousStatus = null;
 
         if (!session.ParticipantEvents.TryGetValue(participantId, out var events) || !events.Any())

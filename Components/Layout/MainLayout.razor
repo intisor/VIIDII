@@ -1,19 +1,20 @@
 @inherits LayoutComponentBase
 
-<div class="page">
-    <header>
+<div class="min-h-screen bg-background flex flex-col font-sans antialiased">
+    <header class="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <NavMenu />
     </header>
 
-    <main>
-        <article class="content px-4">
+    <main class="flex-1">
+        <article class="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6">
             @Body
         </article>
     </main>
 
-    <footer class="border-top footer text-muted mt-auto py-3">
-        <div class="container text-center">
-            &copy; 2025 - VIIDII - <a href="/privacy">Privacy</a>
+    <footer class="border-t border-border bg-muted/50 py-6 md:py-0">
+        <div class="container flex flex-col items-center justify-between gap-4 md:h-16 md:flex-row mx-auto px-4 max-w-7xl text-sm text-muted-foreground">
+            <p class="text-center md:text-left">&copy; 2025 - VIIDII</p>
+            <a href="/privacy" class="hover:underline hover:text-foreground">Privacy</a>
         </div>
     </footer>
 </div>

@@ -12,26 +12,116 @@ namespace VIIDII.Hubs
     {
         private readonly MessageService _messageService;
         private readonly SessionService _sessionService;
+        private readonly AuthService _authService;
         private static readonly ConcurrentDictionary<string, DateTime> _lastSeen = new();
+        // Store MatricNo per connection ID (replaces HTTP session which doesn't work with Blazor Server)
+        private static readonly ConcurrentDictionary<string, string> _connectionMatricNos = new();
 
-        public SessionHub(MessageService messageService, SessionService sessionService)
+        public SessionHub(MessageService messageService, SessionService sessionService, AuthService authService)
         {
             _messageService = messageService;
             _sessionService = sessionService;
+            _authService = authService;
         }
 
-        public async Task StartSession(string sessionId)
+        public override async Task OnConnectedAsync()
         {
-            var matricNo = Context.GetHttpContext()?.Session.GetString("MatricNo");
+            // Note: AuthService might not be initialized yet when SignalR connects
+            // This is normal for Blazor Server - authentication happens in the component
+            // We'll get the MatricNo later when hub methods are called
+            Console.WriteLine($"[SessionHub] New connection: {Context.ConnectionId}");
+            
+            await base.OnConnectedAsync();
+        }
+
+        private async Task<string?> GetMatricNoForConnectionAsync()
+        {
+            // First check if we already stored it for this connection
+            if (_connectionMatricNos.TryGetValue(Context.ConnectionId, out var matricNo))
+            {
+                return matricNo;
+            }
+            
+            // Try to get from AuthService (must already be initialized by component)
+            // Don't call InitializeAsync here - JS interop not available in hub context!
+            matricNo = _authService.GetCurrentMatricNo();
+            
+            if (!string.IsNullOrEmpty(matricNo))
+            {
+                _connectionMatricNos[Context.ConnectionId] = matricNo;
+                Console.WriteLine($"[SessionHub] Mapped connection {Context.ConnectionId} to MatricNo: {matricNo}");
+                return matricNo;
+            }
+            
+            // If still null, component hasn't initialized yet - wait a moment and retry once
+            Console.WriteLine($"[SessionHub] MatricNo not available yet for {Context.ConnectionId}, waiting for component initialization...");
+            await Task.Delay(100); // Brief delay for component to initialize
+            
+            matricNo = _authService.GetCurrentMatricNo();
+            if (!string.IsNullOrEmpty(matricNo))
+            {
+                _connectionMatricNos[Context.ConnectionId] = matricNo;
+                Console.WriteLine($"[SessionHub] Mapped connection {Context.ConnectionId} to MatricNo: {matricNo} (after retry)");
+                return matricNo;
+            }
+            
+            Console.WriteLine($"[SessionHub] Warning: Could not get MatricNo for connection {Context.ConnectionId}");
+            return null;
+        }
+
+        // Synchronous version for places that can't be async
+        private string? GetMatricNoForConnection()
+        {
+            if (_connectionMatricNos.TryGetValue(Context.ConnectionId, out var matricNo))
+            {
+                return matricNo;
+            }
+            
+            // Fallback: try to get from AuthService (without initialization)
+            matricNo = _authService.GetCurrentMatricNo();
+            if (!string.IsNullOrEmpty(matricNo))
+            {
+                _connectionMatricNos[Context.ConnectionId] = matricNo;
+                return matricNo;
+            }
+            
+            return null;
+        }
+
+        public async Task StartSession(string sessionId, string matricNo)
+        {
+            // Cache the MatricNo for this connection immediately
+            if (!string.IsNullOrEmpty(matricNo))
+            {
+                _connectionMatricNos[Context.ConnectionId] = matricNo;
+                Console.WriteLine($"[SessionHub] Cached MatricNo {matricNo} for connection {Context.ConnectionId}");
+            }
+            
+            // Now get it (will be from cache we just set)
+            var userMatricNo = await GetMatricNoForConnectionAsync();
+            
+            if (string.IsNullOrEmpty(userMatricNo))
+            {
+                Console.WriteLine($"[SessionHub] StartSession failed: MatricNo not found for connection {Context.ConnectionId}");
+                await Clients.Caller.SendAsync("Error", "Session expired. Please log in again.");
+                return;
+            }
+            
+            Console.WriteLine($"[SessionHub] StartSession called by {userMatricNo} for session {sessionId}");
+            
             await Groups.AddToGroupAsync(Context.ConnectionId, sessionId);
-            await Clients.Group(sessionId).SendAsync("StartSession", sessionId);
             var session = _sessionService.GetSessionById(sessionId);
+            
             if(session != null)
             {
-                if (IsSessionLecturer(sessionId,matricNo))
+                if (IsSessionLecturer(sessionId, userMatricNo))
                 {
+                    // CRITICAL: Set LecturerConnectionId BEFORE broadcasting
                     session.LecturerConnectionId = Context.ConnectionId;
-                    Console.WriteLine($"Lecturer {matricNo} set LecturerConnectionId: {session.LecturerConnectionId}");
+                    Console.WriteLine($"Lecturer {userMatricNo} set LecturerConnectionId: {session.LecturerConnectionId}");
+
+                    // NOW broadcast StartSession to all (lecturer will handle this in JS)
+                    await Clients.Group(sessionId).SendAsync("StartSession", sessionId);
 
                     // If session is already started, send current scores and statuses to lecturer
                     if (session.Status == SessionStatus.Started)
@@ -45,13 +135,15 @@ namespace VIIDII.Hubs
                 }
                 else
                 {
-                    var (joinedSession, error) = _sessionService.JoinSession(sessionId, matricNo,Context.ConnectionId);
+                    var (joinedSession, error) = _sessionService.JoinSession(sessionId, userMatricNo, Context.ConnectionId);
                     if (joinedSession is null)
                     {
                         Console.WriteLine($"JoinSession failed: {error}");
                         return;
                     }
-                    Console.WriteLine($"Student {matricNo} joined session {sessionId}, ParticipantIds: {string.Join(", ", session.ParticipantIds)}");
+                    // Refresh session to get updated participant list
+                    session = joinedSession;
+                    Console.WriteLine($"Student {userMatricNo} joined session {sessionId}, ParticipantIds: {string.Join(", ", session.ParticipantIds)}");
                 }
                 if (!string.IsNullOrEmpty(session.LecturerConnectionId))
                 {
@@ -65,7 +157,17 @@ namespace VIIDII.Hubs
 
         public async Task JoinSession(string sessionId)
         {
-            var matricNo = Context.GetHttpContext()?.Session.GetString("MatricNo");
+            var matricNo = await GetMatricNoForConnectionAsync();
+            
+            if (string.IsNullOrEmpty(matricNo))
+            {
+                Console.WriteLine($"[SessionHub] JoinSession failed: MatricNo not found for connection {Context.ConnectionId}");
+                await Clients.Caller.SendAsync("Error", "Session expired. Please log in again.");
+                return;
+            }
+            
+            Console.WriteLine($"[SessionHub] JoinSession called by {matricNo} for session {sessionId}");
+            
             var session = _sessionService.GetSessionById(sessionId);
             if (session == null || session.Status == SessionStatus.Ended)
             {
@@ -83,6 +185,8 @@ namespace VIIDII.Hubs
                     Console.WriteLine($"JoinSession failed: {error}");
                     return;
                 }
+                // Refresh session to get updated participant list
+                session = joinedSession;
                 Console.WriteLine($"Student {matricNo} joined session {sessionId}, ParticipantIds: {string.Join(", ", session.ParticipantIds)}");
             }
 
@@ -94,7 +198,8 @@ namespace VIIDII.Hubs
 
             if (!string.IsNullOrEmpty(session.LecturerConnectionId))
             {
-                var participants = session.ParticipantIds.ToDictionary(id => id, id => id);
+                // Send participant names instead of just IDs (consistent with StartSession)
+                var participants = session.ParticipantIds.ToDictionary(id => id, id => MockApiService.GetUsers().FirstOrDefault(u => u.MatricNo == id)?.Name ?? id);
                 await Clients.Client(session.LecturerConnectionId).SendAsync("ReceiveParticipants", participants);
                 Console.WriteLine($"Sent participants to lecturer: {string.Join(", ", participants.Keys)}");
             }
@@ -102,7 +207,7 @@ namespace VIIDII.Hubs
 
         public async Task EndSession(string sessionId)
         {
-            var matricNo = Context.GetHttpContext()?.Session.GetString("MatricNo");
+            var matricNo = await GetMatricNoForConnectionAsync();
             var session = _sessionService.GetSessionById(sessionId);
 
             if (session != null && IsSessionLecturer(sessionId, matricNo))
@@ -134,7 +239,7 @@ namespace VIIDII.Hubs
         }
         public async Task NotifyStreamChange(string sessionId, string streamType)
         {
-            var matricNo = Context.GetHttpContext()?.Session.GetString("MatricNo");
+            var matricNo = await GetMatricNoForConnectionAsync();
             if (IsSessionLecturer(sessionId, matricNo))
             {
                 await Clients.Group(sessionId).SendAsync("ReceiveStreamChange", streamType);
@@ -145,33 +250,60 @@ namespace VIIDII.Hubs
                 Console.WriteLine($"Unauthorized stream change attempt by {matricNo} in session {sessionId}");
             }
         }
-        public Task SendMessage(string user, string message) => Clients.Others.SendAsync("ReceiveMessage", user, message);
         public async Task SendPeerId(string sessionId, string peerId)
         {
-            var userId = Context.GetHttpContext()?.Session.GetString("MatricNo");
+            var userId = await GetMatricNoForConnectionAsync();
 
-            await Clients.Group(sessionId).SendAsync("ReceivePeerId", userId, peerId);
+            // Only send to others in the group (not back to sender)
+            // This prevents the lecturer from receiving their own peer ID
+            await Clients.OthersInGroup(sessionId).SendAsync("ReceivePeerId", userId, peerId);
+            Console.WriteLine($"Sent peer ID {peerId} for user {userId} to others in session {sessionId}");
         }
 
         public async Task CreatePost(string sessionId, string content, bool isFile)
         {
-            var httpContext = Context.GetHttpContext();
-            var matricNo = httpContext?.Session.GetString("MatricNo");
-            var userName = MockApiService.GetUsers().FirstOrDefault(s => s.MatricNo == matricNo).Name;
-            var post = _messageService.CreatePost(sessionId, matricNo, userName, content, true,isFile);
-            await Clients.Group(sessionId).SendAsync("ReceivePost", post); // Changed from Clients.Others to Clients.Group(sessionId)
-            // Optionally, PostCreated can still be sent if the caller needs specific confirmation beyond receiving the post itself.
-            // For now, let's assume ReceivePost is sufficient for the caller to see their own post.
-            // If specific UI updates are needed only for the caller upon their post creation (e.g. clearing input), PostCreated can be kept.
-            // Let's keep PostCreated for now, as it might be used for UI cues like clearing the input field or showing a 'sent' status.
+            var matricNo = await GetMatricNoForConnectionAsync();
+            
+            if (string.IsNullOrEmpty(matricNo))
+            {
+                await Clients.Caller.SendAsync("Error", "Session expired. Please log in again.");
+                return;
+            }
+            
+            var user = MockApiService.GetUsers().FirstOrDefault(s => s.MatricNo == matricNo);
+            if (user == null)
+            {
+                await Clients.Caller.SendAsync("Error", "User not found.");
+                return;
+            }
+            
+            var userName = user.Name;
+            var post = _messageService.CreatePost(sessionId, matricNo, userName, content, true, isFile);
+            
+            Console.WriteLine($"[CreatePost] {userName} posted in {sessionId}: \"{content.Substring(0, Math.Min(50, content.Length))}{(content.Length > 50 ? "..." : "")}\"");
+            
+            await Clients.Group(sessionId).SendAsync("ReceivePost", post);
             await Clients.Caller.SendAsync("PostCreated", post.id);
         }
 
         public async Task CreateComment(string sessionId, string postId, string content)
         {
-            var httpContext = Context.GetHttpContext();
-            var matricNo = httpContext?.Session.GetString("MatricNo");
-            var userName = MockApiService.GetUsers().FirstOrDefault(s => s.MatricNo == matricNo).Name;
+            var matricNo = await GetMatricNoForConnectionAsync();
+            
+            if (string.IsNullOrEmpty(matricNo))
+            {
+                await Clients.Caller.SendAsync("Error", "Session expired. Please log in again.");
+                return;
+            }
+            
+            var user = MockApiService.GetUsers().FirstOrDefault(s => s.MatricNo == matricNo);
+            if (user == null)
+            {
+                await Clients.Caller.SendAsync("Error", "User not found.");
+                return;
+            }
+            
+            var userName = user.Name;
             var isLecturer = IsSessionLecturer(sessionId, matricNo);
             var comment = _messageService.CreateComment(sessionId, matricNo, userName, content, postId, isLecturer);
             await Clients.Group(sessionId).SendAsync("ReceiveComment", comment);
@@ -195,7 +327,7 @@ namespace VIIDII.Hubs
 
         public async Task UpdateTabStatus(bool isActive)
         {
-            var matricNo = Context.GetHttpContext()?.Session.GetString("MatricNo");
+            var matricNo = await GetMatricNoForConnectionAsync();
             var session = _sessionService.GetSessionByParticipant(matricNo);
             if (session is not null && !IsSessionLecturer(session.SessionId, matricNo) && session.IsSessionStarted)
             {
@@ -218,7 +350,7 @@ namespace VIIDII.Hubs
 
         public async Task FlagIssue(string issue)
         {
-            var matricNo = Context.GetHttpContext()?.Session.GetString("MatricNo");
+            var matricNo = await GetMatricNoForConnectionAsync();
             var session = _sessionService.GetSessionByParticipant(matricNo);
             if (session is not null && !IsSessionLecturer(session.SessionId, matricNo) && session.IsSessionStarted)
             {
@@ -241,7 +373,7 @@ namespace VIIDII.Hubs
 
         public async Task ConfirmActive()
         {
-            var matricNo = Context.GetHttpContext()?.Session.GetString("MatricNo");
+            var matricNo = await GetMatricNoForConnectionAsync();
             var session = _sessionService.GetSessionByParticipant(matricNo);
             if (session is not null && !IsSessionLecturer(session.SessionId, matricNo) && session.IsSessionStarted)
             {
@@ -263,11 +395,26 @@ namespace VIIDII.Hubs
             }
         }
 
+        /// <summary>
+        /// Keep-alive method to prevent circuit timeout
+        /// Called periodically by client to maintain connection
+        /// </summary>
+        public Task KeepAlive()
+        {
+            // Just receiving this message keeps the circuit alive
+            // No need to do anything else
+            return Task.CompletedTask;
+        }
+
+
         public override async Task OnDisconnectedAsync(Exception? exception)
         {
-            var matricNo = Context.GetHttpContext()?.Session.GetString("MatricNo");
+            // Get MatricNo for this connection
+            var matricNo = GetMatricNoForConnection();
+            
             if (!string.IsNullOrEmpty(matricNo))
             {
+                // Handle participant disconnection for session tracking
                 var session = _sessionService.GetSessionByParticipant(matricNo);
                 if (session is not null && !IsSessionLecturer(session.SessionId, matricNo))
                 {
@@ -285,11 +432,51 @@ namespace VIIDII.Hubs
                         }
                     }
                 }
+                
+                Console.WriteLine($"[SessionHub] Connection {Context.ConnectionId} (MatricNo: {matricNo}) disconnected");
             }
+            
+            // Clean up connection mapping
+            _connectionMatricNos.TryRemove(Context.ConnectionId, out _);
+            
             await base.OnDisconnectedAsync(exception);
         }
         public static bool TryGetLastSeen(string participantId, out DateTime lastSeen) =>
             _lastSeen.TryGetValue(participantId, out lastSeen);
+
+        /// <summary>
+        /// Manually prompt all students in a session to confirm they are still active.
+        /// Called by lecturer via "Prompt All" button.
+        /// </summary>
+        public async Task PromptEngagement(string sessionId)
+        {
+            var matricNo = await GetMatricNoForConnectionAsync();
+            
+            if (string.IsNullOrEmpty(matricNo))
+            {
+                await Clients.Caller.SendAsync("Error", "Session expired. Please log in again.");
+                return;
+            }
+            
+            // Verify lecturer is calling this
+            if (!IsSessionLecturer(sessionId, matricNo))
+            {
+                Console.WriteLine($"[SessionHub] Unauthorized PromptEngagement attempt by {matricNo} for session {sessionId}");
+                return;
+            }
+            
+            var session = _sessionService.GetSessionById(sessionId);
+            if (session == null || session.Status != SessionStatus.Started)
+            {
+                Console.WriteLine($"[SessionHub] PromptEngagement failed: Session {sessionId} not active");
+                return;
+            }
+            
+            // Send "AreYouThere" to all students (not lecturer)
+            await Clients.GroupExcept(sessionId, Context.ConnectionId).SendAsync("AreYouThere");
+            
+            Console.WriteLine($"[SessionHub] Lecturer {matricNo} prompted engagement for session {sessionId}");
+        }
 
         // Messaging - Reaction Methods
         public async Task AddReaction(string sessionId, string messageId, string emoji)
@@ -317,21 +504,6 @@ namespace VIIDII.Hubs
                 // Broadcast reaction removal to all in session
                 await Clients.Group(sessionId).SendAsync("ReceiveReaction", messageId, matricNo, emoji, false);
                 Console.WriteLine($"Reaction removed: {matricNo} unreacted {emoji} from message {messageId}");
-            }
-        }
-
-        // Engagement - Prompt Methods
-        public async Task PromptEngagement(string sessionId)
-        {
-            var matricNo = Context.GetHttpContext()?.Session.GetString("MatricNo");
-            var session = _sessionService.GetSessionById(sessionId);
-
-            // Only lecturer can prompt engagement
-            if (session != null && IsSessionLecturer(sessionId, matricNo))
-            {
-                // Broadcast "Are You There?" to all students in session (except lecturer)
-                await Clients.GroupExcept(sessionId, Context.ConnectionId).SendAsync("AreYouThere");
-                Console.WriteLine($"Lecturer {matricNo} prompted engagement for session {sessionId}");
             }
         }
     }

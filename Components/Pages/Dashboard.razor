@@ -5,7 +5,12 @@
 
 <PageTitle>Dashboard - VIIDII</PageTitle>
 
-<div class="alert alert-info">Redirecting to your dashboard...</div>
+<div class="flex items-center justify-center min-h-screen bg-background">
+     <div class="flex flex-col items-center gap-4">
+        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        <p class="text-muted-foreground animate-pulse">Redirecting...</p>
+    </div>
+</div>
 
 @code {
     protected override async Task OnInitializedAsync()

@@ -1,0 +1,347 @@
+@page "/session-recap/{SessionId}"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using VIIDII.Models
+@using VIIDII.Services
+@inject SessionService SessionService
+@inject MessageService MessageService
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Session Recap - @(State.Session?.Title ?? "Loading...")</PageTitle>
+
+<LoadingSpinner IsVisible="@_isLoading" Message="Loading session recap..." />
+
+@if (!_isLoading)
+{
+    @if (State.Session == null)
+    {
+        <AlertMessage Message="Session not found or not yet ended." Type="warning" />
+        <div class="flex justify-center mt-4">
+            <button @onclick="NavigateToHome" class="px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors">
+                Go to Dashboard
+            </button>
+        </div>
+    }
+    else
+    {
+        <div class="min-h-screen bg-background p-4 md:p-8">
+            <!-- Header -->
+            <div class="max-w-7xl mx-auto mb-8">
+                <div class="flex items-center justify-between mb-4">
+                    <button @onclick="NavigateToHome" class="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="m15 18-6-6 6-6"/>
+                        </svg>
+                        Back to Dashboard
+                    </button>
+                </div>
+                
+                <div class="bg-card border border-border rounded-xl p-6 shadow-sm">
+                    <h1 class="text-3xl font-bold text-foreground mb-2">Session Recap</h1>
+                    <h2 class="text-xl text-muted-foreground">@State.Session.Title</h2>
+                    <div class="flex gap-6 mt-4 text-sm text-muted-foreground">
+                        @if (State.Session != null)
+                        {
+                            <div class="flex items-center gap-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <circle cx="12" cy="12" r="10"/>
+                                    <polyline points="12 6 12 12 16 14"/>
+                                </svg>
+                                Started: @State.Session.StartTime.AddHours(1).ToString("MMM dd, yyyy h:mm tt")
+                            </div>
+                        }
+                        @if (State.Session?.EndTime != null)
+                        {
+                            <div class="flex items-center gap-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <circle cx="12" cy="12" r="10"/>
+                                    <polyline points="12 6 12 12 16 14"/>
+                                </svg>
+                                Ended: @State.Session.EndTime.Value.AddHours(1).ToString("MMM dd, yyyy h:mm tt")
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Content -->
+            <div class="max-w-7xl mx-auto">
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+                    <!-- Timeline Section -->
+                    <div class="bg-card border border-border rounded-xl p-6 shadow-sm">
+                        <h3 class="text-xl font-semibold text-foreground mb-6 flex items-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary">
+                                <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+                            </svg>
+                            Timeline
+                        </h3>
+                        <div class="relative">
+                            @if (State.TimelineEvents.Any())
+                            {
+                                <div class="space-y-4">
+                                    @foreach (var evt in State.TimelineEvents)
+                                    {
+                                        <TimelineItem Event="@evt" IsSpecial="@IsSpecialEvent(evt)" />
+                                    }
+                                </div>
+                            }
+                            else
+                            {
+                                <p class="text-muted-foreground text-center py-8">No timeline events recorded</p>
+                            }
+                        </div>
+                    </div>
+
+                    <!-- Statistics Section -->
+                    <div class="space-y-6">
+                        <div class="bg-card border border-border rounded-xl p-6 shadow-sm">
+                            <h3 class="text-xl font-semibold text-foreground mb-6 flex items-center gap-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary">
+                                    <path d="M3 3v18h18"/>
+                                    <path d="m19 9-5 5-4-4-3 3"/>
+                                </svg>
+                                Session Statistics
+                            </h3>
+                            <div class="space-y-4">
+                                <div class="flex items-center justify-between p-4 bg-secondary/20 rounded-lg">
+                                    <span class="text-muted-foreground">Average Attendance Score</span>
+                                    <span class="text-2xl font-bold text-foreground">@State.AverageAttendanceScore.ToString("F1")%</span>
+                                </div>
+                                <div class="flex items-center justify-between p-4 bg-secondary/20 rounded-lg">
+                                    <span class="text-muted-foreground">Participants ? 70%</span>
+                                    <span class="text-2xl font-bold text-foreground">@State.ParticipantsAbove70Percent</span>
+                                </div>
+                                @if (!string.IsNullOrEmpty(State.MostCommonPenaltyReason))
+                                {
+                                    <div class="flex items-center justify-between p-4 bg-secondary/20 rounded-lg">
+                                        <span class="text-muted-foreground">Most Common Issue</span>
+                                        <span class="text-lg font-semibold text-foreground">@State.MostCommonPenaltyReason</span>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+
+                        <!-- Chart Section -->
+                        <div class="bg-card border border-border rounded-xl p-6 shadow-sm">
+                            <h3 class="text-xl font-semibold text-foreground mb-6">Attendance Scores</h3>
+                            @if (State.Scores != null && State.Scores.Any())
+                            {
+                                <div class="w-full h-64">
+                                    <canvas id="scoreChart" class="w-full h-full"></canvas>
+                                </div>
+                            }
+                            else
+                            {
+                                <p class="text-muted-foreground text-center py-8">No score data available</p>
+                            }
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Detailed Breakdown Table -->
+                <div class="bg-card border border-border rounded-xl p-6 shadow-sm">
+                    <h3 class="text-xl font-semibold text-foreground mb-6 flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary">
+                            <path d="M3 3h18v18H3z"/>
+                            <path d="M3 9h18M3 15h18M9 3v18"/>
+                        </svg>
+                        Detailed Attendance Breakdown
+                    </h3>
+                    
+                    @if (State.Scores != null && State.Scores.Any())
+                    {
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm">
+                                <thead class="bg-secondary/50 text-foreground border-b border-border">
+                                    <tr>
+                                        <th class="text-left p-3 font-semibold">Participant</th>
+                                        <th class="text-right p-3 font-semibold">Score (%)</th>
+                                        <th class="text-right p-3 font-semibold">Active (min)</th>
+                                        <th class="text-right p-3 font-semibold">Inactive (min)</th>
+                                        <th class="text-right p-3 font-semibold">Battery Low (min)</th>
+                                        <th class="text-right p-3 font-semibold">Data Low (min)</th>
+                                        <th class="text-right p-3 font-semibold">Disconnected (min)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var scoreEntry in State.Scores.OrderByDescending(s => s.Value.FinalScorePercentage))
+                                    {
+                                        var details = scoreEntry.Value;
+                                        <tr class="border-b border-border hover:bg-secondary/20 transition-colors">
+                                            <td class="p-3 font-medium text-foreground">
+                                                @details.ParticipantId
+                                            </td>
+                                            <td class="p-3 text-right">
+                                                <span class="@GetScoreColorClass(details.FinalScorePercentage) font-semibold">
+                                                    @details.FinalScorePercentage.ToString("F1")
+                                                </span>
+                                            </td>
+                                            <td class="p-3 text-right text-muted-foreground">@details.TimeActiveMinutes.ToString("F1")</td>
+                                            <td class="p-3 text-right text-muted-foreground">@details.TimeInactiveMinutes.ToString("F1")</td>
+                                            <td class="p-3 text-right text-muted-foreground">@details.TimeBatteryLowMinutes.ToString("F1")</td>
+                                            <td class="p-3 text-right text-muted-foreground">@details.TimeDataFinishedMinutes.ToString("F1")</td>
+                                            <td class="p-3 text-right text-muted-foreground">@details.TimeDisconnectedMinutes.ToString("F1")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="text-muted-foreground text-center py-8">No attendance data available for this session</p>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+}
+
+@code {
+[Parameter]
+public string SessionId { get; set; } = string.Empty;
+
+private bool _isLoading = true;
+private SessionRecapState State = new();
+
+protected override async Task OnInitializedAsync()
+{
+    await LoadSessionDataAsync();
+}
+
+protected override async Task OnAfterRenderAsync(bool firstRender)
+{
+    if (firstRender && State.Scores != null && State.Scores.Any())
+    {
+        await RenderChartAsync();
+    }
+}
+
+    private async Task LoadSessionDataAsync()
+    {
+        _isLoading = true;
+        
+        try
+        {
+            State.Session = SessionService.GetSessionById(SessionId);
+            
+            if (State.Session == null || State.Session.Status != SessionStatus.Ended)
+            {
+                Console.WriteLine($"Session {SessionId} not found or not ended");
+                return;
+            }
+
+            // Calculate attendance scores
+            State.Scores = SessionService.CalculateAttendanceScore(SessionId);
+            
+            // Calculate statistics
+            if (State.Scores != null && State.Scores.Any())
+            {
+                State.AverageAttendanceScore = State.Scores.Values.Average(s => s.FinalScorePercentage);
+                State.ParticipantsAbove70Percent = State.Scores.Values.Count(s => s.FinalScorePercentage >= 70);
+
+                // Determine most common penalty
+                var penaltyCounts = new Dictionary<string, int>();
+                foreach (var scoreDetail in State.Scores.Values)
+                {
+                    if (scoreDetail.TimeInactiveMinutes > 0) 
+                        penaltyCounts["Inactive"] = penaltyCounts.GetValueOrDefault("Inactive", 0) + 1;
+                    if (scoreDetail.TimeBatteryLowMinutes > 0) 
+                        penaltyCounts["Battery Low"] = penaltyCounts.GetValueOrDefault("Battery Low", 0) + 1;
+                    if (scoreDetail.TimeDataFinishedMinutes > 0) 
+                        penaltyCounts["Data Finished"] = penaltyCounts.GetValueOrDefault("Data Finished", 0) + 1;
+                    if (scoreDetail.TimeDisconnectedMinutes > 0) 
+                        penaltyCounts["Disconnected"] = penaltyCounts.GetValueOrDefault("Disconnected", 0) + 1;
+                }
+                State.MostCommonPenaltyReason = penaltyCounts.OrderByDescending(kvp => kvp.Value).FirstOrDefault().Key ?? "N/A";
+            }
+
+            // Build timeline events
+            State.TimelineEvents = new List<(DateTime Timestamp, string Description, bool IsSpecial)>();
+
+            // Add session start (StartTime is not nullable)
+            State.TimelineEvents.Add((State.Session.StartTime, "Session Started", true));
+
+            // Add participant status changes from ParticipantEvents
+            foreach (var (participantId, events) in State.Session.ParticipantEvents)
+            {
+                var participantName = MockApiService.GetUsers().FirstOrDefault(u => u.MatricNo == participantId)?.Name ?? participantId;
+                foreach (var (status, time) in events)
+                {
+                    State.TimelineEvents.Add((time, $"{participantName} changed to {status}", false));
+                }
+            }
+
+            // Add messages
+            var messages = MessageService.GetAllMessages(SessionId);
+            foreach (var msg in messages)
+            {
+                var userName = msg.UserName ?? msg.userId;
+                var desc = msg.isLecturerPost && msg.parentId == msg.id
+                    ? $"{userName} posted: {(msg.content.Length > 50 ? msg.content.Substring(0, 50) + "..." : msg.content)}"
+                    : $"{userName} commented: {(msg.content.Length > 50 ? msg.content.Substring(0, 50) + "..." : msg.content)}";
+                State.TimelineEvents.Add((msg.createdAt, desc, false));
+            }
+
+            // Add session end
+            if (State.Session.EndTime != null)
+            {
+                State.TimelineEvents.Add((State.Session.EndTime.Value, "Session Ended", true));
+            }
+
+            // Sort timeline chronologically
+            State.TimelineEvents = State.TimelineEvents.OrderBy(e => e.Timestamp).ToList();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading session recap: {ex.Message}");
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RenderChartAsync()
+    {
+        try
+        {
+            var participantNames = State.Scores.Values.Select(s => s.ParticipantName ?? s.ParticipantId).ToArray();
+            var scores = State.Scores.Values.Select(s => s.FinalScorePercentage).ToArray();
+
+            await JSRuntime.InvokeVoidAsync("chartInterop.createScoreChart", "scoreChart", participantNames, scores);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error rendering chart: {ex.Message}");
+        }
+    }
+
+    private bool IsSpecialEvent((DateTime Timestamp, string Description, bool IsSpecial) evt)
+    {
+        return evt.IsSpecial || evt.Description.Contains("Started") || evt.Description.Contains("Ended");
+    }
+
+    private string GetScoreColorClass(double score)
+    {
+        if (score >= 80) return "text-green-600 dark:text-green-400";
+        if (score >= 70) return "text-yellow-600 dark:text-yellow-400";
+        return "text-red-600 dark:text-red-400";
+    }
+
+    private void NavigateToHome()
+    {
+        Navigation.NavigateTo("/lecturer/home");
+    }
+
+    private class SessionRecapState
+    {
+        public Session? Session { get; set; }
+        public Dictionary<string, SessionService.ParticipantScoreDetails>? Scores { get; set; }
+        public List<(DateTime Timestamp, string Description, bool IsSpecial)> TimelineEvents { get; set; } = new();
+        public double AverageAttendanceScore { get; set; }
+        public string? MostCommonPenaltyReason { get; set; }
+        public int ParticipantsAbove70Percent { get; set; }
+    }
+}

@@ -1,0 +1,150 @@
+@using VIIDII.Models
+
+<div class="sessions-list">
+    <h2>@Title</h2>
+    @if (Sessions == null || !Sessions.Any())
+    {
+        <div class="alert alert-info">@EmptyMessage</div>
+    }
+    else
+    {
+        @foreach (var session in Sessions)
+        {
+            <div class="session-item">
+                <div class="session-info">
+                    <h3>@session.Title</h3>
+                    <div class="session-meta">
+                        <span>Lecturer: @session.LecturerId</span>
+                        <span> | </span>
+                        <span>Departments: @FormatDepartments(session)</span>
+                        <span> | </span>
+                        <span>Levels: @FormatLevels(session)</span>
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center;">
+                    <span class="session-status @(session.IsSessionStarted ? "status-active" : "status-scheduled")">
+                        @(session.IsSessionStarted ? "Live" : "Scheduled")
+                    </span>
+                    <button class="btn-join" @onclick="() => OnJoinSession.InvokeAsync(session.SessionId)">Join</button>
+                </div>
+            </div>
+        }
+    }
+</div>
+
+<style>
+    .sessions-list {
+        background: white;
+        padding: 2rem;
+        border-radius: 1rem;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+
+    .sessions-list h2 {
+        color: #333;
+        font-size: 1.5rem;
+        margin-top: 0;
+        margin-bottom: 1.5rem;
+    }
+
+    .session-item {
+        background: #f8f9fa;
+        padding: 1.5rem;
+        border-radius: 0.5rem;
+        margin-bottom: 1rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        transition: all 0.3s ease;
+    }
+
+    .session-item:hover {
+        background: #e9ecef;
+        transform: translateX(5px);
+    }
+
+    .session-info h3 {
+        margin: 0 0 0.5rem 0;
+        color: #333;
+        font-size: 1.25rem;
+    }
+
+    .session-meta {
+        color: #666;
+        font-size: 0.875rem;
+    }
+
+    .session-status {
+        padding: 0.5rem 1rem;
+        border-radius: 2rem;
+        font-size: 0.875rem;
+        font-weight: 600;
+    }
+
+    .status-active {
+        background: #d4edda;
+        color: #155724;
+    }
+
+    .status-scheduled {
+        background: #fff3cd;
+        color: #856404;
+    }
+
+    .btn-join {
+        padding: 0.5rem 1.5rem;
+        background: #8338EC;
+        color: white;
+        border: none;
+        border-radius: 0.5rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        margin-left: 1rem;
+    }
+
+    .btn-join:hover {
+        background: #6c2bcc;
+        transform: scale(1.05);
+    }
+
+    .alert {
+        padding: 1rem;
+        border-radius: 0.5rem;
+        margin-bottom: 1rem;
+    }
+
+    .alert-info {
+        background: #d1ecf1;
+        color: #0c5460;
+        border: 1px solid #bee5eb;
+    }
+</style>
+
+@code {
+    [Parameter]
+    public string Title { get; set; } = "Available Sessions";
+
+    [Parameter]
+    public string EmptyMessage { get; set; } = "No active sessions available at the moment.";
+
+    [Parameter]
+    public List<Session> Sessions { get; set; } = new();
+
+    [Parameter]
+    public EventCallback<string> OnJoinSession { get; set; }
+
+    private static string FormatDepartments(Session session)
+    {
+        return session.AllowedDepartments.Contains(User.Departments.Any)
+            ? "All Departments"
+            : string.Join(", ", session.AllowedDepartments);
+    }
+
+    private static string FormatLevels(Session session)
+    {
+        return session.AllowedLevels.Contains(User.Levels.Any)
+            ? "All Levels"
+            : string.Join(", ", session.AllowedLevels);
+    }
+}

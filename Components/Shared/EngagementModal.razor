@@ -3,37 +3,64 @@
 @implements IAsyncDisposable
 @inject IJSRuntime JSRuntime
 
-<!-- Engagement Modal -->
-<div class="modal fade" id="engagementModal" tabindex="-1" aria-labelledby="engagementModalLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="engagementModalLabel">
-                    <i class="fas fa-hand-paper"></i> Are You There?
-                </h5>
-            </div>
-            <div class="modal-body">
-                <div class="engagement-content">
-                    <div class="attention-icon">
-                        <i class="fas fa-user-check"></i>
-                    </div>
-                    <p class="message">Your lecturer wants to confirm you're paying attention.</p>
-                    <p class="instruction">Click the button below to confirm you're actively participating.</p>
-                    
-                    @if (TimeRemaining > 0)
-                    {
-                        <div class="timer">
-                            <i class="fas fa-clock"></i>
-                            <span>@TimeRemaining seconds remaining</span>
-                        </div>
-                    }
+<!-- Engagement Modal (Tailwind CSS) -->
+<div id="engagementModal" class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm items-center justify-center z-50">
+    <div class="bg-card border border-border rounded-xl shadow-2xl max-w-md w-full mx-4 overflow-hidden">
+        <!-- Header -->
+        <div class="bg-primary/10 border-b border-border px-6 py-4">
+            <h2 class="text-xl font-semibold text-foreground flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary">
+                    <path d="M18 11V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v0"/>
+                    <path d="M14 10V4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v2"/>
+                    <path d="M10 10.5V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v8"/>
+                    <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/>
+                </svg>
+                Are You There?
+            </h2>
+        </div>
+        
+        <!-- Body -->
+        <div class="px-6 py-8">
+            <div class="flex flex-col items-center text-center space-y-4">
+                <div class="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary">
+                        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+                        <circle cx="9" cy="7" r="4"/>
+                        <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                        <polyline points="20 6 9 17 4 12"/>
+                    </svg>
                 </div>
+                
+                <div class="space-y-2">
+                    <p class="text-base text-foreground font-medium">Your lecturer wants to confirm you're paying attention.</p>
+                    <p class="text-sm text-muted-foreground">Click the button below to confirm you're actively participating.</p>
+                </div>
+                
+                @if (TimeRemaining > 0)
+                {
+                    <div class="flex items-center gap-2 px-4 py-2 bg-yellow-500/10 border border-yellow-500/20 rounded-lg text-yellow-600">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"/>
+                            <polyline points="12 6 12 12 16 14"/>
+                        </svg>
+                        <span class="text-sm font-medium">@TimeRemaining seconds remaining</span>
+                    </div>
+                }
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-primary btn-lg w-100" @onclick="ConfirmActive">
-                    <i class="fas fa-check-circle"></i> I'm Here!
-                </button>
-            </div>
+        </div>
+        
+        <!-- Footer -->
+        <div class="px-6 py-4 bg-secondary/20 border-t border-border">
+            <button type="button" 
+                    class="w-full h-12 bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg font-semibold text-base transition-colors flex items-center justify-center gap-2" 
+                    @onclick="ConfirmActive">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                    <polyline points="22 4 12 14.01 9 11.01"/>
+                </svg>
+                I'm Here!
+            </button>
         </div>
     </div>
 </div>
@@ -45,44 +72,37 @@
     [Parameter] public EventCallback OnHidden { get; set; }
 
     private bool IsShown = false;
-    private int TimeRemaining = 30; // 30 seconds to respond
+    private int TimeRemaining = 30;
     private System.Threading.Timer? _timer;
-    private object? _modalInstance;
 
     protected override async Task OnParametersSetAsync()
     {
-        // Auto-show when ShouldShow becomes true
+        // Only show for students during active sessions
         if (ShouldShow && !IsShown && IsStudent)
         {
+            Console.WriteLine("Engagement modal triggered for student");
             await Show();
         }
-    }
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (firstRender && IsStudent)
+        else if (!IsStudent && ShouldShow)
         {
-            // Initialize Bootstrap modal
-            _modalInstance = await JSRuntime.InvokeAsync<object>("eval", @"
-                new bootstrap.Modal(document.getElementById('engagementModal'))
-            ");
+            Console.WriteLine("WARNING: Engagement modal attempted to show for lecturer - blocking");
         }
     }
 
     public async Task Show()
     {
-        if (!IsStudent || IsShown) return;
+        // Triple check: must be student only
+        if (!IsStudent || IsShown)
+        {
+            Console.WriteLine($"Engagement modal Show blocked: IsStudent={IsStudent}, IsShown={IsShown}");
+            return;
+        }
 
         IsShown = true;
         TimeRemaining = 30;
 
-        // Show modal
-        await JSRuntime.InvokeVoidAsync("eval", @"
-            const modal = bootstrap.Modal.getInstance(document.getElementById('engagementModal'));
-            if (modal) modal.show();
-        ");
+        await JSRuntime.InvokeVoidAsync("modalInterop.show", "engagementModal");
 
-        // Start countdown timer
         _timer?.Dispose();
         _timer = new System.Threading.Timer(async _ =>
         {
@@ -93,12 +113,11 @@
             }
             else
             {
-                // Auto-dismiss after timeout
                 await AutoDismiss();
             }
         }, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
 
-        StateHasChanged();
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task ConfirmActive()
@@ -107,12 +126,8 @@
 
         try
         {
-            // Send confirmation to SignalR
             await HubConnection.SendAsync("ConfirmActive");
-
-            // Hide modal
             await Hide();
-
             Console.WriteLine("Engagement confirmed");
         }
         catch (Exception ex)
@@ -123,9 +138,8 @@
 
     private async Task AutoDismiss()
     {
-        // Student didn't respond - mark as inactive
         Console.WriteLine("Engagement timeout - student did not respond");
-        await Hide();
+        await InvokeAsync(async () => await Hide());
     }
 
     private async Task Hide()
@@ -135,35 +149,30 @@
         IsShown = false;
         TimeRemaining = 0;
 
-        await JSRuntime.InvokeVoidAsync("eval", @"
-            const modal = bootstrap.Modal.getInstance(document.getElementById('engagementModal'));
-            if (modal) modal.hide();
-        ");
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("modalInterop.hide", "engagementModal");
+            await OnHidden.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error hiding engagement modal: {ex.Message}");
+        }
 
-        // Notify parent
-        await OnHidden.InvokeAsync();
-
-        StateHasChanged();
+        await InvokeAsync(StateHasChanged);
     }
 
     public async ValueTask DisposeAsync()
     {
         _timer?.Dispose();
         
-        // Cleanup modal
-        if (_modalInstance != null)
+        try
         {
-            try
-            {
-                await JSRuntime.InvokeVoidAsync("eval", @"
-                    const modal = bootstrap.Modal.getInstance(document.getElementById('engagementModal'));
-                    if (modal) modal.dispose();
-                ");
-            }
-            catch
-            {
-                // Ignore errors during disposal
-            }
+            await JSRuntime.InvokeVoidAsync("modalInterop.hide", "engagementModal");
+        }
+        catch
+        {
+            // Ignore errors during disposal
         }
     }
 }

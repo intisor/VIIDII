@@ -4,7 +4,9 @@
   "description": "FutaMeetWeb is a real-time online meeting platform built for educational institutions, specifically designed to facilitate virtual classes between lecturers and students. The application leverages ASP.NET Core and SignalR to provide seamless video conferencing and chat functionality.",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "css:build": "npx tailwindcss -i ./Styles/app.css -o ./wwwroot/css/site.css",
+    "css:watch": "npx tailwindcss -i ./Styles/app.css -o ./wwwroot/css/site.css --watch"
   },
   "repository": {
     "type": "git",
@@ -18,6 +20,9 @@
   },
   "homepage": "https://github.com/intisor/FutaMeet#readme",
   "devDependencies": {
-    "@playwright/test": "^1.57.0"
+    "@playwright/test": "^1.57.0",
+    "autoprefixer": "^10.4.23",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.17"
   }
 }

@@ -14,231 +14,74 @@
 
 <PageTitle>Session - @SessionId</PageTitle>
 
-@if (_isNavigating)
+<LoadingSpinner IsVisible="@_isNavigating" Message="Loading session..." />
+
+@if (!_isNavigating)
 {
-    <div class="loading-screen">
-        <div class="spinner"></div>
-        <p>Loading session...</p>
-    </div>
-}
-else if (State.CurrentUser == null)
-{
-    <div class="alert alert-warning">Please log in first.</div>
-}
-else if (CurrentSession == null)
-{
-    <div class="alert alert-danger">Session not found or you don't have access.</div>
-}
-else
-{
-    <div class="session-container">
-        <!-- Session Header -->
-        <div class="session-header">
-            <h1>@CurrentSession.Title</h1>
-            @if (State.IsLecturer && State.ParticipantCount > 0)
-            {
-                <span class="participant-badge">
-                    <i class="fas fa-users"></i> @State.ParticipantCount participant(s) connected
-                </span>
-            }
-            
-            <!-- Dev Tools (DEBUG mode only) -->
-            #if DEBUG
-            <div class="dev-tools">
-                <button class="btn-dev-clear" @onclick="DevClearStorage" title="Clear session storage (Dev only)">
-                    <i class="fas fa-trash"></i> Clear Storage
-                </button>
-                <button class="btn-dev-logout" @onclick="DevLogout" title="Logout (Dev only)">
-                    <i class="fas fa-sign-out-alt"></i> Logout
-                </button>
-            </div>
-            #endif
-        </div>
-
-        <!-- Error Banner -->
-        @if (!string.IsNullOrEmpty(State.ErrorMessage))
-        {
-            <div class="error-banner">
-                <i class="fas fa-exclamation-triangle"></i>
-                <span>@State.ErrorMessage</span>
-                @if (!State.HasExceededMaxAttempts && !State.IsLecturer)
-                {
-                    <button class="btn-retry" @onclick="RetryConnection">Retry</button>
-                }
-                else if (State.HasExceededMaxAttempts)
-                {
-                    <button class="btn-retry" @onclick="RefreshPage">Refresh Page</button>
-                }
-            </div>
-        }
-
-        <!-- Test Camera Section (Lecturer Only, Before Session Starts) -->
-        @if (State.IsLecturer && !State.IsSessionStarted && State.ShowTestCameraSection)
-        {
-            <div class="test-camera-section">
-                <h3><i class="fas fa-video"></i> Camera Setup</h3>
-                <p>Test your camera and microphone before starting the session.</p>
-                <div class="test-video-container">
-                    <video id="testVideo" autoplay playsinline muted class="test-video"></video>
-                </div>
-                <div class="test-controls">
-                    @if (!State.IsTestingCamera)
-                    {
-                        <button class="btn btn-primary btn-lg" @onclick="TestCamera">
-                            <i class="fas fa-video"></i> Test Camera
-                        </button>
-                    }
-                    else
-                    {
-                        <button class="btn btn-secondary" @onclick="StopTestCamera">
-                            <i class="fas fa-stop"></i> Stop Test
-                        </button>
-                        <button class="btn btn-success btn-lg" @onclick="StartSessionWithCamera">
-                            <i class="fas fa-check-circle"></i> Start Session
-                        </button>
-                    }
-                </div>
-            </div>
-        }
-
-        <!-- Main Content Area: Video + Panels Side-by-Side -->
-        @if (State.IsSessionStarted || State.IsTestingCamera)
-        {
-            <div class="session-main-content">
-                <!-- Left: Video Section -->
-                <div class="video-section">
-                    <div class="video-container" id="videoContainer">
-                        <!-- Main Video Element -->
-                        <video id="sessionVideo" 
-                               autoplay 
-                               playsinline 
-                               muted="@State.IsLecturer"
-                               controls="@(!State.IsLecturer)"
-                               class="session-video">
-                        </video>
-
-                        <!-- Loading Overlay (combined loading/waiting states) -->
-                        @if (State.IsLoading)
-                        {
-                            <div class="loading-overlay">
-                                <div class="spinner"></div>
-                                <p>@(State.IsLecturer ? "Starting camera..." : "Connecting to lecturer...")</p>
-                            </div>
-                        }
-                        else if (!State.IsLecturer && !State.IsStreamLoaded && State.IsSessionStarted)
-                        {
-                            <div class="waiting-overlay">
-                                <div class="spinner"></div>
-                                <p>Waiting for lecturer's stream...</p>
-                            </div>
-                        }
-
-                        <!-- Mobile Play Overlay -->
-                        @if (State.ShowMobilePlayOverlay && !State.IsLecturer)
-                        {
-                            <div class="mobile-play-overlay" @onclick="PlayVideo">
-                                <div class="play-button">
-                                    <i class="fas fa-play"></i>
-                                    <p>Tap to start video</p>
-                                </div>
-                            </div>
-                        }
-
-                        <!-- Stream Type Indicator -->
-                        @if (State.IsLecturer && State.IsWebcamActive)
-                        {
-                            <div class="stream-indicator">
-                                <i class="fas fa-@(State.IsScreenSharing ? "desktop" : "video")"></i>
-                                <span>@(State.IsScreenSharing ? "Screen Sharing" : "Camera")</span>
-                            </div>
-                        }
-                    </div>
-
-                    <!-- Video Controls (Below Video) -->
-                    <div class="video-controls-container">
-                        @if (State.IsLecturer && State.IsWebcamActive)
-                        {
-                            <div class="video-controls">
-                                <button class="btn-control" @onclick="ToggleScreenShare" disabled="@State.IsLoading">
-                                    <i class="fas fa-@(State.IsScreenSharing ? "video" : "desktop")"></i>
-                                    <span class="control-label">@(State.IsScreenSharing ? "Camera" : "Share Screen")</span>
-                                </button>
-                                
-                                <button class="btn-control btn-danger" @onclick="EndSession">
-                                    <i class="fas fa-stop"></i>
-                                    <span class="control-label">End Session</span>
-                                </button>
-                            </div>
-                        }
-                        else if (State.IsLecturer && !State.IsSessionStarted)
-                        {
-                            <div class="video-controls">
-                                <button class="btn btn-success btn-lg" @onclick="StartSession" disabled="@State.IsLoading">
-                                    <i class="fas fa-play"></i> Start Session
-                                </button>
-                            </div>
-                        }
-                    </div>
-                </div>
-
-                <!-- Right: Panels Section (Messages & Participants) -->
-                @if (State.IsSessionStarted)
-                {
-                    <div class="panels-section @(State.IsTabExpanded ? "expanded" : "")">
-                        <!-- Tab Headers -->
-                        <div class="tab-headers">
-                            <button class="tab-header @(State.ActiveTab == "messages" ? "active" : "")" 
-                                    @onclick='() => State.SetTab("messages")'>
-                                <i class="fas fa-comments"></i>
-                                <span>Messages</span>
-                            </button>
-                            <button class="tab-header @(State.ActiveTab == "participants" ? "active" : "")" 
-                                    @onclick='() => State.SetTab("participants")'>
-                                <i class="fas fa-users"></i>
-                                <span>Participants (@State.ParticipantCount)</span>
-                            </button>
-                            <button class="tab-toggle" @onclick="ToggleTabExpansion">
-                                <i class="fas fa-@(State.IsTabExpanded ? "compress" : "expand")"></i>
-                            </button>
-                        </div>
-
-                        <!-- Tab Content -->
-                        <div class="tab-content">
-                            @if (State.ActiveTab == "messages")
-                            {
-                                <MessagingPanel SessionId="@SessionId"
-                                               IsLecturer="@State.IsLecturer"
-                                               HubConnection="@_hubConnection"
-                                               CurrentUserId="@(State.CurrentUser?.MatricNo ?? "")" />
-                            }
-                            else
-                            {
-                                <ParticipantPanel Participants="@State.Participants"
-                                                 ParticipantStatuses="@State.ParticipantStatuses"
-                                                 HubConnection="@_hubConnection"
-                                                 SessionId="@SessionId"
-                                                 IsLecturer="@State.IsLecturer" />
-                            }
-                        </div>
-                    </div>
-                }
-            </div>
-        }
-
-        <!-- Issue Buttons (Student Only) -->
-        @if (!State.IsLecturer && State.IsSessionStarted)
-        {
-            <IssueButtons HubConnection="@_hubConnection" />
-        }
-    </div>
-
-    <!-- Engagement Modal (Student Only) -->
-    @if (!State.IsLecturer)
+    @if (State.CurrentUser == null)
     {
-        <EngagementModal HubConnection="@_hubConnection"
-                         IsStudent="true"
-                         ShouldShow="@_showEngagementModal"
-                         OnHidden="@HideEngagementModal" />
+        <AlertMessage Message="Please log in first." Type="warning" />
+    }
+    else if (CurrentSession == null)
+    {
+        <AlertMessage Message="Session not found or you don't have access." Type="danger" />
+    }
+    else
+    {
+        <SessionLayout>
+            <SessionHeader Title="@CurrentSession.Title"
+                           SessionId="@SessionId"
+                           IsLecturer="@State.IsLecturer"
+                           ParticipantCount="@State.ParticipantCount"
+                           OnBackClick="@_backClickHandler" />
+
+            <SessionMainContent>
+                @if (!string.IsNullOrEmpty(State.ErrorMessage) || State.HasExceededMaxAttempts)
+                {
+                    <ErrorBanner ErrorMessage="@State.ErrorMessage"
+                                 HasExceededMaxAttempts="@State.HasExceededMaxAttempts"
+                                 IsLecturer="@State.IsLecturer"
+                                 OnRetry="@RetryConnection"
+                                 OnRefresh="@RefreshPage" />
+                }
+
+                <CameraTestModal IsVisible="@(State.IsLecturer && !State.IsSessionStarted && State.ShowTestCameraSection)"
+                                 IsTesting="@State.IsTestingCamera"
+                                 OnTestCamera="@TestCamera"
+                                 OnStopTest="@StopTestCamera"
+                                 OnStartSession="@StartSessionWithCamera" />
+
+                <ParticipantSidebar Participants="@State.Participants"
+                                    ParticipantStatuses="@State.ParticipantStatuses"
+                                    HubConnection="@_hubConnection"
+                                    SessionId="@SessionId"
+                                    IsLecturer="@State.IsLecturer" />
+
+                <VideoStage IsLecturer="@State.IsLecturer"
+                            IsLoading="@State.IsLoading"
+                            IsStreamLoaded="@State.IsStreamLoaded"
+                            IsSessionStarted="@State.IsSessionStarted"
+                            IsWebcamActive="@State.IsWebcamActive"
+                            IsScreenSharing="@State.IsScreenSharing"
+                            HubConnection="@_hubConnection"
+                            OnToggleScreenShare="@ToggleScreenShare"
+                            OnEndSession="@EndSession"
+                            OnStartSession="@StartSession" />
+
+                <MessagingSidebar SessionId="@SessionId"
+                                  IsLecturer="@State.IsLecturer"
+                                  HubConnection="@_hubConnection"
+                                  CurrentUserId="@(State.CurrentUser?.MatricNo ?? "")" />
+            </SessionMainContent>
+
+            @if (!State.IsLecturer)
+            {
+                <EngagementModal HubConnection="@_hubConnection"
+                                 IsStudent="true"
+                                 ShouldShow="@_showEngagementModal"
+                                 OnHidden="@HideEngagementModal" />
+            }
+        </SessionLayout>
     }
 }
 
@@ -255,8 +98,21 @@ else
     private bool _isDisposed = false;
     private bool _isNavigating = false; // Prevent render after navigation
     private bool IsLecturer => State.IsLecturer;
+    private Action? _backClickHandler;
 
     // Lifecycle Methods
+    protected override bool ShouldRender()
+    {
+        // Skip rendering if navigating away
+        if (_isNavigating)
+        {
+            return false;
+        }
+        
+        // Allow render
+        return true;
+    }
+
     protected override async Task OnInitializedAsync()
     {
         try
@@ -302,6 +158,10 @@ else
             State.IsSessionStarted = CurrentSession.IsSessionStarted;
             State.IsLecturer = CurrentSession.LecturerId == State.CurrentUser.MatricNo;
 
+            // Initialize memoized back click handler
+            _backClickHandler = () => Navigation.NavigateTo(
+                State.IsLecturer ? "/lecturer/home" : "/student/home");
+
             // Show test camera for lecturer before session starts
             if (State.IsLecturer && !State.IsSessionStarted)
             {
@@ -337,14 +197,23 @@ else
                 await SessionJsInterop.InitializeAsync(SessionId, State.IsLecturer, _dotNetRef);
 
                 // Setup tab visibility listener for students
-                if (!State.IsLecturer)
-                {
-                    await SessionJsInterop.SetupTabVisibilityListenerAsync();
-                }
-
-                // If student and session already started, setup peer
                 if (!State.IsLecturer && State.IsSessionStarted)
                 {
+                    Console.WriteLine("Setting up tab visibility listener for student");
+                    await SessionJsInterop.SetupTabVisibilityListenerAsync();
+                }
+                else
+                {
+                    Console.WriteLine($"Tab visibility not setup: IsLecturer={State.IsLecturer}, SessionStarted={State.IsSessionStarted}");
+                }
+
+                // If student and session already started, setup peer connection
+                if (!State.IsLecturer && State.IsSessionStarted)
+                {
+                    Console.WriteLine("Student joining active session - setting up peer connection");
+                    // Reset connection state to allow fresh connection on refresh
+                    State.ConnectionAttempts = 0;
+                    State.MyPeerId = null;
                     await SetupStudentPeerConnectionAsync();
                 }
 
@@ -659,14 +528,18 @@ else
         try
         {
             _isSettingUpPeer = true;
-            State.StartLoading("Setting up connection...");
+            State.StartLoading("Connecting to session...");
 
+            // Clear any previous peer state to ensure fresh connection
+            Console.WriteLine("Setting up fresh peer connection for student");
+            
             var result = await SessionJsInterop.SetupStudentPeerAsync();
             
             // Result will have { success: true, peerId: "..." }
-            Console.WriteLine("Student peer setup initiated");
+            Console.WriteLine("Student peer setup initiated successfully");
 
             State.StopLoading();
+            State.ClearError(); // Clear any previous errors on successful setup
         }
         catch (Exception ex)
         {
@@ -676,13 +549,16 @@ else
             if (State.ShouldRetryConnection() && !State.HasExceededMaxAttempts)
             {
                 // Retry after backoff delay
-                await Task.Delay((int)(Math.Pow(2, State.ConnectionAttempts - 1) * 1000));
+                var delayMs = (int)(Math.Pow(2, State.ConnectionAttempts - 1) * 1000);
+                Console.WriteLine($"Retrying connection in {delayMs}ms (attempt {State.ConnectionAttempts})");
+                await Task.Delay(delayMs);
                 _isSettingUpPeer = false; // Reset flag for retry
                 await SetupStudentPeerConnectionAsync();
             }
             else if (State.HasExceededMaxAttempts)
             {
                 State.SetError("Unable to connect to session. Please refresh the page.");
+                State.StopLoading();
             }
         }
         finally
@@ -798,21 +674,43 @@ else
                 State.AddStudentPeer(peerId, userId);
                 StateHasChanged();
 
-                // Wait for student's DOM to be fully ready
+                // Wait for student's DOM and peer event handlers to be fully ready
                 // Student needs time to render video element and attach event handlers
                 Console.WriteLine($"Waiting for student {userId} DOM to stabilize...");
-                await Task.Delay(500); // Give student time to prepare
+                await Task.Delay(800); // Increased delay to ensure student is ready
 
                 // Call the student to initiate WebRTC connection
                 try
                 {
+                    Console.WriteLine($"=====================================");
                     Console.WriteLine($"Lecturer calling student {userId} at peer {peerId}");
+                    Console.WriteLine($"=====================================");
+                    
                     var result = await SessionJsInterop.CallStudentAsync(peerId);
-                    Console.WriteLine($"Call to student {userId} initiated: {System.Text.Json.JsonSerializer.Serialize(result)}");
+                    
+                    var resultJson = System.Text.Json.JsonSerializer.Serialize(result);
+                    Console.WriteLine($"Call result: {resultJson}");
+                    
+                    // Parse result to check success
+                    var resultDict = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, System.Text.Json.JsonElement>>(resultJson);
+                    if (resultDict != null && resultDict.ContainsKey("success"))
+                    {
+                        var success = resultDict["success"].GetBoolean();
+                        if (!success)
+                        {
+                            var error = resultDict.ContainsKey("error") ? resultDict["error"].GetString() : "Unknown error";
+                            Console.WriteLine($"Failed to call student {userId}: {error}");
+                        }
+                        else
+                        {
+                            Console.WriteLine($"Successfully initiated call to student {userId}");
+                        }
+                    }
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Error calling student {userId}: {ex.Message}");
+                    Console.WriteLine($"Exception calling student {userId}: {ex.Message}");
+                    Console.WriteLine($"Stack trace: {ex.StackTrace}");
                 }
             }
         });
@@ -872,13 +770,18 @@ else
     // Engagement Handler
     private async Task OnAreYouThere()
     {
-        Console.WriteLine("AreYouThere prompt received from lecturer");
+        Console.WriteLine($"AreYouThere event received. IsLecturer={State.IsLecturer}");
 
         await InvokeAsync(() =>
         {
             if (!State.IsLecturer)
             {
+                Console.WriteLine("Showing engagement modal for student");
                 _showEngagementModal = true;
+            }
+            else
+            {
+                Console.WriteLine("WARNING: AreYouThere received by lecturer - ignoring");
             }
 
             StateHasChanged();
@@ -887,6 +790,7 @@ else
 
     private void HideEngagementModal()
     {
+        Console.WriteLine("Hiding engagement modal");
         _showEngagementModal = false;
         StateHasChanged();
     }
@@ -949,6 +853,7 @@ else
         if (_hubConnection != null)
         {
             await _hubConnection.SendAsync("SendPeerId", SessionId, peerId);
+            Console.WriteLine($"Sent peer ID {peerId} to lecturer via SignalR");
         }
 
         StateHasChanged();
@@ -1031,14 +936,14 @@ else
     {
         Console.WriteLine($"File upload progress: {progress:F0}% ({sentChunks}/{totalChunks})");
         // State can track progress here if needed
-        StateHasChanged();
+        // StateHasChanged(); // Only call when actually displaying progress
     }
 
     [JSInvokable]
     public void OnFileDownloadComplete(string messageId, string fileName)
     {
         Console.WriteLine($"File download complete: {fileName}");
-        StateHasChanged();
+        // StateHasChanged(); // Only call when actually displaying download status
     }
 
     [JSInvokable]
@@ -1050,12 +955,28 @@ else
     }
 
     [JSInvokable]
+    public void OnScreenShareStopped()
+    {
+        Console.WriteLine("Screen share stopped (called from JS)");
+        State.IsScreenSharing = false;
+        State.CurrentStreamType = "webcam";
+        StateHasChanged();
+    }
+
+    [JSInvokable]
     public async Task OnTabVisibilityChanged(bool isVisible)
     {
-        if (State.IsLecturer) return;
+        // Only track for students in active sessions
+        if (State.IsLecturer || !State.IsSessionStarted)
+        {
+            Console.WriteLine($"Tab visibility ignored: IsLecturer={State.IsLecturer}, SessionStarted={State.IsSessionStarted}");
+            return;
+        }
 
-        // Report to SignalR for engagement tracking (Phase 4)
-        if (_hubConnection != null)
+        Console.WriteLine($"Student tab visibility changed: {isVisible}");
+
+        // Report to SignalR for engagement tracking
+        if (_hubConnection != null && _hubConnection.State == HubConnectionState.Connected)
         {
             try
             {
@@ -1147,12 +1068,8 @@ else
                         {
                             var timeSinceJoin = DateTime.UtcNow - joinedAt;
                             
-                            // For development: 2 minutes, Production: 30 minutes
-                            #if DEBUG
-                            var expiryMinutes = 2;
-                            #else
+                            // Session expires after 30 minutes
                             var expiryMinutes = 30;
-                            #endif
                             
                             if (timeSinceJoin.TotalMinutes > expiryMinutes)
                             {

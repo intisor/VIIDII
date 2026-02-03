@@ -40,7 +40,7 @@
             LecturerId = lecturerId;
         }
         public string LecturerId { get; }
-        public DateTime StartTime { get; set; } = DateTime.UtcNow.AddHours(1); // Default to 1 hour from now
+        public DateTime StartTime { get; set; } = DateTime.UtcNow; // Pure UTC - no timezone offset
         public DateTime? EndTime { get; set; } = null;
         public required string Title { get; set; }
         public required List<User.Departments> AllowedDepartments { get; set; }
@@ -55,7 +55,7 @@
 
         public enum StudentStatus { Active, InActive, BatteryLow, DataFinished, Disconnected }
 
-        private static string GenerateSessionCode() => $"{DateTime.UtcNow.AddHours(1):yyyyMMdd}-{string.Concat(Enumerable.Range(0, 6).Select(_ => (char)('A' + Random.Shared.Next(26))))}";
+        private static string GenerateSessionCode() => $"{DateTime.UtcNow:yyyyMMdd}-{string.Concat(Enumerable.Range(0, 6).Select(_ => (char)('A' + Random.Shared.Next(26))))}";
     }
     public enum SessionStatus { Active, Started, Ended, Cancelled }
 }

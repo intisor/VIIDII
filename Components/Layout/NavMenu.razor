@@ -1,70 +1,148 @@
 @inject NavigationManager Navigation
 @inject AuthService AuthService
 
-<div class="navbar navbar-expand-lg">
-    <div class="container-fluid">
-        <a class="navbar-brand" href="/">VIIDII</a>
-        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-            <span class="navbar-toggler-icon"></span>
-        </button>
-        <div class="collapse navbar-collapse" id="navbarNav">
-            <ul class="navbar-nav me-auto">
-                <li class="nav-item">
-                    <a class="nav-link" href="/">Home</a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link" href="/about">About</a>
-                </li>
-                @if (CurrentUser != null)
+<nav class="bg-background border-b border-border sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex justify-between items-center h-16">
+            <!-- Logo -->
+            <a href="@(CurrentUser != null ? DashboardLink : "/")" class="flex items-center gap-2">
+                <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-[#8338EC] to-[#C19BF5] flex items-center justify-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-white"><path d="m22 8-6 4 6 4V8Z"/><rect width="14" height="12" x="2" y="6" rx="2" ry="2"/></svg>
+                </div>
+                <span class="text-xl font-semibold bg-gradient-to-r from-[#8338EC] to-[#C19BF5] bg-clip-text text-transparent">
+                    VIIDII
+                </span>
+            </a>
+
+            <!-- Desktop Navigation -->
+            <div class="hidden md:flex items-center gap-6">
+                <ThemeToggle />
+                @if (CurrentUser == null)
                 {
-                    <li class="nav-item">
-                        <a class="nav-link" href="@DashboardLink">Dashboard</a>
-                    </li>
-                    @if (CurrentUser.Role == Role.Lecturer)
-                    {
-                        <li class="nav-item">
-                            <a class="nav-link" href="/create-session">Create Session</a>
-                        </li>
-                    }
-                    @if (CurrentUser.Role == Role.Student || CurrentUser.Role == Role.Lecturer)
-                    {
-                        <li class="nav-item">
-                            <a class="nav-link" href="/join-session">Join Session</a>
-                        </li>
-                    }
-                    @if (CurrentUser.Role == Role.Admin)
-                    {
-                        <li class="nav-item">
-                            <a class="nav-link" href="/admin">Admin Panel</a>
-                        </li>
-                    }
-                }
-            </ul>
-            <ul class="navbar-nav ms-auto">
-                @if (CurrentUser != null)
-                {
-                    <li class="nav-item">
-                        <span class="nav-link text-light">
-                            <strong>@CurrentUser.Name</strong> (@CurrentUser.Role)
-                        </span>
-                    </li>
-                    <li class="nav-item">
-                        <button class="nav-link btn btn-link text-danger" @onclick="Logout">Logout</button>
-                    </li>
+                    <a href="/" class="text-foreground hover:text-primary transition-colors text-sm font-medium">Home</a>
+                    <a href="/about" class="text-foreground hover:text-primary transition-colors text-sm font-medium">About</a>
+                    <a href="/privacy" class="text-foreground hover:text-primary transition-colors text-sm font-medium">Privacy</a>
                 }
                 else
                 {
-                    <li class="nav-item">
-                        <a class="nav-link btn btn-outline-light" href="/login">Login</a>
-                    </li>
+                    <a href="@DashboardLink" class="text-foreground hover:text-primary transition-colors text-sm font-medium">Home</a>
+                     @if (CurrentUser.Role == Role.Lecturer) {
+                        <a href="/create-session" class="text-foreground hover:text-primary transition-colors text-sm font-medium">Create Session</a>
+                     }
+                     @if (CurrentUser.Role == Role.Student || CurrentUser.Role == Role.Lecturer) {
+                        <a href="/join-session" class="text-foreground hover:text-primary transition-colors text-sm font-medium">Join Session</a>
+                     }
+                     @if (CurrentUser.Role == Role.Admin) {
+                        <a href="/admin" class="text-foreground hover:text-primary transition-colors text-sm font-medium">Admin Panel</a>
+                     }
+                     <a href="/about" class="text-foreground hover:text-primary transition-colors text-sm font-medium">About</a>
                 }
-            </ul>
+
+                @if (CurrentUser != null)
+                {
+                    <div class="relative ml-4">
+                        <button @onclick="ToggleUserMenu" class="flex items-center gap-2 focus:outline-none">
+                            <div class="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-medium border border-primary/20">
+                                @GetInitials(CurrentUser.Name)
+                            </div>
+                        </button>
+                        
+                        @if (isUserMenuOpen)
+                        {
+                            <div class="absolute right-0 mt-2 w-56 rounded-md shadow-lg bg-popover ring-1 ring-black ring-opacity-5 z-50 animate-in fade-in zoom-in-95 duration-200 border border-border">
+                                <div class="py-1">
+                                    <div class="px-4 py-2 border-b border-border">
+                                        <p class="text-sm font-medium text-foreground">@CurrentUser.Name</p>
+                                        <p class="text-xs text-muted-foreground truncate">@CurrentUser.Role</p>
+                                    </div>
+                                    <button @onclick="Logout" class="w-full text-left px-4 py-2 text-sm text-destructive hover:bg-muted flex items-center gap-2">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
+                                        Log out
+                                    </button>
+                                </div>
+                            </div>
+                            <!-- Backdrop to close -->
+                            <div class="fixed inset-0 z-40" @onclick="ToggleUserMenu"></div>
+                        }
+                    </div>
+                }
+                else
+                {
+                     <a href="/login" class="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-white shadow transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50">
+                        Log In
+                    </a>
+                }
+            </div>
+
+            <!-- Mobile menu button -->
+            <div class="flex md:hidden items-center">
+                <button @onclick="ToggleMobileMenu" class="text-foreground p-2 rounded-md hover:bg-muted">
+                    @if (isMobileMenuOpen)
+                    {
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 18 18"/></svg>
+                    }
+                    else
+                    {
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>
+                    }
+                </button>
+            </div>
         </div>
     </div>
-</div>
+
+    <!-- Mobile Menu -->
+    @if (isMobileMenuOpen)
+    {
+        <div class="md:hidden border-t border-border bg-background">
+            <div class="space-y-1 px-4 py-3">
+                 @if (CurrentUser == null)
+                {
+                    <a href="/" class="block px-3 py-2 text-base font-medium text-foreground hover:bg-muted rounded-md" @onclick="ToggleMobileMenu">Home</a>
+                    <a href="/about" class="block px-3 py-2 text-base font-medium text-foreground hover:bg-muted rounded-md" @onclick="ToggleMobileMenu">About</a>
+                    <a href="/privacy" class="block px-3 py-2 text-base font-medium text-foreground hover:bg-muted rounded-md" @onclick="ToggleMobileMenu">Privacy</a>
+                    <div class="pt-4 border-t border-border mt-2">
+                        <a href="/login" class="w-full flex justify-center items-center h-10 rounded-md bg-primary text-white font-medium" @onclick="ToggleMobileMenu">Log In</a>
+                    </div>
+                }
+                else
+                {
+                    <a href="@DashboardLink" class="block px-3 py-2 text-base font-medium text-foreground hover:bg-muted rounded-md" @onclick="ToggleMobileMenu">Home</a>
+                     @if (CurrentUser.Role == Role.Lecturer) {
+                        <a href="/create-session" class="block px-3 py-2 text-base font-medium text-foreground hover:bg-muted rounded-md" @onclick="ToggleMobileMenu">Create Session</a>
+                     }
+                     @if (CurrentUser.Role == Role.Student || CurrentUser.Role == Role.Lecturer) {
+                        <a href="/join-session" class="block px-3 py-2 text-base font-medium text-foreground hover:bg-muted rounded-md" @onclick="ToggleMobileMenu">Join Session</a>
+                     }
+                     @if (CurrentUser.Role == Role.Admin) {
+                        <a href="/admin" class="block px-3 py-2 text-base font-medium text-foreground hover:bg-muted rounded-md" @onclick="ToggleMobileMenu">Admin Panel</a>
+                     }
+                     <a href="/about" class="block px-3 py-2 text-base font-medium text-foreground hover:bg-muted rounded-md" @onclick="ToggleMobileMenu">About</a>
+
+                     <div class="pt-4 border-t border-border mt-2">
+                         <div class="flex items-center px-3 gap-3 mb-3">
+                            <div class="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-medium border border-primary/20">
+                                @GetInitials(CurrentUser.Name)
+                            </div>
+                            <div>
+                                <div class="font-medium">@CurrentUser.Name</div>
+                                <div class="text-sm text-muted-foreground">@CurrentUser.Role</div>
+                            </div>
+                         </div>
+                         <button @onclick="Logout" class="w-full flex justify-center items-center h-10 rounded-md bg-destructive/10 text-destructive font-medium hover:bg-destructive/20 border border-destructive/20">
+                             Log Out
+                         </button>
+                     </div>
+                }
+            </div>
+        </div>
+    }
+</nav>
 
 @code {
     private User? CurrentUser;
+    private bool isMobileMenuOpen = false;
+    private bool isUserMenuOpen = false;
+
     private string DashboardLink => CurrentUser switch
     {
         { Role: Role.Admin } => "/admin",
@@ -78,9 +156,29 @@
         CurrentUser = await AuthService.GetCurrentUserAsync();
     }
 
+    private void ToggleMobileMenu()
+    {
+        isMobileMenuOpen = !isMobileMenuOpen;
+    }
+
+    private void ToggleUserMenu()
+    {
+        isUserMenuOpen = !isUserMenuOpen;
+    }
+
     private async Task Logout()
     {
         await AuthService.LogoutAsync();
         Navigation.NavigateTo("/login", forceLoad: true);
+    }
+    
+    private string GetInitials(string? name)
+    {
+        if (string.IsNullOrEmpty(name)) return "";
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0) return "";
+        if (parts.Length == 1 && parts[0].Length >= 2) return parts[0].Substring(0, 2).ToUpper();
+        if (parts.Length == 1) return parts[0].ToUpper();
+        return (parts[0][0].ToString() + parts[1][0].ToString()).ToUpper();
     }
 }

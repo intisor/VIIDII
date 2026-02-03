@@ -1,114 +1,198 @@
 @page "/"
+@layout LandingLayout
 @inject NavigationManager Navigation
 @inject AuthService AuthService
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 
 <PageTitle>Welcome to VIIDII</PageTitle>
 
-<div class="welcome-container">
-    <style>
-        body {
-            margin: 0;
-            padding: 0;
-            background: rgba(255, 255, 255, 0.9);
-            font-family: 'Poppins', sans-serif;
-            color: #333;
-        }
 
-        .welcome-container {
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            position: relative;
-            overflow: hidden;
-            background: linear-gradient(135deg, rgba(131, 56, 236, 0.1) 0%, rgba(193, 155, 245, 0.1) 100%);
-        }
-
-        .welcome-content {
-            text-align: center;
-            z-index: 10;
-        }
-
-        .welcome-title {
-            font-size: 3.5rem;
-            font-weight: 700;
-            margin-bottom: 1rem;
-            background: linear-gradient(128.97deg, #8338EC 2.4%, #C19BF5 85.87%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-
-        .welcome-subtitle {
-            font-size: 1.25rem;
-            color: #666;
-            margin-bottom: 2rem;
-        }
-
-        .btn-group {
-            display: flex;
-            gap: 1rem;
-            justify-content: center;
-            margin-top: 2rem;
-        }
-
-        .btn-custom {
-            padding: 0.75rem 2rem;
-            border: none;
-            border-radius: 0.5rem;
-            font-size: 1rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            text-decoration: none;
-        }
-
-        .btn-primary-custom {
-            background: linear-gradient(128.97deg, #8338EC 2.4%, #C19BF5 85.87%);
-            color: white;
-        }
-
-        .btn-primary-custom:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 16px rgba(131, 56, 236, 0.3);
-        }
-
-        .btn-secondary-custom {
-            background: white;
-            color: #8338EC;
-            border: 2px solid #8338EC;
-        }
-
-        .btn-secondary-custom:hover {
-            background: #8338EC;
-            color: white;
-        }
-    </style>
-
-    <div class="welcome-content">
-        <h1 class="welcome-title">Welcome to VIIDII</h1>
-        <p class="welcome-subtitle">Session Attendance Management System</p>
-        
-        <div class="btn-group">
-            @if (IsAuthenticated)
-            {
-                <button class="btn-custom btn-primary-custom" @onclick="GoDashboard">
-                    Go to Dashboard
-                </button>
-            }
-            else
-            {
-                <button class="btn-custom btn-primary-custom" @onclick="GoLogin">
-                    Login
-                </button>
-                <button class="btn-custom btn-secondary-custom" @onclick="GoAbout">
+<div class="min-h-screen bg-background">
+      <!-- Hero Section -->
+      <section class="relative overflow-hidden">
+        <div class="absolute inset-0 bg-gradient-to-br from-[#8338EC] to-[#C19BF5] opacity-10"></div>
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 md:py-32 relative">
+          <div class="grid lg:grid-cols-2 gap-12 items-center">
+            <div>
+              <h1 class="text-4xl md:text-5xl lg:text-6xl font-bold mb-6">
+                Virtual Classrooms,
+                <span class="block mt-2 bg-gradient-to-r from-[#8338EC] to-[#C19BF5] bg-clip-text text-transparent">
+                  Real-Time Learning
+                </span>
+              </h1>
+              <p class="text-lg md:text-xl text-muted-foreground mb-8 leading-relaxed">
+                VIIDII is a comprehensive virtual classroom platform designed for educational institutions. 
+                Stream live video, track engagement, and foster interactive learning experiences.
+              </p>
+              <div class="flex flex-col sm:flex-row gap-4">
+                @if (IsAuthenticated)
+                {
+                    <a href="/dashboard" class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 h-10 px-6 bg-gradient-to-r from-[#8338EC] to-[#C19BF5] text-white hover:opacity-90 shadow-lg w-full sm:w-auto">
+                        Go to Dashboard
+                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ml-2 w-5 h-5"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                    </a>
+                }
+                else
+                {
+                     <a href="/login" class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 h-10 px-6 bg-gradient-to-r from-[#8338EC] to-[#C19BF5] text-white hover:opacity-90 shadow-lg w-full sm:w-auto">
+                        Get Started
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ml-2 w-5 h-5"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                    </a>
+                }
+               
+                <a href="/about" class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 h-10 px-6 border border-input bg-background text-foreground hover:bg-accent hover:text-accent-foreground w-full sm:w-auto">
                     Learn More
-                </button>
-            }
+                </a>
+              </div>
+            </div>
+
+            <!-- Hero Illustration -->
+            <div class="hidden lg:block">
+              <div class="relative">
+                <div class="absolute inset-0 bg-gradient-to-br from-[#8338EC] to-[#C19BF5] rounded-3xl blur-3xl opacity-20"></div>
+                <div class="relative bg-white rounded-3xl shadow-2xl p-8 border border-border">
+                  <div class="aspect-video bg-gradient-to-br from-[#8338EC]/10 to-[#C19BF5]/10 rounded-xl flex items-center justify-center mb-6">
+                     <svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-24 h-24 text-[#8338EC]"><path d="m22 8-6 4 6 4V8Z"/><rect width="14" height="12" x="2" y="6" rx="2" ry="2"/></svg>
+                  </div>
+                  <div class="space-y-3">
+                    <div class="flex items-center gap-3">
+                      <div class="w-10 h-10 rounded-full bg-gradient-to-br from-[#8338EC] to-[#C19BF5]"></div>
+                      <div class="flex-1 h-4 bg-secondary rounded"></div>
+                    </div>
+                    <div class="flex items-center gap-3 pl-12">
+                      <div class="flex-1 h-3 bg-secondary rounded"></div>
+                    </div>
+                    <div class="flex items-center gap-3 pl-12">
+                      <div class="flex-1 h-3 bg-secondary rounded w-2/3"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-    </div>
+      </section>
+
+      <!-- Features Section -->
+      <section class="py-20 bg-secondary/50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div class="text-center mb-16">
+            <h2 class="text-3xl md:text-4xl font-bold mb-4">
+              Powerful Features for Modern Education
+            </h2>
+            <p class="text-lg text-muted-foreground max-w-2xl mx-auto">
+              Everything you need to create engaging virtual classroom experiences
+            </p>
+          </div>
+
+          <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
+              <!-- Feature 1 -->
+              <div class="bg-white rounded-xl p-6 shadow-sm border border-border hover:shadow-md transition-shadow">
+                <div class="w-12 h-12 rounded-lg bg-gradient-to-br from-[#8338EC] to-[#C19BF5] flex items-center justify-center mb-4">
+                   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6 text-white"><path d="m22 8-6 4 6 4V8Z"/><rect width="14" height="12" x="2" y="6" rx="2" ry="2"/></svg>
+                </div>
+                <h3 class="text-xl font-semibold mb-2">Real-Time Video</h3>
+                <p class="text-muted-foreground">High-quality live video streaming with screen sharing capabilities for seamless virtual lectures.</p>
+              </div>
+
+               <!-- Feature 2 -->
+              <div class="bg-white rounded-xl p-6 shadow-sm border border-border hover:shadow-md transition-shadow">
+                <div class="w-12 h-12 rounded-lg bg-gradient-to-br from-[#8338EC] to-[#C19BF5] flex items-center justify-center mb-4">
+                   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6 text-white"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                </div>
+                <h3 class="text-xl font-semibold mb-2">Student Tracking</h3>
+                <p class="text-muted-foreground">Monitor student participation and engagement in real-time with comprehensive analytics.</p>
+              </div>
+
+               <!-- Feature 3 -->
+              <div class="bg-white rounded-xl p-6 shadow-sm border border-border hover:shadow-md transition-shadow">
+                <div class="w-12 h-12 rounded-lg bg-gradient-to-br from-[#8338EC] to-[#C19BF5] flex items-center justify-center mb-4">
+                   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6 text-white"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                </div>
+                <h3 class="text-xl font-semibold mb-2">Interactive Chat</h3>
+                <p class="text-muted-foreground">Enable real-time communication between lecturers and students with file sharing capabilities.</p>
+              </div>
+
+               <!-- Feature 4 -->
+               <div class="bg-white rounded-xl p-6 shadow-sm border border-border hover:shadow-md transition-shadow">
+                <div class="w-12 h-12 rounded-lg bg-gradient-to-br from-[#8338EC] to-[#C19BF5] flex items-center justify-center mb-4">
+                   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6 text-white"><line x1="12" x2="12" y1="20" y2="10"/><line x1="18" x2="18" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="16"/></svg>
+                </div>
+                <h3 class="text-xl font-semibold mb-2">Session Mgmt</h3>
+                <p class="text-muted-foreground">Create, manage, and monitor virtual classroom sessions with advanced access controls.</p>
+              </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Benefits Section -->
+      <section class="py-20">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div class="grid lg:grid-cols-2 gap-12 items-center">
+            <div>
+              <h2 class="text-3xl md:text-4xl font-bold mb-6">
+                Why Choose VIIDII?
+              </h2>
+              <p class="text-lg text-muted-foreground mb-8">
+                Built specifically for educational institutions with features that matter most to lecturers and students.
+              </p>
+              <div class="space-y-4">
+                  <div class="flex items-start gap-3">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6 text-[#8338EC] flex-shrink-0 mt-0.5"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
+                    <p class="text-foreground">Easy session creation with department and level filters</p>
+                  </div>
+                  <div class="flex items-start gap-3">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6 text-[#8338EC] flex-shrink-0 mt-0.5"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
+                    <p class="text-foreground">Real-time student status monitoring</p>
+                  </div>
+                   <div class="flex items-start gap-3">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6 text-[#8338EC] flex-shrink-0 mt-0.5"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
+                    <p class="text-foreground">Seamless video and screen sharing</p>
+                  </div>
+                   <div class="flex items-start gap-3">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6 text-[#8338EC] flex-shrink-0 mt-0.5"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
+                    <p class="text-foreground">Mobile-friendly responsive design</p>
+                  </div>
+                   <div class="flex items-start gap-3">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6 text-[#8338EC] flex-shrink-0 mt-0.5"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
+                    <p class="text-foreground">Secure authentication system</p>
+                  </div>
+                   <div class="flex items-start gap-3">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6 text-[#8338EC] flex-shrink-0 mt-0.5"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
+                    <p class="text-foreground">File sharing and collaborative messaging</p>
+                  </div>
+              </div>
+            </div>
+            
+            <div class="relative">
+              <div class="absolute inset-0 bg-gradient-to-br from-[#8338EC] to-[#C19BF5] rounded-3xl blur-3xl opacity-20"></div>
+              <div class="relative bg-white rounded-3xl shadow-xl border border-border overflow-hidden">
+                <div class="bg-muted/50 border-b border-border p-4 flex items-center justify-between">
+                  <div class="flex items-center gap-2">
+                    <div class="w-3 h-3 rounded-full bg-red-500"></div>
+                    <div class="w-3 h-3 rounded-full bg-yellow-500"></div>
+                    <div class="w-3 h-3 rounded-full bg-green-500"></div>
+                  </div>
+                </div>
+                <div class="p-8 space-y-6">
+                  <!-- Mock UI Elements -->
+                  <div class="flex items-center gap-4">
+                    <div class="w-12 h-12 rounded-full bg-secondary"></div>
+                    <div class="space-y-2">
+                      <div class="h-4 w-32 bg-secondary rounded"></div>
+                      <div class="h-3 w-24 bg-secondary rounded"></div>
+                    </div>
+                  </div>
+                  <div class="space-y-3">
+                    <div class="h-24 bg-secondary/50 rounded-lg"></div>
+                    <div class="h-24 bg-secondary/50 rounded-lg"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
 </div>
 
 @code {

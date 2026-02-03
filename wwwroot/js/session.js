@@ -1,5 +1,6 @@
 ﻿let localStream = null;
 let peer = null;
+let lecturerPeerId = null; // Store lecturer's peer ID for student connections
 let isStreamAttached = false;
 let attachedStreamId = null;
 let hasJoinedSession = false;
@@ -35,9 +36,21 @@ connection.onreconnected(() => {
     console.log("SignalR reconnected, rejoining session...");
     const { sessionId } = window.sessionState || {};
     if (sessionId && !window.isSessionLecturer) {
-        console.log("Reconnecting to session:", sessionId);
+        console.log("Reconnecting to session as student:", sessionId);
         connection.invoke("JoinSession", sessionId);
-        tryConnect(sessionId);
+        
+        // Force peer reconnection for students
+        if (peer && !peer.destroyed) {
+            console.log("Destroying old peer for fresh connection");
+            peer.destroy();
+            peer = null;
+        }
+        
+        // Setup fresh peer connection
+        const video = document.getElementById("sessionVideo");
+        if (video) {
+            setupStudentPeer(sessionId, video);
+        }
     }
 });
 
@@ -165,6 +178,11 @@ connection.on("StartSession", (sessionId) => {
                     try {
                         const webcamStream = originalStream || await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
                         await notifyAndRestartCalls(webcamStream, "webcam");
+                        
+                        // Notify Blazor component
+                        if (window.dotNetRef) {
+                            await window.dotNetRef.invokeMethodAsync('OnScreenShareStopped');
+                        }
                     } catch (err) {
                         console.error("Failed to revert to webcam:", err);
                         alert("Failed to revert to webcam. Check permissions.");
@@ -259,95 +277,128 @@ connection.on("StartSession", (sessionId) => {
 });
 
 function setupStudentPeer(sessionId, video) {
-    if (peer && !peer.disconnected) {
-        console.log("Student peer exists:", peer.id);
-        tryConnect(sessionId);
-        return;
+// Clean up existing peer if any to allow fresh reconnection
+if (peer && !peer.destroyed) {
+    console.log("Cleaning up existing peer before creating new one");
+    peer.destroy();
+    peer = null;
+}
+    
+// Reset stream state for fresh connection
+isStreamAttached = false;
+attachedStreamId = null;
+    
+console.log("Setting up fresh student peer connection");
+    
+peer = new Peer({
+    config: {
+        iceServers: [
+            { urls: "stun:stun.l.google.com:19302" },
+            { urls: "stun:freestun.net:3478" },
+            {
+                urls: ["turn:openrelay.metered.ca:80", "turn:openrelay.metered.ca:443"],
+                username: "openrelayproject",
+                credential: "openrelayproject"
+            },
+            {
+                urls: "turn:freestun.net:3478",
+                username: "free",
+                credential: "free"
+            }
+        ]
     }
-    peer = new Peer({
-        config: {
-            iceServers: [
-                { urls: "stun:stun.l.google.com:19302" },
-                { urls: "stun:freestun.net:3478" },
-                {
-                    urls: ["turn:openrelay.metered.ca:80", "turn:openrelay.metered.ca:443"],
-                    username: "openrelayproject",
-                    credential: "openrelayproject"
-                },
-                {
-                    urls: "turn:freestun.net:3478",
-                    username: "free",
-                    credential: "free"
+});
+    
+peer.on("open", (id) => {
+    console.log("Student peer open with ID:", id);
+    connection.invoke("SendPeerId", sessionId, id)
+        .then(() => console.log("Peer ID sent to server successfully"))
+        .catch(err => console.error("Failed to send peer ID:", err));
+        
+    // Try to connect immediately after peer opens
+    setTimeout(() => tryConnect(sessionId), 500);
+});
+    
+peer.on("call", (call) => {
+    console.log("Received call from lecturer, peer:", call.peer);
+    call.answer();
+        
+    let streamTimeout = setTimeout(() => {
+        if (!isStreamAttached) {
+            console.warn("No stream received after 10s, retrying connection...");
+            call.close();
+            setTimeout(() => tryConnect(sessionId), 2000);
+        }
+    }, 10000);
+        
+    call.on("stream", (remoteStream) => {
+        clearTimeout(streamTimeout);
+        console.log("Received lecturer stream with ID:", remoteStream.id);
+            
+        if (remoteStream.id === attachedStreamId) {
+            console.log("Ignoring duplicate stream, ID:", remoteStream.id);
+            return;
+        }
+            
+        if (isStreamAttached) {
+            console.log("Replacing existing stream with new stream:", remoteStream.id);
+        }
+            
+        isStreamAttached = true;
+        attachedStreamId = remoteStream.id;
+            
+        if (video) {
+            console.log("Attaching remote stream to video element");
+            video.srcObject = remoteStream;
+            video.play().catch(err => {
+                console.error("Playback failed:", err.message);
+                if (isMobile) {
+                    console.log("Mobile playback failed, waiting for user interaction");
+                } else {
+                    console.error("Desktop playback failed");
                 }
-            ]
+            });
         }
     });
-    peer.on("open", (id) => {
-        console.log("Student peer open:", id);
-        connection.invoke("SendPeerId", sessionId, id).catch(err => console.error("Failed to send peer ID:", err));
-        tryConnect(sessionId);
+        
+    call.on("close", () => {
+        console.log("Call closed, cleaning up");
+        window.currentCall = null;
+        isStreamAttached = false;
+        attachedStreamId = null;
+        if (video) {
+            video.srcObject = null;
+        }
     });
-    peer.on("call", (call) => {
-        console.log("Received lecturer call:", call.peer);
-        call.answer();
-        let streamTimeout = setTimeout(() => {
-            if (!isStreamAttached) {
-                console.warn("No stream received after 10s, retrying...");
-                call.close();
-                tryConnect(sessionId);
-            }
-        }, 10000);
-        call.on("stream", (remoteStream) => {
-            clearTimeout(streamTimeout);
-            console.log("Received lecturer stream:", remoteStream);
-            if (remoteStream.id === attachedStreamId) {
-                console.log("Ignoring duplicate stream, ID:", remoteStream.id);
-                return;
-            }
-            if (isStreamAttached) {
-                console.log("Stream already attached, ignoring new stream:", remoteStream.id);
-                return;
-            }
-            isStreamAttached = true;
-            attachedStreamId = remoteStream.id;
-            if (video) {
-                console.log("Attaching remote stream to video element.");
-                video.srcObject = remoteStream;
-                video.play().catch(err => {
-                    console.error("Playback failed:", err.message);
-                    if (isMobile) {
-                        // Rely on play overlay for mobile
-                        console.log("Mobile playback failed, waiting for user interaction.");
-                    } else {
-                        alert("Failed to play video. Please check your connection.");
-                    }
-                });
-            }
-        });
-        call.on("close", () => {
-            console.log("Call closed.");
-            window.currentCall = null;
-            isStreamAttached = false;
-            attachedStreamId = null;
-            if (video) {
-                video.srcObject = null;
-            }
-        });
-        call.on("error", (err) => console.error("Call error:", err));
-        // Store call for stream change handling
-        window.currentCall = call;
+        
+    call.on("error", (err) => {
+        console.error("Call error:", err);
+        clearTimeout(streamTimeout);
     });
+        
+    // Store call for stream change handling
+    window.currentCall = call;
+});
    
-    peer.on("error", (err) => {
-        console.error("Peer error:", err);
-        if (err.type === "peer-unavailable") {
-            console.warn("Lecturer not available, retrying...");
-            setTimeout(() => tryConnect(sessionId), 3000);
-        } else if (err.type === "server-disconnected") {
-            console.warn("PeerServer disconnected, reconnecting...");
-            peer.reconnect();
-        }
-    });
+peer.on("error", (err) => {
+    console.error("Peer error:", err);
+    if (err.type === "peer-unavailable") {
+        console.warn("Lecturer not available, retrying in 3s...");
+        setTimeout(() => tryConnect(sessionId), 3000);
+    } else if (err.type === "server-disconnected") {
+        console.warn("PeerServer disconnected, reconnecting...");
+        peer.reconnect();
+    } else if (err.type === "network") {
+        console.error("Network error, will retry on next attempt");
+    }
+});
+    
+peer.on("disconnected", () => {
+    console.warn("Peer disconnected, attempting to reconnect...");
+    if (!peer.destroyed) {
+        peer.reconnect();
+    }
+});
 
     // Handle stream change
     connection.on("ReceiveStreamChange", (streamType) => {
@@ -365,17 +416,25 @@ function setupStudentPeer(sessionId, video) {
 
 
 function tryConnect(sessionId, attempt = 1, maxAttempts = 15) {
-    console.log(`Attempting to connect to lecturer, attempt ${attempt}/${maxAttempts}`);
-    if (!peer || peer.disconnected) {
-        console.warn("Student peer not initialized or disconnected, reinitializing...");
-        const video = document.getElementById("sessionVideo");
-        setupStudentPeer(sessionId, video);
-        return;
-    }
-    const conn = peer.connect(sessionId);
+console.log(`Attempting to connect to lecturer peer ${lecturerPeerId}, attempt ${attempt}/${maxAttempts}`);
+    
+if (!peer || peer.disconnected) {
+    console.warn("Student peer not initialized or disconnected, reinitializing...");
+    const video = document.getElementById("sessionVideo");
+    setupStudentPeer(sessionId, video);
+    return;
+}
+    
+if (!lecturerPeerId) {
+    console.warn("No lecturer peer ID available yet, waiting...");
+    setTimeout(() => tryConnect(sessionId, attempt, maxAttempts), 1000);
+    return;
+}
+    
+const conn = peer.connect(lecturerPeerId);
 
     conn.on("open", () => {
-        console.log("Connected to lecturer:", sessionId);
+        console.log("Connected to lecturer:", lecturerPeerId);
         conn.send({ type: "studentReady", studentId: peer.id });
     });
     conn.on("data", (data) => {
@@ -781,36 +840,14 @@ connection.on("PostCreated", (postId) => {
     // those can be handled here. For example, temporarily disabling the post button until confirmation.
 });
 
+
 // Engagement Tracking
+// Note: Engagement modal is now handled by EngagementModal.razor component
+// This legacy code is kept for reference but modal interaction is managed in Blazor
 connection.on("AreYouThere", () => {
-    if (window.isSessionLecturer) return;
-    const activityModal = document.getElementById("activityModal");
-    if (!activityModal) {
-        console.error("Activity modal not found in DOM");
-        return;
-    }
-    let bsModal = bootstrap.Modal.getInstance(activityModal) || new bootstrap.Modal(activityModal, { backdrop: false });
-    bsModal.show();
-    const confirmButton = document.getElementById("confirmActive");
-    const closeButton = activityModal.querySelector(".btn-close");
-    const hideModal = () => {
-        bsModal.hide();
-        const backdrop = document.querySelector(".modal-backdrop");
-        if (backdrop) backdrop.remove();
-        document.body.classList.remove("modal-open");
-    };
-    if (!confirmButton.dataset.listener) {
-        confirmButton.addEventListener("click", () => {
-            connection.invoke("ConfirmActive").catch(err => console.error("Failed to confirm active:", err));
-            hideModal();
-        });
-        confirmButton.dataset.listener = "true";
-    }
-    if (!closeButton.dataset.listener) {
-        closeButton.addEventListener("click", hideModal);
-        closeButton.dataset.listener = "true";
-    }
+    console.log("AreYouThere event received - handled by EngagementModal.razor component");
 });
+
 
 document.addEventListener("visibilitychange", () => {
     if (window.isSessionLecturer) return;
@@ -883,10 +920,17 @@ document.getElementById("flagDataFinished")?.addEventListener("click", async () 
 
 connection.on("ReceivePeerId", (userId, peerId) => {
     console.log(`Received peer ID: ${peerId} for user: ${userId}`);
-    if (!window.isSessionLecturer) return;
-    if (!studentPeers.includes(peerId)) {
-        console.log(`Adding student peer ID: ${peerId}`);
-        studentPeers.push(peerId);
+    
+    if (window.isSessionLecturer) {
+        // Lecturer tracks student peers
+        if (!studentPeers.includes(peerId)) {
+            console.log(`Adding student peer ID: ${peerId}`);
+            studentPeers.push(peerId);
+        }
+    } else {
+        // Student stores lecturer peer ID
+        lecturerPeerId = peerId;
+        console.log("Stored lecturer peer ID:", lecturerPeerId);
     }
 });
 connection.on("ReceiveParticipants", (participants) => {

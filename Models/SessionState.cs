@@ -35,6 +35,7 @@ public class SessionState
     // Participant Management (for lecturer)
     public Dictionary<string, string> Participants { get; set; } = new(); // MatricNo -> Name
     public Dictionary<string, Session.StudentStatus> ParticipantStatuses { get; set; } = new();
+    public List<VIIDII.Services.SessionService.ParticipantScoreDetails> ParticipantScores { get; set; } = new();
     public int ParticipantCount => Participants.Count;
 
     // UI State
@@ -45,14 +46,25 @@ public class SessionState
     public string ActiveTab { get; set; } = "messages"; // "messages" or "participants"
     public bool IsTabExpanded { get; set; }
 
+
     // Connection State
     public bool IsHubConnected { get; set; }
     public bool IsPeerConnected { get; set; }
     public int ConnectionAttempts { get; set; }
     public DateTime? LastConnectionAttempt { get; set; }
+    public ConnectionStatusType ConnectionStatus { get; set; } = ConnectionStatusType.Connected;
+    public string ConnectionMessage { get; set; } = string.Empty;
 
     // Browser Persistence
     public bool IsRestoredFromStorage { get; set; }
+
+    public enum ConnectionStatusType
+    {
+        Connected,
+        Reconnecting,
+        Reconnected,
+        Disconnected
+    }
 
     // Methods
     public void Reset()

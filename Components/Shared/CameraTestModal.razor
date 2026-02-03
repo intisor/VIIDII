@@ -1,0 +1,53 @@
+@if (IsVisible)
+{
+    <div class="absolute inset-0 z-40 bg-background/95 flex items-center justify-center p-4">
+        <div class="max-w-2xl w-full bg-card border border-border rounded-xl shadow-2xl overflow-hidden flex flex-col">
+            <div class="p-6 border-b border-border">
+                <h3 class="text-xl font-semibold flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M23 7l-7 5 7 5V7z"/>
+                        <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+                    </svg>
+                    Camera Setup
+                </h3>
+            </div>
+            <div class="aspect-video bg-black relative">
+                <video id="testVideo" autoplay playsinline muted class="w-full h-full object-cover"></video>
+            </div>
+            <div class="p-6 flex items-center justify-end gap-3 bg-secondary/20">
+                @if (!IsTesting)
+                {
+                    <button class="h-10 px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-md font-medium transition-colors" @onclick="OnTestCamera">
+                        Test Camera
+                    </button>
+                }
+                else
+                {
+                    <button class="h-10 px-4 py-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground rounded-md font-medium" @onclick="OnStopTest">
+                        Stop Test
+                    </button>
+                    <button class="h-10 px-4 py-2 bg-green-600 text-white hover:bg-green-700 rounded-md font-medium" @onclick="OnStartSession">
+                        Start Session
+                    </button>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public bool IsVisible { get; set; }
+
+    [Parameter]
+    public bool IsTesting { get; set; }
+
+    [Parameter]
+    public EventCallback OnTestCamera { get; set; }
+
+    [Parameter]
+    public EventCallback OnStopTest { get; set; }
+
+    [Parameter]
+    public EventCallback OnStartSession { get; set; }
+}

@@ -1,0 +1,39 @@
+@if (!string.IsNullOrEmpty(ErrorMessage))
+{
+    <div class="absolute top-4 left-1/2 -translate-x-1/2 z-50 bg-destructive text-destructive-foreground px-4 py-2 rounded-md shadow-lg flex items-center gap-2">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/>
+            <line x1="12" x2="12" y1="9" y2="13"/>
+            <line x1="12" x2="12.01" y1="17" y2="17"/>
+        </svg>
+        <span>@ErrorMessage</span>
+        @if (ShowRetry && !HasExceededMaxAttempts && !IsLecturer)
+        {
+            <button class="ml-2 underline hover:text-white" @onclick="OnRetry">Retry</button>
+        }
+        else if (ShowRetry && HasExceededMaxAttempts)
+        {
+            <button class="ml-2 underline hover:text-white" @onclick="OnRefresh">Reload</button>
+        }
+    </div>
+}
+
+@code {
+    [Parameter]
+    public string ErrorMessage { get; set; } = string.Empty;
+
+    [Parameter]
+    public bool ShowRetry { get; set; } = true;
+
+    [Parameter]
+    public bool HasExceededMaxAttempts { get; set; }
+
+    [Parameter]
+    public bool IsLecturer { get; set; }
+
+    [Parameter]
+    public EventCallback OnRetry { get; set; }
+
+    [Parameter]
+    public EventCallback OnRefresh { get; set; }
+}
