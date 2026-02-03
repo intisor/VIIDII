@@ -1059,3 +1059,172 @@ _timer = new System.Threading.Timer(async _ =>
 ```
 
 ---
+
+## BUG-012: DateTime Timezone Inconsistency Causing Negative Duration
+
+**Date:** 2026-02-02  
+**Severity:** ?? Critical  
+**Component:** Session Timing / Attendance Scoring
+
+### Problem
+Session attendance scoring was failing with "invalid duration" errors showing negative minutes (e.g., -58.7 minutes). This completely broke the attendance tracking system, preventing lecturers from seeing any attendance scores for ended sessions.
+
+### Root Cause
+The application was using inconsistent datetime references across the codebase:
+- Session times stored with `.AddHours(1)` to convert UTC to West Africa Time (WAT)
+- Score calculations using pure `DateTime.UtcNow` 
+- Comparisons between these mixed timestamps produced negative durations
+
+**Code Evidence:**
+```csharp
+// Session.StartTime stored as:
+DateTime.UtcNow.AddHours(1)  // e.g., 6:00 PM WAT
+
+// But CalculateAttendanceScore used:
+var endTime = session.EndTime ?? DateTime.UtcNow;  // e.g., 5:02 PM UTC
+
+// Result: endTime (5:02 PM) < startTime (6:00 PM) = -58 minutes!
+```
+
+**Console Logs:**
+```
+CalculateAttendanceScore: Session 20260202-ABCDEF has invalid duration (-58.7 min), returning empty scores
+```
+
+### Solution
+
+**Fix: Pure UTC Storage Throughout**
+Removed all `.AddHours(1)` timezone adjustments from server-side code and stored all timestamps as pure UTC.
+
+**UI Display Only:**
+Added inline `.AddHours(1)` for display to users in WAT timezone.
+
+**Files Modified:**
+- Models/User.cs - Session.StartTime default initialization
+- Services/SessionService.cs - 6 methods updated
+- Components/Pages/SessionRecap.razor - Added .AddHours(1) for display only
+- Components/Shared/TimelineItem.razor - Added .AddHours(1) for display only
+
+### Prevention
+- Store all server-side timestamps as pure UTC - never add timezone offsets at storage time
+- Convert to local timezone only for display in the UI layer
+- Always log session duration in console to catch negative durations during development
+
+---
+
+## BUG-013: Lecturer Counted as Participant in Attendance
+
+**Date:** 2026-02-02  
+**Severity:** ?? Medium  
+**Component:** Attendance Scoring
+
+### Problem
+In session recap, the lecturer appeared in the participant list with an attendance score. Additionally, participants showed as "Unknown User" instead of their MatricNo.
+
+### Root Cause
+The `CalculateAttendanceScore()` method collected all IDs without checking if the ID belonged to the lecturer. Also attempted unnecessary name lookups.
+
+### Solution
+
+**Fix 1: Exclude Lecturer from Scoring**
+Added `allParticipantIds.Remove(session.LecturerId);` after collecting participant IDs.
+
+**Fix 2: Use MatricNo Directly**
+Removed `_userDetailsCache` and used `participantId` directly instead of looking up names.
+
+**Files Modified:**
+- Services/SessionService.cs - Removed cache, added lecturer exclusion, simplified handling
+- Components/Pages/SessionRecap.razor - Simplified participant display
+
+### Prevention
+- Always filter out lecturer/admin IDs when calculating participant-only metrics
+- Use `session.LecturerId` to identify and exclude the lecturer
+- Prefer simple IDs over name lookups for internal processing
+
+---
+
+## BUG-014: MessagingPanel Handlers Not Registered on Initial Load
+
+**Date:** 2026-02-02  
+**Severity:** ?? High  
+**Component:** MessagingPanel / SignalR Integration
+
+### Problem
+Messages wouldn't appear in the messaging panel on initial page load. Refreshing the page made messages suddenly appear.
+
+### Root Cause
+SignalR handlers were registered in `OnInitializedAsync()`, which runs before the `HubConnection` parameter is set by the parent component.
+
+### Solution
+
+**Fix: Register Handlers in OnParametersSetAsync**
+Moved handler registration to `OnParametersSetAsync()` where the `HubConnection` parameter is guaranteed to be available.
+
+Added connection tracking to detect when parent swaps connections and proper cleanup in `Dispose()`.
+
+**Files Modified:**
+- Components/Shared/MessagingPanel.razor - Moved handler registration to OnParametersSetAsync, added IDisposable
+
+### Prevention
+- Never register SignalR handlers in OnInitializedAsync when HubConnection is a parameter
+- Always use OnParametersSetAsync for parameter-dependent initialization
+- Implement IDisposable to clean up handlers on component disposal
+- Test messaging immediately after page load
+
+---
+
+## BUG-015: Issue Buttons Not Visible Until Page Refresh
+
+**Date:** 2026-02-02  
+**Severity:** ?? Medium  
+**Component:** IssueButtons / Component Lifecycle
+
+### Problem
+Students couldn't see the "Having Issues?" buttons until after refreshing the page.
+
+### Root Cause
+Same lifecycle issue as BUG-014. The component didn't have `OnParametersSetAsync()` to react when the `HubConnection` parameter was set.
+
+### Solution
+
+**Fix: Add OnParametersSetAsync Handler**
+Added `OnParametersSetAsync()` to trigger re-render when HubConnection becomes available.
+
+Added visual feedback showing "Connecting..." when HubConnection is null.
+
+**Files Modified:**
+- Components/Shared/IssueButtons.razor - Added OnParametersSetAsync, connection state feedback
+
+### Prevention
+- Any component depending on a Parameter for initialization must implement OnParametersSetAsync
+- Add visual feedback for loading/connecting states
+- Track initialization state with a boolean flag
+
+---
+
+## BUG-016: Session Join Input Not Updating in Real-Time
+
+**Date:** 2026-02-02  
+**Severity:** ?? Medium  
+**Component:** JoinSession / Input Binding
+
+### Problem
+When students typed a session code, the "Join Session" button remained disabled until they clicked outside the input field.
+
+### Root Cause
+Blazor's `@bind` directive uses the `onchange` event by default, which only fires when the input loses focus (blur), not on every keystroke.
+
+### Solution
+
+**Fix: Real-Time Input Binding**
+Added `@bind:event="oninput"` to update the binding on every keystroke instead of waiting for blur.
+
+**Files Modified:**
+- Components/Shared/JoinMethodCard.razor - Added `@bind:event="oninput"`
+
+### Prevention
+- Use `@bind:event="oninput"` for inputs that control button states
+- Use default `@bind` (onchange) for form submissions where validation should occur after field completion
+- Test input fields by typing without clicking away
+
+---
