@@ -14,6 +14,15 @@
     <Content Remove="figma\**" />
     <EmbeddedResource Remove="figma\**" />
     <None Remove="figma\**" />
+    <!-- Exclude Aspire sub-projects from this web project -->
+    <Compile Remove="VIIDII.AppHost\**" />
+    <Content Remove="VIIDII.AppHost\**" />
+    <EmbeddedResource Remove="VIIDII.AppHost\**" />
+    <None Remove="VIIDII.AppHost\**" />
+    <Compile Remove="VIIDII.ServiceDefaults\**" />
+    <Content Remove="VIIDII.ServiceDefaults\**" />
+    <EmbeddedResource Remove="VIIDII.ServiceDefaults\**" />
+    <None Remove="VIIDII.ServiceDefaults\**" />
   </ItemGroup>
 
   <ItemGroup>
@@ -27,6 +36,10 @@
     <PackageReference Include="Microsoft.AspNetCore.Components.QuickGrid" Version="9.0.0" />
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="9.0.0" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="VIIDII.ServiceDefaults\VIIDII.ServiceDefaults.csproj" />
   </ItemGroup>
 
 </Project>

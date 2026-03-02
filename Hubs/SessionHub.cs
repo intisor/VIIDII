@@ -254,10 +254,53 @@ namespace VIIDII.Hubs
         {
             var userId = await GetMatricNoForConnectionAsync();
 
+            // Transition peer to Signaling state (first contact)
+            if (_sessionService.TryTransitionPeer(peerId, Models.PeerTrigger.SessionStarted, out var newState))
+            {
+                await Clients.Group(sessionId).SendAsync("PeerStateChanged", peerId, userId, newState.ToString());
+            }
+
             // Only send to others in the group (not back to sender)
             // This prevents the lecturer from receiving their own peer ID
             await Clients.OthersInGroup(sessionId).SendAsync("ReceivePeerId", userId, peerId);
             Console.WriteLine($"Sent peer ID {peerId} for user {userId} to others in session {sessionId}");
+        }
+
+        /// <summary>
+        /// Called by JS interop when a WebRTC lifecycle event occurs (e.g., stream received, ICE restart, network drop).
+        /// Validates the transition via the DFA and broadcasts the new state.
+        /// </summary>
+        public async Task NotifyPeerStateChange(string sessionId, string peerId, string triggerName)
+        {
+            if (!Enum.TryParse<Models.PeerTrigger>(triggerName, ignoreCase: true, out var trigger))
+            {
+                Console.WriteLine($"[SessionHub] Invalid PeerTrigger: {triggerName}");
+                return;
+            }
+
+            var matricNo = await GetMatricNoForConnectionAsync();
+
+            if (_sessionService.TryTransitionPeer(peerId, trigger, out var newState))
+            {
+                await Clients.Group(sessionId).SendAsync("PeerStateChanged", peerId, matricNo, newState.ToString());
+                Console.WriteLine($"[SessionHub] Peer {peerId} ({matricNo}): {trigger} → {newState}");
+            }
+            else
+            {
+                Console.WriteLine($"[SessionHub] Rejected DFA transition for peer {peerId}: trigger={trigger}");
+            }
+        }
+
+        /// <summary>
+        /// Returns the current DFA states for all peers in a session.
+        /// Used by the lecturer's ParticipantPanel to display connection badges.
+        /// </summary>
+        public async Task GetPeerStates(string sessionId)
+        {
+            var states = _sessionService.GetPeerStatesForSession(sessionId)
+                .ToDictionary(kv => kv.Key, kv => kv.Value.ToString());
+
+            await Clients.Caller.SendAsync("ReceivePeerStates", states);
         }
 
         public async Task CreatePost(string sessionId, string content, bool isFile)

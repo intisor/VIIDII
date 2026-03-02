@@ -15,6 +15,49 @@ window.sessionInterop = (function () {
     let currentSessionId = null;
     let isLecturer = false;
 
+    // ── WebRTC DFA State Machine ──
+    // States: Idle → Signaling → Connecting → Connected → Degraded → Disconnected
+    const peerStates = new Map(); // peerId → current state string
+
+    const VALID_TRANSITIONS = Object.freeze({
+        'Idle':         { 'SessionStarted': 'Signaling' },
+        'Signaling':    { 'ReceivePeerId':  'Connecting' },
+        'Connecting':   { 'StreamReceived': 'Connected' },
+        'Connected':    { 'NetworkDrop':    'Degraded' },
+        'Degraded':     { 'IceRestart':     'Connecting', 'Timeout': 'Disconnected' },
+        'Disconnected': { 'ManualRejoin':   'Signaling' }
+    });
+
+    /**
+     * Attempt a DFA transition for a peer. Returns the new state or null if invalid.
+     */
+    function transitionState(peerId, trigger) {
+        const current = peerStates.get(peerId) || 'Idle';
+        const allowed = VALID_TRANSITIONS[current];
+        const next = allowed ? allowed[trigger] : undefined;
+
+        if (!next) {
+            console.warn(`[DFA-JS] Invalid transition: peer=${peerId}, current=${current}, trigger=${trigger}`);
+            return null;
+        }
+
+        peerStates.set(peerId, next);
+        console.log(`[DFA-JS] ${peerId}: ${current} --[${trigger}]--> ${next}`);
+        return next;
+    }
+
+    /**
+     * Called from C# via JSInterop when the server confirms a state change.
+     */
+    function onPeerStateChanged(peerId, state) {
+        peerStates.set(peerId, state);
+        console.log(`[DFA-JS] Server sync: peer=${peerId} state=${state}`);
+    }
+
+    function getPeerState(peerId) {
+        return peerStates.get(peerId) || 'Idle';
+    }
+
     // Initialize session context (called by Blazor)
     function initialize(sessionId, isLecturerRole, dotNetReference) {
         console.log(`Initializing sessionInterop: ${sessionId}, isLecturer: ${isLecturerRole}`);
@@ -91,6 +134,8 @@ window.sessionInterop = (function () {
 
             peer.on("open", (id) => {
                 console.log("Lecturer peer open:", id);
+                // DFA: Lecturer peer enters Signaling state
+                transitionState(id, 'SessionStarted');
                 // Notify Blazor that peer is ready
                 if (dotNetRef) {
                     dotNetRef.invokeMethodAsync('OnLecturerPeerReady', id);
@@ -319,7 +364,9 @@ window.sessionInterop = (function () {
             peer.on("open", (id) => {
                 clearTimeout(connectionTimeout);
                 console.log("*** STUDENT PEER OPEN:", id, "***");
-                
+                // DFA: Student peer enters Signaling state
+                transitionState(id, 'SessionStarted');
+
                 // Notify Blazor with peer ID so it can send to SignalR
                 if (dotNetRef) {
                     dotNetRef.invokeMethodAsync('OnStudentPeerReady', id)
@@ -359,6 +406,9 @@ window.sessionInterop = (function () {
 
     function handleIncomingCall(call, video) {
         console.log("Answering incoming call from:", call.peer);
+        // DFA: Receiving a call means we got a peerId → Connecting
+        const myId = peer ? peer.id : 'unknown';
+        transitionState(myId, 'ReceivePeerId');
         call.answer(); // Answer WITHOUT sending a stream back
 
         let streamTimeout = setTimeout(() => {
@@ -396,6 +446,10 @@ window.sessionInterop = (function () {
             isStreamAttached = true;
             attachedStreamId = remoteStream.id;
 
+            // DFA: Stream received → Connected
+            const myPeerId = peer ? peer.id : 'unknown';
+            transitionState(myPeerId, 'StreamReceived');
+
             if (video) {
                 console.log("Attaching remote stream to video element.");
                 video.srcObject = remoteStream;
@@ -427,6 +481,9 @@ window.sessionInterop = (function () {
 
         call.on("close", () => {
             console.log("Call closed.");
+            // DFA: Call close → NetworkDrop (may lead to Degraded → Disconnected)
+            const myPeerId = peer ? peer.id : 'unknown';
+            transitionState(myPeerId, 'NetworkDrop');
             window.currentCall = null;
             isStreamAttached = false;
             attachedStreamId = null;
@@ -466,6 +523,9 @@ window.sessionInterop = (function () {
             console.error("No local stream available");
             return { success: false, error: "No local stream" };
         }
+
+        // DFA: Lecturer initiating call → student transitions to Connecting
+        transitionState(studentPeerId, 'ReceivePeerId');
 
         console.log(`*** LECTURER CALLING STUDENT: ${studentPeerId} ***`);
         console.log("Local stream tracks:", localStream.getTracks().map(t => t.kind + ':' + t.enabled + ':' + t.readyState).join(', '));
@@ -924,6 +984,7 @@ window.sessionInterop = (function () {
         attachedStreamId = null;
         studentPeers = [];
         studentConnections.clear();
+        peerStates.clear();
         dotNetRef = null;
         window.dotNetRef = null; // Clear global reference
         currentSessionId = null;
@@ -1033,7 +1094,11 @@ window.sessionInterop = (function () {
         getBatteryLevel: getBatteryLevel,
         getNetworkStatus: getNetworkStatus,
         isTabVisible: isTabVisible,
-        setupTabVisibilityListener: setupTabVisibilityListener
+        setupTabVisibilityListener: setupTabVisibilityListener,
+        // DFA peer state machine
+        onPeerStateChanged: onPeerStateChanged,
+        getPeerState: getPeerState,
+        transitionState: transitionState
     };
 })();
 

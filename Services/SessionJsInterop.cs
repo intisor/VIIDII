@@ -109,6 +109,11 @@ public interface ISessionJsInterop
     /// Setup tab visibility change listener
     /// </summary>
     Task SetupTabVisibilityListenerAsync();
+
+    /// <summary>
+    /// Notify the JS peer state machine of a DFA state transition
+    /// </summary>
+    Task NotifyPeerStateAsync(string peerId, string state);
 }
 
 public class SessionJsInterop : ISessionJsInterop
@@ -408,6 +413,25 @@ public class SessionJsInterop : ISessionJsInterop
         {
             Console.WriteLine($"Error in SetupTabVisibilityListenerAsync: {ex.Message}");
             throw;
+        }
+    }
+
+    /// <summary>
+    /// Notify JS peer state machine of a DFA state transition
+    /// </summary>
+    public async Task NotifyPeerStateAsync(string peerId, string state)
+    {
+        try
+        {
+            await _jsRuntime.InvokeVoidAsync("sessionInterop.onPeerStateChanged", peerId, state);
+        }
+        catch (JSDisconnectedException)
+        {
+            Console.WriteLine("JS runtime disconnected during NotifyPeerStateAsync");
+        }
+        catch (JSException ex)
+        {
+            Console.WriteLine($"JS Error in NotifyPeerStateAsync: {ex.Message}");
         }
     }
 }

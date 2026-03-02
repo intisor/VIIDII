@@ -7,6 +7,71 @@ public class SessionService
 {
     private readonly ConcurrentDictionary<string, Session> _sessions = [];
 
+    /// <summary>
+    /// Tracks the DFA state of every peer connection, keyed by peerId.
+    /// Shared across all sessions — a peerId is globally unique.
+    /// </summary>
+    private readonly ConcurrentDictionary<string, PeerConnectionContext> _peerStates = [];
+
+    /// <summary>
+    /// Attempts a DFA state transition for the given peer.
+    /// Creates the context on first use (Idle state).
+    /// </summary>
+    /// <returns>True if the transition was valid and applied.</returns>
+    public bool TryTransitionPeer(string peerId, PeerTrigger trigger, out PeerState newState)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(peerId);
+
+        var ctx = _peerStates.GetOrAdd(peerId, static id => new PeerConnectionContext(id));
+        var result = ctx.TryTransition(trigger, out newState);
+
+        if (!result)
+        {
+            Console.WriteLine($"[DFA] Invalid transition: peer={peerId}, current={ctx.CurrentState}, trigger={trigger}");
+        }
+        else
+        {
+            Console.WriteLine($"[DFA] Transition: peer={peerId}, trigger={trigger} → {newState}");
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Gets the current DFA state for a peer, or null if no context exists.
+    /// </summary>
+    public PeerState? GetPeerState(string peerId)
+    {
+        return _peerStates.TryGetValue(peerId, out var ctx) ? ctx.CurrentState : null;
+    }
+
+    /// <summary>
+    /// Returns peer states for all peers in a session.
+    /// </summary>
+    public Dictionary<string, PeerState> GetPeerStatesForSession(string sessionId)
+    {
+        if (!_sessions.TryGetValue(sessionId, out var session))
+            return [];
+
+        var result = new Dictionary<string, PeerState>();
+        foreach (var peerId in session.ParticipantIds)
+        {
+            if (_peerStates.TryGetValue(peerId, out var ctx))
+            {
+                result[peerId] = ctx.CurrentState;
+            }
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Removes peer state tracking for a peer (e.g., on session end/leave).
+    /// </summary>
+    public void RemovePeerState(string peerId)
+    {
+        _peerStates.TryRemove(peerId, out _);
+    }
+
     // Define ParticipantScoreDetails here or ensure it's in Models/User.cs or a new Models/ParticipantScoreDetails.cs
     public class ParticipantScoreDetails
     {

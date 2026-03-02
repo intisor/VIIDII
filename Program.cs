@@ -6,6 +6,9 @@ using Microsoft.AspNetCore.Identity;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Add Aspire shared service defaults (OpenTelemetry, health checks, resilience)
+builder.AddServiceDefaults();
+
 // ===== TESTING MODE CONFIGURATION =====
 // Extended timeouts for development/debugging
 // For production, reduce these values to production-appropriate settings:
@@ -89,6 +92,9 @@ app.UseStaticFiles();
 app.UseRouting();
 app.UseSession();
 app.UseAntiforgery();
+
+// Map Aspire health check endpoints (/health, /alive)
+app.MapDefaultEndpoints();
 
 // Map Blazor components
 app.MapRazorComponents<App>()

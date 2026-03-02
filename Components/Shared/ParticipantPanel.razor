@@ -66,6 +66,10 @@
                          </div>
                          <div class="flex items-center gap-1.5 text-xs text-muted-foreground">
                             <span class="font-mono">@participant.Key</span>
+                            @{ var peerState = GetPeerConnectionState(participant.Key); }
+                            <span class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold @GetPeerStateBadgeClass(peerState)" title="WebRTC: @peerState">
+                                @GetPeerStateIcon(peerState) @peerState
+                            </span>
                          </div>
                     </div>
                     
@@ -108,6 +112,11 @@
 @code {
     [Parameter] public Dictionary<string, string> Participants { get; set; } = new();
     [Parameter] public Dictionary<string, Session.StudentStatus> ParticipantStatuses { get; set; } = new();
+    /// <summary>
+    /// Per-student WebRTC DFA state (MatricNo → state name string).
+    /// Populated from SessionHub "ReceivePeerStates" / "PeerStateChanged" events.
+    /// </summary>
+    [Parameter] public Dictionary<string, string> PeerConnectionStates { get; set; } = new();
     [Parameter] public HubConnection? HubConnection { get; set; }
     [Parameter] public string SessionId { get; set; } = string.Empty;
     [Parameter] public bool IsLecturer { get; set; }
@@ -117,6 +126,31 @@
     private int IssuesCount => ParticipantStatuses.Count(p => 
         p.Value == Session.StudentStatus.BatteryLow || 
         p.Value == Session.StudentStatus.DataFinished);
+
+    private string GetPeerConnectionState(string matricNo)
+    {
+        return PeerConnectionStates.TryGetValue(matricNo, out var state) ? state : "Idle";
+    }
+
+    private string GetPeerStateBadgeClass(string state) => state switch
+    {
+        "Connected" => "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
+        "Connecting" => "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
+        "Signaling" => "bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400",
+        "Degraded" => "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
+        "Disconnected" => "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
+        _ => "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"
+    };
+
+    private string GetPeerStateIcon(string state) => state switch
+    {
+        "Connected" => "\u25cf",     // ●
+        "Connecting" => "\u25cb",    // ○
+        "Signaling" => "\u25cc",     // ◌
+        "Degraded" => "\u25b2",      // ▲
+        "Disconnected" => "\u2715",  // ✕
+        _ => "\u2013"               // –
+    };
 
     private async Task PromptEngagement()
     {
