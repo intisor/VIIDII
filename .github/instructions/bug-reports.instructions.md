@@ -1228,3 +1228,88 @@ Added `@bind:event="oninput"` to update the binding on every keystroke instead o
 - Test input fields by typing without clicking away
 
 ---
+
+## BUG-017: `initial_hack` Branch Not Pointing to Target Commit After Local Creation
+
+**Date:** 2026-03-17  
+**Severity:** ?? High  
+**Component:** Git Workflow / Branch Management
+
+### Problem
+User attempted to create a branch `initial_hack` from commit `bbee31571d94bb11b47c22d8f0a757e65386e304` ("Update network stability check threshold" — the last commit before the project was renamed from FUTAMeet to VIIDII). After running `git switch -c initial_hack bbee31571d94bb11b47c22d8f0a757e65386e304`, the command reported success, but `git rev-parse HEAD` returned `0a0b276fbe19a155be3ce4043199435a46af6a77` instead of the target SHA, indicating the local branch was not anchored to the intended commit. The branch had not been pushed to origin.
+
+### Root Cause
+
+**1. Uncommitted local changes caused first checkout to abort**
+The `lockin` working tree had a modified `.vscode/tasks.json`. The first `git switch -c` failed with:
+```
+error: Your local changes to the following files would be overwritten by checkout:
+        .vscode/tasks.json
+Please commit your changes or stash them before you switch branches.
+```
+
+**2. Local `lockin` branch had unpushed commits**
+The local `lockin` HEAD was `0a0b276fbe19a155be3ce4043199435a46af6a77`, which is a commit that does not exist on `origin/lockin` (`bba3225045da25f931273db47642331bc3c206da`). This means the user had local-only commits on `lockin` that were never pushed.
+
+**3. Second `git switch -c` succeeded but HEAD confusion persisted**
+The second attempt at `git switch -c initial_hack bbee315...` succeeded (git printed "Switched to a new branch 'initial_hack'"). The `git rev-parse HEAD` result of `0a0b276` was either captured before the switch completed or the user's working copy state was inconsistent. The remote `initial_hack` branch **is** correctly set to `bbee31571d94bb11b47c22d8f0a757e65386e304` on origin.
+
+### Investigation Results
+
+**Confirmed:** `initial_hack` on `origin` is correctly at `bbee31571d94bb11b47c22d8f0a757e65386e304`:
+```
+bbee31571d94bb11b47c22d8f0a757e65386e304  refs/heads/initial_hack
+```
+
+Commit details:
+```
+commit bbee31571d94bb11b47c22d8f0a757e65386e304
+Author: intisor <abdulawwalintisor777@gmail.com>
+Date:   Thu Jun 19 08:36:28 2025 +0100
+
+    Update network stability check threshold
+    
+    Modified `isNetworkUnstableFallback` to increase the
+    unstable network threshold from 1000ms to 7000ms.
+```
+
+This is the last commit **before** `49d7866 rename project from Futameet to VIIDII`, making it the correct pre-rename snapshot the user wanted.
+
+### Solution
+
+**The remote branch is already correct.** To fix the local state and sync with origin:
+
+```bash
+# Step 1: Handle the .vscode/tasks.json change
+# Option A – discard it (if you don't need it):
+git restore .vscode/tasks.json
+
+# Option B – stash it (to restore on another branch later):
+git stash push -m "local vscode tasks changes"
+
+# Step 2: If you are NOT yet on initial_hack, switch to it
+git switch initial_hack
+
+# Step 3: Reset the local branch to match origin exactly
+git fetch origin
+git reset --hard origin/initial_hack
+
+# Step 4: Verify HEAD is correct
+git rev-parse HEAD
+# Expected: bbee31571d94bb11b47c22d8f0a757e65386e304
+
+# Step 5: (Optional) restore stashed tasks.json on lockin later
+git switch lockin
+git stash pop
+```
+
+**Files Modified:**
+- `.github/instructions/bug-reports.instructions.md` — documented this investigation and resolution steps
+
+### Prevention
+- Always run `git rev-parse HEAD` **after** `git switch -c` to confirm the branch points to the intended SHA before doing further work
+- When creating a branch from a specific SHA, stash or commit local changes first to avoid checkout conflicts
+- Push the new branch immediately after creation (`git push -u origin <branch>`) so origin is the source of truth
+- If `git switch -c` is interrupted by a dirty working tree error, resolve the conflict **before** retrying — do not simply retry without handling the change, as the branch may end up on an unexpected base
+
+---
