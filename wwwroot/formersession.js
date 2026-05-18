@@ -1,0 +1,959 @@
+﻿let localStream = null;
+let peer = null;
+let isStreamAttached = false;
+let attachedStreamId = null;
+let hasJoinedSession = false;
+let lastTabStatusUpdate = 0;
+const tabStatusThrottle = 50000; // 50 seconds
+let studentPeers = []; // Track student peer IDs
+const studentConnections = new Map(); // Track open data channels
+const fileChunks = new Map(); // Moved: Persist chunks across retries
+let originalStream = null; // Store original webcam stream
+
+
+const connection = new signalR.HubConnectionBuilder()
+    .withUrl("/sessionHub")
+    .withAutomaticReconnect()
+    .build();
+
+function getTimestamp() {
+    const options = {
+        timeZone: 'Africa/Lagos',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+    };
+    return `${new Date().toLocaleTimeString('en-US', options)}`;
+}
+
+connection.onclose((error) => {
+    console.error("SignalR connection closed.", error);
+    alert("Session connection lost. Please refresh or try again.");
+});
+
+connection.onreconnected(() => {
+    console.log("SignalR reconnected, rejoining session...");
+    const { sessionId } = window.sessionState || {};
+    if (sessionId && !window.isSessionLecturer) {
+        console.log("Reconnecting to session:", sessionId);
+        connection.invoke("JoinSession", sessionId);
+        tryConnect(sessionId);
+    }
+});
+
+connection.start().then(() => {
+    console.log("SignalR connection started.");
+    const { sessionId, isSessionStarted } = window.sessionState || {};
+    if (sessionId && isSessionStarted && window.isSessionLecturer && !localStream) {
+        console.log("Starting session as lecturer:", sessionId);
+        connection.invoke("StartSession", sessionId);
+    } else if (sessionId && !window.isSessionLecturer) {
+        console.log("Joining session as student:", sessionId);
+        connection.invoke("JoinSession", sessionId)
+            .then(() => console.log("JoinSession invoked successfully"))
+            .catch(err => console.error("JoinSession failed:", err));
+    }
+    if (sessionId) {
+        console.log("Loading initial messages for session:", sessionId);
+        connection.invoke("GetMessages", sessionId);
+    }
+}).catch(err => console.error("SignalR connection failed:", err));
+
+document.addEventListener("DOMContentLoaded", () => {
+    console.log("DOM fully loaded and parsed.");
+    if (window.isSessionLecturer) {
+        document.getElementById("postInput").style.display = "block";
+        document.getElementById("createPost").style.display = "block";
+        document.getElementById("fileInput").style.display = "inline-block";
+    }
+
+    const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    const sessionVideo = document.getElementById("sessionVideo");
+
+    if (sessionVideo && isMobile) {
+        const playOverlay = document.createElement('div');
+        playOverlay.innerHTML = '▶ Start Video';
+        playOverlay.style.cssText = `
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.8); color: white; padding: 15px 30px;
+            border-radius: 25px; cursor: pointer; z-index: 10; font-size: 16px;
+        `;
+        sessionVideo.parentNode.style.position = 'relative';
+        sessionVideo.parentNode.appendChild(playOverlay);
+
+        playOverlay.onclick = () => {
+            sessionVideo.play().then(() => {
+                playOverlay.remove();
+            }).catch(err => {
+                console.error("Play failed:", err);
+                alert("Unable to play video. Please check your connection.");
+            });
+        };
+    }
+});
+
+connection.on("StartSession", (sessionId) => {
+    console.log("StartSession event received for session:", sessionId);
+    if (hasJoinedSession) {
+        console.log("Already joined, attempting to reattach stream:", sessionId);
+        tryConnect(sessionId);
+        return;
+    }
+    hasJoinedSession = true;
+    const video = document.getElementById("sessionVideo");
+    console.log("Video Element Ready:", video);
+    if (video && video.srcObject) {
+        console.log("Stream already attached:", video.srcObject);
+        return;
+    }
+
+    if (window.isSessionLecturer) {
+        console.log("Setting up lecturer stream.");
+
+        window.startScreenShare = async function () {
+            try {
+                const screenStream = await navigator.mediaDevices.getDisplayMedia({
+                    audio: false,
+                    video: true,
+                });
+                console.log("Screen captured:", screenStream);
+
+                if (!originalStream) {
+                    originalStream = localStream;
+                }
+                localStream = screenStream;
+                if (video) {
+                    video.srcObject = screenStream;
+                }
+
+                // Notify students of stream change
+                await connection.invoke("NotifyStreamChange", sessionId, "screenshare")
+                    .catch(err => console.error("Failed to notify stream change:", err));
+
+                // Restart calls with webcam stream
+                for (const studentId of studentPeers) {
+                    const conn = studentConnections.get(studentId);
+                    if (conn) {
+                        console.log(`Restarting call for student: ${studentId}`);
+                        const call = peer.call(studentId, localStream);
+                        call.on("open", () => console.log(`Call restarted for ${studentId}`));
+                        call.on("error", (err) => console.error(`Call error for ${studentId}:`, err));
+                    }
+                }
+                const notifyAndRestartCalls = async (newStream, streamType) => {
+                    localStream = newStream;
+                    if (video) {
+                        video.srcObject = localStream;
+                        console.log(`Set ${streamType} stream.`);
+                    }
+                    await connection.invoke("NotifyStreamChange", sessionId, streamType)
+                        .catch(err => console.error("Failed to notify stream change:", err));
+                    for (const studentId of studentPeers) {
+                        const conn = studentConnections.get(studentId);
+                        if (conn) {
+                            console.log(`Restarting call for student: ${studentId}`);
+                            const call = peer.call(studentId, localStream);
+                            call.on("open", () => console.log(`Call restarted for ${studentId}`));
+                            call.on("error", (err) => console.error(`Call error for ${studentId}:`, err));
+                        }
+                    }
+                };
+                // Handle screen sharing stop
+                screenStream.getVideoTracks()[0].addEventListener('ended', async () => {
+                    console.log("Screen sharing stopped.");
+                    alert("Screen sharing stopped.");
+                    try {
+                        const webcamStream = originalStream || await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                        await notifyAndRestartCalls(webcamStream, "webcam");
+                    } catch (err) {
+                        console.error("Failed to revert to webcam:", err);
+                        alert("Failed to revert to webcam. Check permissions.");
+                    }
+                });
+            } catch (error) {
+                console.error("Error sharing screen:", error);
+                alert("Failed to share screen. Please check permissions.");
+            }
+        };
+        if (localStream && video && !video.srcObject) {
+            console.log("Attaching existing stream to video element.");
+            video.srcObject = localStream;
+            return;
+        }
+        navigator.mediaDevices.getUserMedia({video: { width: { ideal: 720 }, height: { ideal: 420 } }, audio: true })
+            .then(stream => {
+                console.log("Successfully obtained local stream:", stream);
+                localStream = stream;
+                window.localStream = stream;
+                if (video) {
+                    console.log("Attaching local stream to video element.");
+                    video.srcObject = stream;
+                }
+                peer = new Peer(sessionId, {
+                    config: {
+                        iceServers: [
+                            { urls: "stun:stun.l.google.com:19302" },
+                            { urls: "stun:freestun.net:3478" },
+                            {
+                                urls: ["turn:openrelay.metered.ca:80", "turn:openrelay.metered.ca:443"],
+                                username: "openrelayproject",
+                                credential: "openrelayproject"
+                            },
+                            {
+                                urls: "turn:freestun.net:3478",
+                                username: "free",
+                                credential: "free"
+                            }
+                        ]
+                    }
+                });
+                peer.on("open", () => {
+                    console.log("Lecturer peer open:", sessionId);
+                    connection.invoke("SessionStarted", sessionId).catch(err => console.error("Failed to broadcast SessionStarted:", err));
+                });
+                peer.on("connection", (conn) => {
+                    console.log("Student connection received:", conn.peer);
+                    conn.on("open", () => {
+                        console.log("Student connected, peer ID:", conn.peer);
+                        if (!conn.peer) {
+                            console.warn("Invalid student peer ID, skipping call");
+                            return;
+                        }
+                        studentConnections.set(conn.peer, conn); // Store connection
+
+                        const call = peer.call(conn.peer, localStream);
+                        call.on("open", () => console.log("Call to student opened:", conn.peer));
+                        call.on("error", (err) => console.error("Call error:", err));
+                    });
+                    conn.on("data", (data) => {
+                        console.log("Received student data:", data);
+                        if (data.type === "studentReady" && !studentPeers.includes(data.studentId)) {
+                            console.log(`Adding student peer ID: ${data.studentId}`);
+                            studentPeers.push(data.studentId);
+                        }
+                    });
+                    conn.on("close", () => {
+                        console.log("Student connection closed:", conn.peer);
+                        studentConnections.delete(conn.peer);
+                        studentPeers = studentPeers.filter(id => id !== conn.peer);
+                    });
+                });
+                peer.on("error", (err) => {
+                    console.error("Peer error:", err);
+                    if (err.type === "peer-unavailable") {
+                        console.warn("Student not found. They may have disconnected.");
+                    } else if (err.type === "server-disconnected") {
+                        alert("Lost connection to PeerServer. Reconnecting...");
+                        peer.reconnect();
+                    }
+                });
+            })
+            .catch(err => {
+                console.error("Failed to get local stream:", err);
+                alert("Unable to access webcam/microphone. Please check permissions.");
+            });
+    } else {
+        console.log("Setting up student to receive lecturer stream.");
+        setupStudentPeer(sessionId, video);
+    }
+});
+
+function setupStudentPeer(sessionId, video) {
+    if (peer && !peer.disconnected) {
+        console.log("Student peer exists:", peer.id);
+        tryConnect(sessionId);
+        return;
+    }
+    peer = new Peer({
+        config: {
+            iceServers: [
+                { urls: "stun:stun.l.google.com:19302" },
+                { urls: "stun:freestun.net:3478" },
+                {
+                    urls: ["turn:openrelay.metered.ca:80", "turn:openrelay.metered.ca:443"],
+                    username: "openrelayproject",
+                    credential: "openrelayproject"
+                },
+                {
+                    urls: "turn:freestun.net:3478",
+                    username: "free",
+                    credential: "free"
+                }
+            ]
+        }
+    });
+    peer.on("open", (id) => {
+        console.log("Student peer open:", id);
+        connection.invoke("SendPeerId", sessionId, id).catch(err => console.error("Failed to send peer ID:", err));
+        tryConnect(sessionId);
+    });
+    peer.on("call", (call) => {
+        console.log("Received lecturer call:", call.peer);
+        call.answer();
+        let streamTimeout = setTimeout(() => {
+            if (!isStreamAttached) {
+                console.warn("No stream received after 10s, retrying...");
+                call.close();
+                tryConnect(sessionId);
+            }
+        }, 10000);
+        call.on("stream", (remoteStream) => {
+            clearTimeout(streamTimeout);
+            console.log("Received lecturer stream:", remoteStream);
+            if (remoteStream.id === attachedStreamId) {
+                console.log("Ignoring duplicate stream, ID:", remoteStream.id);
+                return;
+            }
+            if (isStreamAttached) {
+                console.log("Stream already attached, ignoring new stream:", remoteStream.id);
+                return;
+            }
+            isStreamAttached = true;
+            attachedStreamId = remoteStream.id;
+            if (video) {
+                console.log("Attaching remote stream to video element.");
+                video.srcObject = remoteStream;
+                video.play().catch(err => {
+                    console.error("Playback failed:", err.message);
+                    if (isMobile) {
+                        // Rely on play overlay for mobile
+                        console.log("Mobile playback failed, waiting for user interaction.");
+                    } else {
+                        alert("Failed to play video. Please check your connection.");
+                    }
+                });
+            }
+        });
+        call.on("close", () => {
+            console.log("Call closed.");
+            window.currentCall = null;
+            isStreamAttached = false;
+            attachedStreamId = null;
+            if (video) {
+                video.srcObject = null;
+            }
+        });
+        call.on("error", (err) => console.error("Call error:", err));
+        // Store call for stream change handling
+        window.currentCall = call;
+    });
+   
+    peer.on("error", (err) => {
+        console.error("Peer error:", err);
+        if (err.type === "peer-unavailable") {
+            console.warn("Lecturer not available, retrying...");
+            setTimeout(() => tryConnect(sessionId), 3000);
+        } else if (err.type === "server-disconnected") {
+            console.warn("PeerServer disconnected, reconnecting...");
+            peer.reconnect();
+        }
+    });
+
+    // Handle stream change
+    connection.on("ReceiveStreamChange", (streamType) => {
+        console.log(`Received stream change: ${streamType}`);
+        if (window.currentCall) {
+            isStreamAttached = false;
+            attachedStreamId = null;
+            if (video) {
+                console.log("Clearing video for new stream.");
+                video.srcObject = null;
+            }
+        }
+    });
+}
+
+
+function tryConnect(sessionId, attempt = 1, maxAttempts = 15) {
+    console.log(`Attempting to connect to lecturer, attempt ${attempt}/${maxAttempts}`);
+    if (!peer || peer.disconnected) {
+        console.warn("Student peer not initialized or disconnected, reinitializing...");
+        const video = document.getElementById("sessionVideo");
+        setupStudentPeer(sessionId, video);
+        return;
+    }
+    const conn = peer.connect(sessionId);
+
+    conn.on("open", () => {
+        console.log("Connected to lecturer:", sessionId);
+        conn.send({ type: "studentReady", studentId: peer.id });
+    });
+    conn.on("data", (data) => {
+        console.log("Received data from lecturer:", data);
+        if (data.type === "fileChunk") {
+            console.log(`Received chunk ${data.index + 1}/${data.total} for ${data.fileName}, size: ${data.chunk.size} bytes`);
+            const fileKey = `${data.fileName}-${data.messageId}`;
+            if (!fileChunks.has(fileKey)) {
+                console.log(`Initializing chunk array for ${fileKey}, expecting ${data.total} chunks`);
+                fileChunks.set(fileKey, new Array(data.total));
+            }
+            fileChunks.get(fileKey)[data.index] = data.chunk;
+            console.log(`Stored chunk ${data.index + 1} for ${fileKey}, received chunks: ${fileChunks.get(fileKey).filter(Boolean).length}/${data.total}`);
+
+            if (fileChunks.get(fileKey).filter(Boolean).length === data.total) {
+                console.log(`All chunks received for ${fileKey}, reassembling file`);
+                const blob = new Blob(fileChunks.get(fileKey));
+                console.log(`File ${data.fileName} reassembled, size: ${blob.size} bytes`);
+                const url = URL.createObjectURL(blob);
+                console.log(`Created Blob URL: ${url}`);
+
+                const downloadLink = document.querySelector(`.file-download[data-file-id="${data.messageId}"]`);
+                if (downloadLink) {
+                    console.log(`Updating download link for ${data.messageId}`);
+                    downloadLink.href = url;
+                    downloadLink.download = data.fileName;
+                    downloadLink.textContent = "Download";
+                } else {
+                    console.warn(`Download link not found for messageId: ${data.messageId}`);
+                }
+
+                console.log(`Triggering auto-download for ${data.fileName}`);
+                const tempLink = document.createElement("a");
+                tempLink.href = url;
+                tempLink.download = data.fileName;
+                document.body.appendChild(tempLink);
+                tempLink.click();
+                document.body.removeChild(tempLink);
+
+                console.log(`Cleaning up chunks for ${fileKey}`);
+                fileChunks.delete(fileKey);
+            }
+        }
+    });
+    conn.on("error", (err) => {
+        console.error("Connection error:", err);
+        if (attempt < maxAttempts && err.type === "peer-unavailable") {
+            console.warn(`Retrying connection (attempt ${attempt + 1}/${maxAttempts})...`);
+            setTimeout(() => tryConnect(sessionId, attempt + 1, maxAttempts), 3000);
+        } else {
+            console.error("Max connection attempts reached or fatal error:", err);
+            alert("Unable to connect to the session video. Please check your network and try again.");
+        }
+    });
+}
+
+connection.on("SessionStarted", (sessionId) => {
+    console.log("Session started by lecturer:", sessionId);
+    if (!window.isSessionLecturer) {
+        tryConnect(sessionId);
+    }
+});
+
+// Add this to your existing connection.on handlers
+connection.on("SessionEnded", (sessionId) => {
+    console.log("Session ended:", sessionId);
+
+    // Clear video stream if any
+    const video = document.getElementById("sessionVideo");
+    if (video) {
+        video.srcObject = null;
+    }
+
+    // Clean up PeerJS connections
+    if (peer) {
+        peer.destroy();
+        peer = null;
+    }
+
+    // Clean up local stream
+    if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+        localStream = null;
+    }
+
+    // Show message to user
+    const messagePopup = document.getElementById("messagePopup");
+    if (messagePopup) {
+        messagePopup.innerHTML = "<p>Session has ended</p>";
+        messagePopup.classList.add("show");
+    }
+
+    // Redirect after a short delay
+    setTimeout(() => {
+        if (!window.isSessionLecturer) {
+            window.location.href = '/Login';
+        } else {
+            window.location.href = `/SessionRecap?sessionId=${sessionId}`;
+        }
+    }, 2000);
+});
+
+// Add this to handle clean disconnection when the page is closed/navigated away
+window.addEventListener('beforeunload', () => {
+    if (peer) {
+        peer.destroy();
+    }
+    if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+    }
+});
+
+// Update the connection error handling to check for session end
+connection.onclose((error) => {
+    console.error("SignalR connection closed.", error);
+    // Only show reconnection message if session hasn't ended
+    if (!sessionHasEnded) {
+        alert("Session connection lost. Please refresh or try again.");
+    }
+});
+
+// === Messaging Logic ===
+document.getElementById("createPost")?.addEventListener("click", () => {
+    const input = document.getElementById("postInput");
+    const fileInput = document.getElementById("fileInput");
+    const discussion = document.getElementById("discussion");
+    const sessionId = discussion?.getAttribute("data-session-id");
+    console.log("Attempting to create post with sessionId:", sessionId);
+    if (fileInput?.files.length > 0 && sessionId && window.isSessionLecturer) {
+        const file = fileInput.files[0];
+        console.log(`Selected file: ${file.name}, size: ${file.size} bytes`);
+        if (file.size > 50 * 1024 * 1024) {
+            console.error("File too large (max 50MB)");
+            alert("File too large (max 50MB).");
+            return;
+        }
+        if (studentPeers.length === 0) {
+            console.warn("No students connected to send file to");
+            alert("No students connected.");
+            return;
+        }
+        const fileMessageContent = `File: ${file.name}`;
+        console.log(`Creating file message: ${fileMessageContent}`);
+        connection.invoke("CreatePost", sessionId, fileMessageContent, true)
+            .then(() => console.log("File message created successfully"))
+            .catch(err => {
+                console.error("Failed to create file message:", err);
+                alert("Failed to send file.");
+            });
+
+        const chunkSize = 1024 * 1024; // 1MB
+        const chunks = [];
+        for (let start = 0; start < file.size; start += chunkSize) {
+            chunks.push(file.slice(start, start + chunkSize));
+        }
+        console.log(`Created ${chunks.length} chunks for ${file.name}, chunk size: ${chunkSize} bytes`);
+
+        for (const studentId of studentPeers) {
+            const conn = studentConnections.get(studentId);
+            if (!conn) {
+                console.warn(`No open connection for student: ${studentId}, skipping`);
+                continue;
+            }
+            console.log(`Sending ${chunks.length} chunks to student: ${studentId}`);
+            chunks.forEach((chunk, index) => {
+                console.log(`Sending chunk ${index + 1}/${chunks.length} for ${file.name} to ${studentId}, size: ${chunk.size} bytes`);
+                conn.send({
+                    type: "fileChunk",
+                    fileName: file.name,
+                    chunk,
+                    index,
+                    total: chunks.length,
+                    messageId: fileMessageContent
+                });
+            });
+            conn.on("error", (err) => console.error(`Failed to send to ${studentId}:`, err));
+        }
+        console.log(`Cleared inputs after sending file: ${file.name}`);
+        fileInput.value = "";
+        input.value = "";
+    }
+    else if (input && sessionId && window.isSessionLecturer) {
+        const messageContent = input.value.trim();
+        if (messageContent) {
+            // Client-side rendering of the post is removed.
+            // The server will send the post back via ReceivePost, which will handle rendering.
+            connection.invoke("CreatePost", sessionId, messageContent, false)
+                .catch(err => console.error("CreatePost Hub error:", err));
+            // Input is cleared in PostCreated handler now, or could be cleared here if preferred.
+        }
+    }
+}, { once: false });
+
+connection.on("ReceivePost", (message) => {
+    const discussion = document.getElementById("discussion");
+    if (discussion) {
+        const messageBox = document.createElement("div");
+        messageBox.className = "message-box  lecturer-msg";
+        //const messageDiv = document.createElement("div");
+        //messageDiv.className = "message lecturer-msg"; // Added 'message' class
+        //messageDiv.setAttribute("data-post-id", message.id);
+
+        let contentHtml = message.content;
+        let isFileMessage = message.content.startsWith("File:");
+        if (isFileMessage && !window.isSessionLecturer) {
+            const fileName = message.content.replace("File: ", "");
+            contentHtml = `${fileName} <a href="#" class="file-download" data-file-id="${message.content}">Download</a>`;
+        }
+        messageBox.innerHTML = `
+            <div class="username">${message.userName || "Lecturer"}</div>
+            <div class="message" data-post-id="${message.id}">
+                <div class="content">${contentHtml}</div>
+                <div class="message-footer">
+                    <div class="timestamp">${getTimestamp()}</div>
+                    <button class="reply-btn">Reply</button>
+                </div>
+            </div>
+        `;
+        discussion.appendChild(messageBox);
+        discussion.scrollTop = discussion.scrollHeight;
+
+        messageBox.querySelector(".reply-btn").addEventListener("click", () => {
+            const replyArea = document.getElementById("replyArea");
+            const replyInput = document.getElementById("replyInput");
+            if (replyArea && replyInput) {
+                replyArea.style.display = "block";
+                replyInput.dataset.postId = message.id;
+            }
+        });
+    }
+});
+
+connection.on("ReceiveComment", (comment) => {
+    const discussion = document.getElementById("discussion");
+    if (discussion) {
+        const parentMessage = discussion.querySelector(`[data-post-id="${comment.parentId}"]`);
+        if (parentMessage) {
+            const messageBox = document.createElement("div");
+            //const messageDiv = document.createElement("div");
+            // Determine if the comment is from the current user or another student/lecturer
+            let messageClass = "student-msg";
+            if (comment.userId === window.currentUserId) {
+                messageClass = "self-reply-msg"; 
+            } else if (comment.isLecturerPost) { // Check if the commenter is a lecturer
+                messageClass = "lecturer-reply-msg";
+            } else {
+                messageClass = "student-reply-msg";
+            }
+            messageBox.className = `message-box ${messageClass}`;
+            //messageDiv.className = messageClass;
+            messageBox.innerHTML = `
+                <div class="username">${comment.userName || "User"}</div>
+                <div class="message" data-post-id="${comment.id}">
+                    <div class="content">${comment.content}</div>
+                    <div class="message-footer">
+                        <div class="timestamp">${getTimestamp()}</div>
+                    </div>
+                </div>
+            `;
+            parentMessage.parentNode.insertAdjacentElement("afterend", messageBox);
+            discussion.scrollTop = discussion.scrollHeight;
+        } else {
+            console.warn(`Parent post not found for comment with parentId: ${comment.parentId}`);
+        }
+    }
+});
+
+document.getElementById("sendReply")?.addEventListener("click", () => {
+    const input = document.getElementById("replyInput");
+    const replyArea = document.getElementById("replyArea");
+    const { sessionId } = window.sessionState || {};
+    const postId = input?.dataset.postId;
+    if (input && sessionId && postId) {
+        const replyContent = input.value.trim();
+        if (replyContent) {
+            connection.invoke("CreateComment", sessionId, postId, replyContent).catch(err => console.error("Hub error:", err));
+            input.value = "";
+            input.dataset.postId = "";
+            replyArea.style.display = "none";
+        }
+    }
+});
+
+connection.on("ReceiveMessages", (messages) => {
+    const discussion = document.getElementById("discussion");
+    if (discussion) {
+        discussion.innerHTML = ''; // Clear existing messages before loading all
+
+        const postElements = {}; // To store created post messageBox elements: { postId: element }
+
+        // First pass: Render all posts
+        messages.filter(m => m.isLecturerPost && m.parentId === m.id).forEach(message => {
+            const messageBox = document.createElement("div");
+            messageBox.className = "message-box lecturer-msg";
+            //const messageDiv = document.createElement("div");
+            //messageDiv.className = "message lecturer-msg";
+            //messageDiv.setAttribute("data-post-id", message.id);
+            messageBox.innerHTML = `
+                <div class="username">${message.userName || "Lecturer"}</div>
+                <div class="message" data-post-id="${message.id}">
+                    <div class="content">${message.content}</div>
+                    <div class="message-footer">
+                        <div class="timestamp">${getTimestamp()}</div>
+                        <button class="reply-btn">Reply</button>
+                    </div>
+                </div>
+            `;
+            discussion.appendChild(messageBox);
+            postElements[message.id] = messageBox; // Store the messageBox which is the parent for insertAdjacentElement
+
+            messageBox.querySelector(".reply-btn").addEventListener("click", () => {
+                const replyArea = document.getElementById("replyArea");
+                const replyInput = document.getElementById("replyInput");
+                if (replyArea && replyInput) {
+                    replyArea.style.display = "block";
+                    replyInput.focus();
+                    replyInput.dataset.postId = message.id;
+                }
+            });
+        });
+
+        // Second pass: Render all comments and attach them
+        // Sort comments by timestamp or ID to ensure they are appended in order relative to each other under the same post
+        const comments = messages.filter(m => m.parentId !== m.id).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp) || a.id.localeCompare(b.id));
+
+        comments.forEach(comment => {
+            const parentPostBox = postElements[comment.parentId];
+            if (parentPostBox) {
+                const messageBox = document.createElement("div");
+                //const messageDiv = document.createElement("div");
+                
+                let messageClass = "student-msg"; // Default
+                if (comment.userId === window.currentUserId) {
+                    messageClass = "self-reply-msg";
+                } else if (comment.isLecturerPost) { // Commenter is a lecturer
+                    messageClass = "lecturer-reply-msg";
+                } else { // Another student's reply
+                    messageClass = "student-reply-msg";
+                }
+                //messageDiv.className = messageClass;
+                messageBox.className = `message-box ${messageClass}`;
+                messageBox.innerHTML = `
+                    <div class="username">${comment.userName || "User"}</div>
+                    <div class="message" data-post-id="${comment.id}">
+                        <div class="content">${comment.content}</div>
+                        <div class="message-footer">
+                            <div class="timestamp">${getTimestamp()}</div>
+                        </div>
+                    </div>
+                `;
+                // Insert the new comment messageBox after the parentPostBox or after the last reply to parentPostBox
+                // To ensure replies are ordered correctly under a post, find the last reply to parentPostBox
+                let lastReplyToParent = parentPostBox;
+                let nextSibling = parentPostBox.nextElementSibling;
+                while(nextSibling && nextSibling.classList.contains('message-box')){
+                    // This logic assumes replies are directly after the post or other replies to the same post.
+                    // A more robust way would be to check if the message inside nextSibling is a reply to parentPostBox.id
+                    // For now, this simpler check might work if DOM structure is consistent.
+                    // To be very precise, we'd need to find the actual last reply to *this specific post*.
+                    // However, since we sorted comments, appending them sequentially after the parent post should work.
+                    lastReplyToParent = nextSibling;
+                    nextSibling = nextSibling.nextElementSibling;
+                }
+                lastReplyToParent.insertAdjacentElement("afterend", messageBox);
+
+            } else {
+                console.warn(`ReceiveMessages: Parent post with ID ${comment.parentId} not found for comment. Appending to end of discussion as orphan.`);
+                const messageBox = document.createElement("div");
+                //const messageDiv = document.createElement("div");
+                // Determine class for orphaned comment
+                let orphanMessageClass = "student-reply-msg"; // Default
+                if (comment.userId === window.currentUserId) {
+                    orphanMessageClass = "self-reply-msg";
+                } else if (comment.isLecturerPost) {
+                    orphanMessageClass = "lecturer-reply-msg";
+                }
+                messageBox.className = `message-box ${orphanMessageClass}`;
+                messageBox.innerHTML = `
+                    <div class="username">${comment.userName || "User"}</div>
+                    <div class="message" data-post-id="${comment.id}">
+                        <div class="content">${comment.content} (Orphaned: Parent post not found)</div>
+                        <div class="message-footer">
+                            <div class="timestamp">${getTimestamp()}</div>
+                        </div>
+                    </div>
+                `;
+                discussion.appendChild(messageBox);
+            }
+        });
+        discussion.scrollTop = discussion.scrollHeight;
+    }
+});
+
+connection.on("PostCreated", (postId) => {
+    // This handler is now primarily for UI cues specific to the sender, like clearing the input field.
+    // The actual message rendering and data-post-id attribute setting is handled by ReceivePost.
+    const input = document.getElementById("postInput");
+    if (input) {
+        input.value = ""; // Clear the input field after successful post creation.
+    }
+    console.log("PostCreated event received, postId:", postId);
+    // If there are other UI elements that need to react to the post being successfully created by the current user,
+    // those can be handled here. For example, temporarily disabling the post button until confirmation.
+});
+
+// Engagement Tracking
+connection.on("AreYouThere", () => {
+    if (window.isSessionLecturer) return;
+    const activityModal = document.getElementById("activityModal");
+    if (!activityModal) {
+        console.error("Activity modal not found in DOM");
+        return;
+    }
+    let bsModal = bootstrap.Modal.getInstance(activityModal) || new bootstrap.Modal(activityModal, { backdrop: false });
+    bsModal.show();
+    const confirmButton = document.getElementById("confirmActive");
+    const closeButton = activityModal.querySelector(".btn-close");
+    const hideModal = () => {
+        bsModal.hide();
+        const backdrop = document.querySelector(".modal-backdrop");
+        if (backdrop) backdrop.remove();
+        document.body.classList.remove("modal-open");
+    };
+    if (!confirmButton.dataset.listener) {
+        confirmButton.addEventListener("click", () => {
+            connection.invoke("ConfirmActive").catch(err => console.error("Failed to confirm active:", err));
+            hideModal();
+        });
+        confirmButton.dataset.listener = "true";
+    }
+    if (!closeButton.dataset.listener) {
+        closeButton.addEventListener("click", hideModal);
+        closeButton.dataset.listener = "true";
+    }
+});
+
+document.addEventListener("visibilitychange", () => {
+    if (window.isSessionLecturer) return;
+    const now = Date.now();
+    if (now - lastTabStatusUpdate < tabStatusThrottle) {
+        console.log("Throttled tab status update");
+        return;
+    }
+    lastTabStatusUpdate = now;
+    const isActive = !document.hidden;
+    connection.invoke("UpdateTabStatus", isActive)
+        .catch(err => console.error("Failed to update tab status:", err));
+});
+
+document.getElementById("flagBatteryLow")?.addEventListener("click", () => {
+    if (window.isSessionLecturer) return;
+    if ("getBattery" in navigator) {
+        navigator.getBattery().then(battery => {
+            let batteryLevel = battery.level * 100;
+            if (batteryLevel < 15) {
+                connection.invoke("FlagIssue", "BatteryLow")
+                    .catch(err => console.error("Failed to flag battery issue:", err));
+            } else {
+                alert(`Battery level is ${batteryLevel}%. Only flag if below 15%.`);
+            }
+        });
+    } else {
+        console.log("Battery API not supported, use a good browser.");
+    }
+});
+
+//  UPDATED flagDataFinished handler with network check:
+async function isNetworkUnstableFallback() {
+    const start = Date.now();
+    try {
+        await fetch("https://example.com/ping.txt", { cache: "no-store" });
+        const duration = Date.now() - start;
+        return duration > 7000;
+    } catch {
+        return true;
+    }
+}
+
+function isUnstableNetworkAPI(connection) {
+    const { effectiveType, downlink, rtt } = connection;
+    return (
+        effectiveType === "2g" || effectiveType === "slow-2g" ||
+        rtt > 300 || downlink < 0.5
+    );
+}
+
+document.getElementById("flagDataFinished")?.addEventListener("click", async () => {
+    if (window.isSessionLecturer) return;
+
+    let unstable = false;
+
+    if ("connection" in navigator) {
+        unstable = isUnstableNetworkAPI(navigator.connection);
+    } else {
+        unstable = await isNetworkUnstableFallback();
+    }
+
+    if (unstable) {
+        connection.invoke("FlagIssue", "DataFinished")
+            .catch(err => console.error("Failed to flag data issue:", err));
+    } else {
+        alert("Network is stable. Flag not sent.");
+    }
+});
+
+connection.on("ReceivePeerId", (userId, peerId) => {
+    console.log(`Received peer ID: ${peerId} for user: ${userId}`);
+    if (!window.isSessionLecturer) return;
+    if (!studentPeers.includes(peerId)) {
+        console.log(`Adding student peer ID: ${peerId}`);
+        studentPeers.push(peerId);
+    }
+});
+connection.on("ReceiveParticipants", (participants) => {
+    const panel = document.getElementById("participantPanel");
+    if (panel) {
+        console.log("Received participants:", participants);
+        panel.innerHTML = "";
+        const list = document.createElement("ul");
+        list.className = "list-group";
+        Object.entries(participants).forEach(([id, name]) => {
+            const item = document.createElement("li");
+            item.className = "list-group-item";
+            item.id = `participant-${id}`;
+            item.innerHTML = `<i class="fas fa-user me-2"></i>${name}`;
+            list.appendChild(item);
+        });
+        panel.appendChild(list);
+        console.log("Panel updated:", panel.innerHTML);
+    }
+});
+
+connection.on("ReceiveParticipantStatuses", (statuses) => {
+    if (!window.isSessionLecturer) return;
+    const panel = document.getElementById("participantPanel");
+    if (panel) {
+        console.log("Received statuses:", statuses);
+        Object.entries(statuses).forEach(([id, status]) => {
+            const item = document.getElementById(`participant-${id}`);
+            if (item) {
+                const name = item.textContent.split(" (")[0].replace(/<i[^>]*>.*<\/i>/, "").trim();
+                const statusString = mapStatusToString(status);
+                item.innerHTML = `<i class="${getStatusIcon(statusString)} me-2"></i>${name} (${statusString})`;
+                item.className = `list-group-item ${getStatusClass(statusString)}`;
+            }
+        });
+    }
+});
+
+function mapStatusToString(status) {
+    switch (String(status)) {
+        case "0": return "Active";
+        case "1": return "Inactive";
+        case "2": return "BatteryLow";
+        case "3": return "DataFinished";
+        case "4": return "Disconnected";
+        default: return String(status);
+    }
+}
+
+function getStatusIcon(status) {
+    switch (status) {
+        case "Active": return "fas fa-check-circle";
+        case "Inactive": return "fas fa-exclamation-circle";
+        case "BatteryLow": return "fas fa-battery-quarter";
+        case "DataFinished": return "fas fa-signal";
+        case "Disconnected": return "fas fa-times-circle";
+        default: return "fas fa-user";
+    }
+}
+
+function getStatusClass(status) {
+    switch (status) {
+        case "Active": return "list-group-item-success";
+        case "Inactive": return "list-group-item-warning";
+        case "BatteryLow": return "list-group-item-danger";
+        case "DataFinished": return "list-group-item-danger";
+        case "Disconnected": return "list-group-item-secondary";
+        default: return "";
+    }
+}
