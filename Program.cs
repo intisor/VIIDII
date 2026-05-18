@@ -23,10 +23,17 @@ builder.Services.AddDbContext<ViidiiDbContext>(options =>
 
 // Add application services
 builder.Services.AddScoped<UserService>();
+builder.Services.AddScoped<SessionRepository>();
+builder.Services.AddScoped<MessageRepository>();
+builder.Services.AddScoped<SessionPersistenceService>();
+builder.Services.AddScoped<MessagePersistenceService>();
+
+// Register session/message services as Singletons, but provide IServiceProvider for async persistence access
 builder.Services.AddSingleton<SessionService>();
 builder.Services.AddSingleton<MessageService>();
 builder.Services.AddSingleton<PasswordHasher<User>>();
 builder.Services.AddSingleton<AuthService>();
+builder.Services.AddSingleton<IServiceProvider>(sp => sp); // Explicit service provider for runtime access
 builder.Services.AddScoped<ISessionJsInterop, SessionJsInterop>();
 
 // Add hosted service for participant ping

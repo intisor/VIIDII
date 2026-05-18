@@ -7,6 +7,12 @@ public class SessionService
 {
     private readonly ConcurrentDictionary<string, Session> _sessions = [];
     private static Dictionary<string, string> _userDetailsCache = new(); // Static cache for user details
+    private readonly IServiceProvider _serviceProvider;
+
+    public SessionService(IServiceProvider serviceProvider)
+    {
+        _serviceProvider = serviceProvider;
+    }
 
     // Define ParticipantScoreDetails here or ensure it's in Models/User.cs or a new Models/ParticipantScoreDetails.cs
     public class ParticipantScoreDetails
@@ -59,9 +65,12 @@ public class SessionService
             session.AllowedLevels = Enum.GetValues(typeof(User.Levels)).Cast<User.Levels>().ToList();
         }
 
-
         session.Status = SessionStatus.Active;
         _sessions.TryAdd(session.SessionId, session);
+
+        // Persist to database asynchronously (fire and forget)
+        _ = PersistSessionCreationAsync(lecturerId, title, allowedDepartments, allowedLevels);
+
         return session;
     }
 
@@ -111,20 +120,21 @@ public class SessionService
         {
             if (!session.ParticipantEvents.ContainsKey(participantId))
             {
-                session.ParticipantEvents[participantId] = new List<(Session.StudentStatus status, DateTime timeStamp)>(); // Changed DateTimeOffset to DateTime
+                session.ParticipantEvents[participantId] = new List<(Session.StudentStatus status, DateTime timeStamp)>();
             }
-            var joinTime = DateTime.UtcNow.AddHours(1); // Changed DateTimeOffset to DateTime
+            var joinTime = DateTime.UtcNow.AddHours(1);
             if (joinTime > session.StartTime)
             {
                 var absentDuration = (joinTime - session.StartTime).TotalMinutes;
-                // Log disconnected for the duration of absence
                 session.ParticipantEvents[participantId].Add((Session.StudentStatus.Disconnected, session.StartTime));
-
                 Console.WriteLine($"JoinSession: {participantId} absent for {absentDuration:F1} min, Disconnected at {session.StartTime}, Active at {joinTime}");
             }
             session.ParticipantEvents[participantId].Add((Session.StudentStatus.Active, joinTime));
             Console.WriteLine($"Logged Active event for {participantId} joining started session at: {joinTime}");
         }
+
+        // Persist participant to database asynchronously
+        _ = PersistParticipantJoinAsync(sessionId, participantId);
 
         return (session, null);
     }   
@@ -144,6 +154,10 @@ public class SessionService
         session.Status = SessionStatus.Ended;
         session.EndTime = DateTime.UtcNow.AddHours(1);
         session.IsSessionStarted = false;
+
+        // Persist session end to database asynchronously
+        _ = PersistSessionEndAsync(sessionId, lecturerId);
+
         return session;
     }
     public Session StartSession(string sessionId)
@@ -427,6 +441,70 @@ public class SessionService
                 session.ParticipantIds.Add(participantId);
                 session.ParticipantStatuses[participantId] = Session.StudentStatus.Active;
             }
+        }
+    }
+
+    // Persistence helper methods
+    private async Task PersistSessionCreationAsync(string lecturerId, string title, List<User.Departments> allowedDepartments, List<User.Levels> allowedLevels)
+    {
+        try
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var persistenceService = scope.ServiceProvider.GetRequiredService<Data.SessionPersistenceService>();
+            await persistenceService.CreateAndPersistSessionAsync(lecturerId, title, allowedDepartments, allowedLevels);
+            Console.WriteLine($"[SessionService] Session '{title}' persisted for lecturer {lecturerId}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SessionService] Error persisting session creation: {ex.Message}");
+        }
+    }
+
+    private async Task PersistParticipantJoinAsync(string sessionId, string participantMatricNo)
+    {
+        try
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var persistenceService = scope.ServiceProvider.GetRequiredService<Data.SessionPersistenceService>();
+            var success = await persistenceService.AddParticipantAsync(sessionId, participantMatricNo);
+            if (success)
+                Console.WriteLine($"[SessionService] Participant {participantMatricNo} persisted in session {sessionId}");
+            else
+                Console.WriteLine($"[SessionService] Failed to persist participant {participantMatricNo} in session {sessionId}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SessionService] Error persisting participant join: {ex.Message}");
+        }
+    }
+
+    private async Task PersistSessionEndAsync(string sessionId, string lecturerId)
+    {
+        try
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var persistenceService = scope.ServiceProvider.GetRequiredService<Data.SessionPersistenceService>();
+            await persistenceService.EndAndPersistSessionAsync(sessionId, lecturerId);
+            Console.WriteLine($"[SessionService] Session {sessionId} end state persisted");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SessionService] Error persisting session end: {ex.Message}");
+        }
+    }
+
+    private async Task PersistSessionStartAsync(string sessionId)
+    {
+        try
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var persistenceService = scope.ServiceProvider.GetRequiredService<Data.SessionPersistenceService>();
+            await persistenceService.StartAndPersistSessionAsync(sessionId);
+            Console.WriteLine($"[SessionService] Session {sessionId} start state persisted");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SessionService] Error persisting session start: {ex.Message}");
         }
     }
 }

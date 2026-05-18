@@ -36,6 +36,12 @@ namespace VIIDII.Services
     public class MessageService
     {
         private readonly ConcurrentBag<Message> _messages = new ConcurrentBag<Message>();
+        private readonly IServiceProvider _serviceProvider;
+
+        public MessageService(IServiceProvider serviceProvider)
+        {
+            _serviceProvider = serviceProvider;
+        }
 
         public Message CreatePost(string sessionId, string userId, string userName, string content, bool isLecturer, bool isFile = false)
         {
@@ -56,7 +62,33 @@ namespace VIIDII.Services
             };
             message.parentId = message.id; // Set ParentId to itself for posts
             _messages.Add(message);
+
+            // Persist to database asynchronously
+            _ = PersistPostCreationAsync(sessionId, userId, content);
+
             return message;
+        }
+
+        private async Task PersistPostCreationAsync(string sessionId, string userId, string content)
+        {
+            try
+            {
+                using var scope = _serviceProvider.CreateScope();
+                var persistenceService = scope.ServiceProvider.GetRequiredService<Data.MessagePersistenceService>();
+                var userService = scope.ServiceProvider.GetRequiredService<UserService>();
+                var user = await userService.GetUserByMatricNoAsync(userId);
+                if (user == null)
+                {
+                    Console.WriteLine($"[MessageService] User {userId} not found for persistence");
+                    return;
+                }
+                await persistenceService.CreateAndPersistPostAsync(sessionId, userId, content);
+                Console.WriteLine($"[MessageService] Post persisted for {userId} in session {sessionId}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[MessageService] Error persisting post creation: {ex.Message}");
+            }
         }
 
         public Message CreateComment(string sessionId, string userId, string userName, string content, string postId, bool isLecturer)
@@ -83,7 +115,35 @@ namespace VIIDII.Services
             };
 
             _messages.Add(message);
+
+            // Persist to database asynchronously
+            _ = PersistCommentCreationAsync(sessionId, userId, content, postId);
+
             return message;
+        }
+
+        private async Task PersistCommentCreationAsync(string sessionId, string userId, string content, string postId)
+        {
+            try
+            {
+                using var scope = _serviceProvider.CreateScope();
+                var persistenceService = scope.ServiceProvider.GetRequiredService<Data.MessagePersistenceService>();
+                
+                // We need to look up the database Message.Id for the post
+                var dbPost = await persistenceService.GetMessageByIdAsync(int.Parse(postId));
+                if (dbPost == null)
+                {
+                    Console.WriteLine($"[MessageService] Post {postId} not found in database");
+                    return;
+                }
+
+                await persistenceService.CreateAndPersistCommentAsync(sessionId, userId, content, dbPost.Id);
+                Console.WriteLine($"[MessageService] Comment persisted for {userId} in session {sessionId}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[MessageService] Error persisting comment creation: {ex.Message}");
+            }
         }
 
         public List<Message> GetAllMessages(string sessionId)
@@ -112,7 +172,25 @@ namespace VIIDII.Services
                 Timestamp = DateTime.UtcNow
             });
 
+            // Persist reaction to database asynchronously
+            _ = PersistReactionAsync(messageId, userId, emoji);
+
             return true;
+        }
+
+        private async Task PersistReactionAsync(string messageId, string userId, string emoji)
+        {
+            try
+            {
+                using var scope = _serviceProvider.CreateScope();
+                var persistenceService = scope.ServiceProvider.GetRequiredService<Data.MessagePersistenceService>();
+                await persistenceService.AddReactionAsync(int.Parse(messageId), userId, emoji);
+                Console.WriteLine($"[MessageService] Reaction '{emoji}' from {userId} persisted for message {messageId}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[MessageService] Error persisting reaction: {ex.Message}");
+            }
         }
 
         public bool RemoveReaction(string sessionId, string messageId, string userId, string emoji)
