@@ -272,7 +272,7 @@ else
             State.SessionTitle = CurrentSession.Title;
             State.Status = CurrentSession.Status;
             State.IsSessionStarted = CurrentSession.IsSessionStarted;
-            State.IsLecturer = CurrentSession.LecturerId == State.CurrentUser.MatricNo;
+            State.IsLecturer = CurrentSession.LecturerMatricNo == State.CurrentUser.MatricNo;
 
             // Show test camera for lecturer before session starts
             if (State.IsLecturer && !State.IsSessionStarted)

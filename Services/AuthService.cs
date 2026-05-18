@@ -48,7 +48,7 @@ public class AuthService
 
             Console.WriteLine($"[AuthService] User found: {user.Name} with role {user.Role}");
             
-            var verificationResult = _passwordHasher.VerifyHashedPassword(user, user.Password, password);
+            var verificationResult = _passwordHasher.VerifyHashedPassword(user, user.PasswordHash, password);
             if (verificationResult == PasswordVerificationResult.Failed)
             {
                 Console.WriteLine($"[AuthService] Password verification failed for {matricNo}");

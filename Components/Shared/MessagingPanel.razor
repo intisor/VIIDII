@@ -160,7 +160,7 @@
     [Parameter] public HubConnection? HubConnection { get; set; }
     [Parameter] public string CurrentUserId { get; set; } = string.Empty;
 
-    private List<Message> Messages = new();
+    private List<VIIDII.Services.Message> Messages = new();
     private string NewMessageContent = "";
     private string ReplyContent = "";
     private string? ReplyingToMessageId = null;
@@ -176,9 +176,9 @@
         if (HubConnection == null) return;
 
         // Register SignalR handlers
-        HubConnection.On<Message>("ReceivePost", HandleReceivePost);
-        HubConnection.On<Message>("ReceiveComment", HandleReceiveComment);
-        HubConnection.On<List<Message>>("ReceiveMessages", HandleReceiveMessages);
+        HubConnection.On<VIIDII.Services.Message>("ReceivePost", HandleReceivePost);
+        HubConnection.On<VIIDII.Services.Message>("ReceiveComment", HandleReceiveComment);
+        HubConnection.On<List<VIIDII.Services.Message>>("ReceiveMessages", HandleReceiveMessages);
         HubConnection.On<string, string, string, bool>("ReceiveReaction", HandleReceiveReaction);
         HubConnection.On<string>("PostCreated", HandlePostCreated);
 
@@ -202,7 +202,7 @@
     }
 
     // SignalR Handlers
-    private async Task HandleReceivePost(Message message)
+    private async Task HandleReceivePost(VIIDII.Services.Message message)
     {
         if (message.sessionId != SessionId) return;
 
@@ -211,7 +211,7 @@
         await ScrollToBottom();
     }
 
-    private async Task HandleReceiveComment(Message comment)
+    private async Task HandleReceiveComment(VIIDII.Services.Message comment)
     {
         if (comment.sessionId != SessionId) return;
 
@@ -220,7 +220,7 @@
         await ScrollToBottom();
     }
 
-    private void HandleReceiveMessages(List<Message> messages)
+    private void HandleReceiveMessages(List<VIIDII.Services.Message> messages)
     {
         Messages = messages.Where(m => m.sessionId == SessionId).ToList();
         StateHasChanged();
@@ -422,9 +422,9 @@
     }
 
     // Helper Methods
-    private List<Message> GetPostMessages() => Messages.Where(m => m.parentId == m.id).OrderBy(m => m.createdAt).ToList();
+    private List<VIIDII.Services.Message> GetPostMessages() => Messages.Where(m => m.parentId == m.id).OrderBy(m => m.createdAt).ToList();
 
-    private List<Message> GetComments(string postId) => Messages.Where(m => m.parentId == postId && m.id != postId).OrderBy(m => m.createdAt).ToList();
+    private List<VIIDII.Services.Message> GetComments(string postId) => Messages.Where(m => m.parentId == postId && m.id != postId).OrderBy(m => m.createdAt).ToList();
 
     private string GetInitials(string name)
     {

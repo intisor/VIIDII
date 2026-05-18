@@ -190,7 +190,7 @@ namespace VIIDII.Hubs
                 return false;
             }
             var session = _sessionService.GetSessionById(sessionId);
-            return session != null && session.LecturerId == matricNo;
+            return session != null && session.LecturerMatricNo == matricNo;
         }
 
         public async Task UpdateTabStatus(bool isActive)

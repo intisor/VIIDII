@@ -1,8 +1,10 @@
 using VIIDII.Components;
+using VIIDII.Data;
 using VIIDII.Hubs;
 using VIIDII.Models;
 using VIIDII.Services;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -12,6 +14,12 @@ builder.Services.AddRazorComponents()
 
 // Add HTTP context accessor for session management
 builder.Services.AddHttpContextAccessor();
+
+// Add DbContext with SQL Server
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
+    ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
+builder.Services.AddDbContext<ViidiiDbContext>(options =>
+    options.UseSqlServer(connectionString));
 
 // Add application services
 builder.Services.AddSingleton<MockApiService>();
@@ -45,6 +53,13 @@ builder.Services.AddSignalR(options =>
 });
 
 var app = builder.Build();
+
+// Apply pending migrations and create database
+using (var scope = app.Services.CreateScope())
+{
+    var dbContext = scope.ServiceProvider.GetRequiredService<ViidiiDbContext>();
+    dbContext.Database.Migrate();
+}
 
 // Configure the HTTP request pipeline
 if (!app.Environment.IsDevelopment())

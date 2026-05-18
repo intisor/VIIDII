@@ -34,7 +34,7 @@ public class SessionService
             return null;
 
         var existingSession = _sessions.Values
-            .FirstOrDefault(s => s.LecturerId == lecturerId && s.Status == SessionStatus.Active);
+            .FirstOrDefault(s => s.LecturerMatricNo == lecturerId && s.Status == SessionStatus.Active);
 
         if (existingSession != null)
         {
@@ -43,8 +43,10 @@ public class SessionService
             _sessions.TryRemove(existingSession.SessionId, out _);
         }
 
-        var session = new Session(lecturerId)
+        var session = new Session
         {
+            SessionId = GenerateSessionCode(),
+            LecturerMatricNo = lecturerId,
             Title = title,
             AllowedDepartments = allowedDepartments ?? new List<User.Departments>(),
             AllowedLevels = allowedLevels ?? new List<User.Levels>()
@@ -62,6 +64,9 @@ public class SessionService
         _sessions.TryAdd(session.SessionId, session);
         return session;
     }
+
+    private static string GenerateSessionCode() => $"{DateTime.UtcNow.AddHours(1):yyyyMMdd}-{string.Concat(Enumerable.Range(0, 6).Select(_ => (char)('A' + Random.Shared.Next(26))))}";
+
     public Session LeaveSession(string sessionId, string participantId)
     {
         if (!_sessions.TryGetValue(sessionId, out var session) || session.Status != SessionStatus.Active)
@@ -127,19 +132,17 @@ public class SessionService
     {
         if (!_sessions.TryGetValue(sessionId, out var session))
             return null;
-        return EndSession(sessionId, session.LecturerId);
+        return EndSession(sessionId, session.LecturerMatricNo);
     }
 
     public Session EndSession(string sessionId, string lecturerId)
     {
         if (!_sessions.TryGetValue(sessionId, out var session))
             return null;
-        if (session.LecturerId != lecturerId || (session.Status != SessionStatus.Started && session.Status != SessionStatus.Active))
+        if (session.LecturerMatricNo != lecturerId || (session.Status != SessionStatus.Started && session.Status != SessionStatus.Active))
             return null;
         session.Status = SessionStatus.Ended;
-        session.EndTime = DateTime.UtcNow.AddHours(1); // Changed DateTimeOffset to DateTime
-        // Don't clear participant IDs so we can still calculate scores
-        // session.ParticipantIds.Clear();
+        session.EndTime = DateTime.UtcNow.AddHours(1);
         session.IsSessionStarted = false;
         return session;
     }
@@ -170,7 +173,7 @@ public class SessionService
     public void RemoveSessionsByLecturer(string lecturerId)
     {
         var sessionsToRemove = _sessions.Values
-            .Where(s => s.LecturerId == lecturerId)
+            .Where(s => s.LecturerMatricNo == lecturerId)
             .Select(s => s.SessionId)
             .ToList();
 
@@ -222,7 +225,7 @@ public class SessionService
         _sessions.TryGetValue(sessionId, out var session) ? session : null;
     public List<Session> GetSessionsByLecturer(string lecturerId) =>
         _sessions.Values
-            .Where(s => s.LecturerId == lecturerId && (s.Status == SessionStatus.Active || s.Status == SessionStatus.Started))
+            .Where(s => s.LecturerMatricNo == lecturerId && (s.Status == SessionStatus.Active || s.Status == SessionStatus.Started))
             .ToList();
     public Session GetSessionByParticipant(string participantId) =>
         _sessions.Values

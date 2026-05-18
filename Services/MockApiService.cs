@@ -31,9 +31,8 @@ namespace VIIDII.Services
                 Role = role,
                 Department = department,
                 Level = level,
-                Password = string.Empty
+                PasswordHash = _passwordHasher.HashPassword(null!, password)
             };
-            user.Password = _passwordHasher.HashPassword(user, password);
             return user;
         }
 
