@@ -354,13 +354,13 @@ else
             return;
         }
 
-        LoadStatistics();
+        await LoadStatisticsAsync();
     }
 
-    private void LoadStatistics()
+    private async Task LoadStatisticsAsync()
     {
         // Get all users
-        AllUsers = AuthService.GetAllUsers();
+        AllUsers = await AuthService.GetAllUsersAsync();
         TotalUsers = AllUsers.Count;
         TotalLecturers = AllUsers.Count(u => u.Role == Role.Lecturer);
 
@@ -389,7 +389,7 @@ else
             Message = ended is not null
                 ? $"Session {sessionId} has been ended."
                 : "Session not found.";
-            LoadStatistics(); // Refresh data
+            _ = LoadStatisticsAsync(); // Refresh data
         }
         catch (Exception ex)
         {

@@ -10,14 +10,14 @@ namespace VIIDII.Services;
 /// </summary>
 public class AuthService
 {
-    private readonly MockApiService _apiService;
+    private readonly UserService _userService;
     private readonly PasswordHasher<User> _passwordHasher;
     private readonly IHttpContextAccessor _httpContextAccessor;
     private User? _currentUser;
 
-    public AuthService(MockApiService apiService, PasswordHasher<User> passwordHasher, IHttpContextAccessor httpContextAccessor)
+    public AuthService(UserService userService, PasswordHasher<User> passwordHasher, IHttpContextAccessor httpContextAccessor)
     {
-        _apiService = apiService;
+        _userService = userService;
         _passwordHasher = passwordHasher;
         _httpContextAccessor = httpContextAccessor;
     }
@@ -35,10 +35,7 @@ public class AuthService
                 return (false, "Matric No and Password are required", null);
             }
             
-            var users = MockApiService.GetUsers();
-            Console.WriteLine($"[AuthService] Total users in system: {users.Count}");
-            
-            var user = users.FirstOrDefault(u => u.MatricNo == matricNo);
+            var user = await _userService.GetUserByMatricNoAsync(matricNo);
 
             if (user == null)
             {
@@ -112,8 +109,8 @@ public class AuthService
         return httpContext?.Session.GetString("MatricNo") != null;
     }
 
-    public List<User> GetAllUsers()
+    public async Task<List<User>> GetAllUsersAsync()
     {
-        return MockApiService.GetUsers();
+        return await _userService.GetUsersAsync();
     }
 }

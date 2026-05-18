@@ -22,7 +22,7 @@ builder.Services.AddDbContext<ViidiiDbContext>(options =>
     options.UseSqlServer(connectionString));
 
 // Add application services
-builder.Services.AddSingleton<MockApiService>();
+builder.Services.AddScoped<UserService>();
 builder.Services.AddSingleton<SessionService>();
 builder.Services.AddSingleton<MessageService>();
 builder.Services.AddSingleton<PasswordHasher<User>>();
@@ -59,6 +59,9 @@ using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<ViidiiDbContext>();
     dbContext.Database.Migrate();
+    
+    // Seed initial data
+    await DatabaseSeeder.SeedAsync(dbContext);
 }
 
 // Configure the HTTP request pipeline
