@@ -471,6 +471,9 @@ else
             State.IsSessionStarted = true;
             State.ShowTestCameraSection = false;
 
+            StateHasChanged();
+            await Task.Yield();
+
             // Start webcam via JS interop
             var result = await SessionJsInterop.StartWebcamAsync(SessionId);
 

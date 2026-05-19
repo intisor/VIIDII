@@ -37,7 +37,11 @@ window.sessionInterop = (function () {
     async function startWebcam(sessionId) {
         console.log("Starting webcam for lecturer:", sessionId);
         
-        const video = document.getElementById("sessionVideo");
+        let video = document.getElementById("sessionVideo");
+        if (!video) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            video = document.getElementById("sessionVideo");
+        }
         if (!video) {
             console.error("Video element not found");
             throw new Error("Video element #sessionVideo not found");

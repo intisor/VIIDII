@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using VIIDII.Models;
 
 namespace VIIDII.Data
@@ -20,6 +21,20 @@ namespace VIIDII.Data
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
+
+            var departmentsComparer = new ValueComparer<List<User.Departments>>(
+                (left, right) =>
+                    ReferenceEquals(left, right) ||
+                    (left != null && right != null && left.SequenceEqual(right)),
+                list => list == null ? 0 : list.Aggregate(0, (hash, value) => HashCode.Combine(hash, value)),
+                list => list == null ? new List<User.Departments>() : list.ToList());
+
+            var levelsComparer = new ValueComparer<List<User.Levels>>(
+                (left, right) =>
+                    ReferenceEquals(left, right) ||
+                    (left != null && right != null && left.SequenceEqual(right)),
+                list => list == null ? 0 : list.Aggregate(0, (hash, value) => HashCode.Combine(hash, value)),
+                list => list == null ? new List<User.Levels>() : list.ToList());
 
             // User configuration
             modelBuilder.Entity<User>(entity =>
@@ -46,12 +61,14 @@ namespace VIIDII.Data
                 entity.Property(e => e.AllowedDepartments)
                     .HasConversion(
                         v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
-                        v => System.Text.Json.JsonSerializer.Deserialize<List<User.Departments>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new List<User.Departments>());
+                        v => System.Text.Json.JsonSerializer.Deserialize<List<User.Departments>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new List<User.Departments>())
+                    .Metadata.SetValueComparer(departmentsComparer);
 
                 entity.Property(e => e.AllowedLevels)
                     .HasConversion(
                         v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
-                        v => System.Text.Json.JsonSerializer.Deserialize<List<User.Levels>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new List<User.Levels>());
+                        v => System.Text.Json.JsonSerializer.Deserialize<List<User.Levels>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new List<User.Levels>())
+                    .Metadata.SetValueComparer(levelsComparer);
 
                 // Ignore in-memory only properties
                 entity.Ignore(e => e.ParticipantIds);

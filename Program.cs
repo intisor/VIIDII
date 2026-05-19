@@ -32,7 +32,7 @@ builder.Services.AddScoped<MessagePersistenceService>();
 builder.Services.AddSingleton<SessionService>();
 builder.Services.AddSingleton<MessageService>();
 builder.Services.AddSingleton<PasswordHasher<User>>();
-builder.Services.AddSingleton<AuthService>();
+builder.Services.AddScoped<AuthService>();
 builder.Services.AddSingleton<IServiceProvider>(sp => sp); // Explicit service provider for runtime access
 builder.Services.AddScoped<ISessionJsInterop, SessionJsInterop>();
 

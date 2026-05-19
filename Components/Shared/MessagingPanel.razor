@@ -202,64 +202,78 @@
     }
 
     // SignalR Handlers
-    private async Task HandleReceivePost(VIIDII.Services.Message message)
+    private Task HandleReceivePost(VIIDII.Services.Message message)
     {
-        if (message.sessionId != SessionId) return;
+        if (message.sessionId != SessionId) return Task.CompletedTask;
 
-        Messages.Add(message);
-        StateHasChanged();
-        await ScrollToBottom();
+        return InvokeAsync(() =>
+        {
+            Messages.Add(message);
+            StateHasChanged();
+        });
     }
 
-    private async Task HandleReceiveComment(VIIDII.Services.Message comment)
+    private Task HandleReceiveComment(VIIDII.Services.Message comment)
     {
-        if (comment.sessionId != SessionId) return;
+        if (comment.sessionId != SessionId) return Task.CompletedTask;
 
-        Messages.Add(comment);
-        StateHasChanged();
-        await ScrollToBottom();
+        return InvokeAsync(()
+            =>
+        {
+            Messages.Add(comment);
+            StateHasChanged();
+        });
     }
 
-    private void HandleReceiveMessages(List<VIIDII.Services.Message> messages)
+    private Task HandleReceiveMessages(List<VIIDII.Services.Message> messages)
     {
-        Messages = messages.Where(m => m.sessionId == SessionId).ToList();
-        StateHasChanged();
+        return InvokeAsync(() =>
+        {
+            Messages = messages.Where(m => m.sessionId == SessionId).ToList();
+            StateHasChanged();
+        });
     }
 
-    private void HandleReceiveReaction(string messageId, string userId, string emoji, bool isAdd)
+    private Task HandleReceiveReaction(string messageId, string userId, string emoji, bool isAdd)
     {
         var message = Messages.FirstOrDefault(m => m.id == messageId);
-        if (message == null) return;
+        if (message == null) return Task.CompletedTask;
 
-        if (isAdd)
+        return InvokeAsync(() =>
         {
-            if (!message.Reactions.Any(r => r.UserId == userId && r.Emoji == emoji))
+            if (isAdd)
             {
-                message.Reactions.Add(new Reaction
+                if (!message.Reactions.Any(r => r.UserId == userId && r.Emoji == emoji))
                 {
-                    UserId = userId,
-                    Emoji = emoji,
-                    Timestamp = DateTime.UtcNow
-                });
+                    message.Reactions.Add(new Reaction
+                    {
+                        UserId = userId,
+                        Emoji = emoji,
+                        Timestamp = DateTime.UtcNow
+                    });
+                }
             }
-        }
-        else
-        {
-            var reaction = message.Reactions.FirstOrDefault(r => r.UserId == userId && r.Emoji == emoji);
-            if (reaction != null)
+            else
             {
-                message.Reactions.Remove(reaction);
+                var reaction = message.Reactions.FirstOrDefault(r => r.UserId == userId && r.Emoji == emoji);
+                if (reaction != null)
+                {
+                    message.Reactions.Remove(reaction);
+                }
             }
-        }
 
-        StateHasChanged();
+            StateHasChanged();
+        });
     }
 
-    private void HandlePostCreated(string postId)
+    private Task HandlePostCreated(string postId)
     {
-        // Clear input after successful post
-        NewMessageContent = "";
-        StateHasChanged();
+        return InvokeAsync(() =>
+        {
+            // Clear input after successful post
+            NewMessageContent = "";
+            StateHasChanged();
+        });
     }
 
     // Message Sending
