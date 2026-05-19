@@ -240,6 +240,7 @@ else
     private bool _isDisposed = false;
     private bool _isNavigating = false; // Prevent render after navigation
     private bool IsLecturer => State.IsLecturer;
+    private bool _pendingStudentPeerSetup = false;
 
     // Lifecycle Methods
     protected override async Task OnInitializedAsync()
@@ -317,6 +318,7 @@ else
                 // If student and session already started, setup peer
                 if (!State.IsLecturer && State.IsSessionStarted)
                 {
+                    _pendingStudentPeerSetup = false;
                     await SetupStudentPeerConnectionAsync();
                 }
 
@@ -327,6 +329,11 @@ else
                 Console.WriteLine($"Error in OnAfterRenderAsync: {ex.Message}");
                 State.SetError($"Initialization error: {ex.Message}");
             }
+        }
+        else if (_pendingStudentPeerSetup && !State.IsLecturer)
+        {
+            _pendingStudentPeerSetup = false;
+            await SetupStudentPeerConnectionAsync();
         }
     }
 
@@ -680,9 +687,12 @@ else
 
         if (!State.IsLecturer && sessionId == SessionId)
         {
-            State.IsSessionStarted = true;
-            await SetupStudentPeerConnectionAsync();
-            StateHasChanged();
+            await InvokeAsync(() =>
+            {
+                State.IsSessionStarted = true;
+                _pendingStudentPeerSetup = true;
+                StateHasChanged();
+            });
         }
     }
 
@@ -702,9 +712,12 @@ else
                 // Clear storage
                 await ClearSessionStorageAsync();
 
-                // Show brief message
-                State.SetError("Session has ended");
-                StateHasChanged();
+                await InvokeAsync(() =>
+                {
+                    // Show brief message
+                    State.SetError("Session has ended");
+                    StateHasChanged();
+                });
 
                 await Task.Delay(2000);
 
@@ -726,14 +739,17 @@ else
         }
     }
 
-    private void OnReceivePeerId(string userId, string peerId)
+    private async Task OnReceivePeerId(string userId, string peerId)
     {
         Console.WriteLine($"ReceivePeerId: {userId} -> {peerId}");
 
         if (State.IsLecturer)
         {
-            State.AddStudentPeer(peerId, userId);
-            StateHasChanged();
+            await InvokeAsync(() =>
+            {
+                State.AddStudentPeer(peerId, userId);
+                StateHasChanged();
+            });
         }
     }
 
@@ -741,61 +757,74 @@ else
     {
         Console.WriteLine($"Stream change: {streamType}");
 
-        State.CurrentStreamType = streamType;
+        await InvokeAsync(() =>
+        {
+            State.CurrentStreamType = streamType;
+            StateHasChanged();
+        });
 
         if (!State.IsLecturer)
         {
             // Notify JS to handle stream change
             await SessionJsInterop.HandleStreamChangeAsync(streamType);
         }
-
-        StateHasChanged();
     }
 
-    private void OnReceiveParticipants(Dictionary<string, string> participants)
+    private async Task OnReceiveParticipants(Dictionary<string, string> participants)
     {
         Console.WriteLine($"Received participants: {participants.Count}");
 
-        foreach (var participant in participants)
+        await InvokeAsync(() =>
         {
-            State.AddParticipant(participant.Key, participant.Value);
-        }
+            foreach (var participant in participants)
+            {
+                State.AddParticipant(participant.Key, participant.Value);
+            }
 
-        StateHasChanged();
+            StateHasChanged();
+        });
     }
 
-    private void OnReceiveParticipantStatuses(Dictionary<string, string> statuses)
+    private async Task OnReceiveParticipantStatuses(Dictionary<string, string> statuses)
     {
         Console.WriteLine($"Received participant statuses: {statuses.Count}");
 
-        foreach (var status in statuses)
+        await InvokeAsync(() =>
         {
-            if (Enum.TryParse<Session.StudentStatus>(status.Value, out var studentStatus))
+            foreach (var status in statuses)
             {
-                State.UpdateParticipantStatus(status.Key, studentStatus);
+                if (Enum.TryParse<Session.StudentStatus>(status.Value, out var studentStatus))
+                {
+                    State.UpdateParticipantStatus(status.Key, studentStatus);
+                }
             }
-        }
 
-        StateHasChanged();
+            StateHasChanged();
+        });
     }
 
-    // Engagement Handler
-    private void OnAreYouThere()
+    private async Task OnAreYouThere()
     {
         Console.WriteLine("AreYouThere prompt received from lecturer");
 
-        if (!State.IsLecturer)
+        await InvokeAsync(() =>
         {
-            _showEngagementModal = true;
-        }
+            if (!State.IsLecturer)
+            {
+                _showEngagementModal = true;
+            }
 
-        StateHasChanged();
+            StateHasChanged();
+        });
     }
 
-    private void HideEngagementModal()
+    private async Task HideEngagementModal()
     {
-        _showEngagementModal = false;
-        StateHasChanged();
+        await InvokeAsync(() =>
+        {
+            _showEngagementModal = false;
+            StateHasChanged();
+        });
     }
 
     // JSInvokable Callbacks (called from JavaScript)

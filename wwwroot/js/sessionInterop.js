@@ -237,7 +237,13 @@ window.sessionInterop = (function () {
     async function setupStudentPeer() {
         console.log("Setting up student peer");
 
-        const video = document.getElementById("sessionVideo");
+        let video = document.getElementById("sessionVideo");
+        if (!video) {
+            for (let i = 0; i < 20 && !video; i++) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+                video = document.getElementById("sessionVideo");
+            }
+        }
         if (!video) {
             console.error("Video element not found");
             throw new Error("Video element #sessionVideo not found");
@@ -752,5 +758,7 @@ window.sessionInterop = (function () {
         setupTabVisibilityListener: setupTabVisibilityListener
     };
 })();
+
+
 
 
