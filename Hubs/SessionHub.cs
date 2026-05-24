@@ -12,12 +12,14 @@ namespace VIIDII.Hubs
     {
         private readonly MessageService _messageService;
         private readonly SessionService _sessionService;
+        private readonly UserService _userService;
         private static readonly ConcurrentDictionary<string, DateTime> _lastSeen = new();
 
-        public SessionHub(MessageService messageService, SessionService sessionService)
+        public SessionHub(MessageService messageService, SessionService sessionService, UserService userService)
         {
             _messageService = messageService;
             _sessionService = sessionService;
+            _userService = userService;
         }
 
         public async Task StartSession(string sessionId)
@@ -56,7 +58,12 @@ namespace VIIDII.Hubs
                 if (!string.IsNullOrEmpty(session.LecturerConnectionId))
                 {
                     // Send participant names instead of just IDs
-                    var participants = session.ParticipantIds.ToDictionary(id => id, id => MockApiService.GetUsers().FirstOrDefault(u => u.MatricNo == id)?.Name ?? id);
+                    var participants = new Dictionary<string, string>();
+                    foreach (var id in session.ParticipantIds)
+                    {
+                        var user = await _userService.GetUserByMatricNoAsync(id);
+                        participants[id] = user?.Name ?? id;
+                    }
                     await Clients.Client(session.LecturerConnectionId).SendAsync("ReceiveParticipants", participants);
                     Console.WriteLine($"Sent participants to lecturer: {string.Join(", ", participants.Keys)}");
                 }
@@ -157,7 +164,8 @@ namespace VIIDII.Hubs
         {
             var httpContext = Context.GetHttpContext();
             var matricNo = httpContext?.Session.GetString("MatricNo");
-            var userName = MockApiService.GetUsers().FirstOrDefault(s => s.MatricNo == matricNo).Name;
+            var user = await _userService.GetUserByMatricNoAsync(matricNo);
+            var userName = user?.Name ?? matricNo;
             var post = _messageService.CreatePost(sessionId, matricNo, userName, content, true,isFile);
             await Clients.Group(sessionId).SendAsync("ReceivePost", post); // Changed from Clients.Others to Clients.Group(sessionId)
             // Optionally, PostCreated can still be sent if the caller needs specific confirmation beyond receiving the post itself.
@@ -171,7 +179,8 @@ namespace VIIDII.Hubs
         {
             var httpContext = Context.GetHttpContext();
             var matricNo = httpContext?.Session.GetString("MatricNo");
-            var userName = MockApiService.GetUsers().FirstOrDefault(s => s.MatricNo == matricNo).Name;
+            var user = await _userService.GetUserByMatricNoAsync(matricNo);
+            var userName = user?.Name ?? matricNo;
             var isLecturer = await IsSessionLecturerAsync(sessionId, matricNo);
             var comment = _messageService.CreateComment(sessionId, matricNo, userName, content, postId, isLecturer);
             await Clients.Group(sessionId).SendAsync("ReceiveComment", comment);
