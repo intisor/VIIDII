@@ -38,6 +38,8 @@ builder.Services.AddScoped<ISessionJsInterop, SessionJsInterop>();
 
 // Add hosted service for participant ping
 builder.Services.AddHostedService<ParticipantPingService>();
+// Add hosted service for session cleanup
+builder.Services.AddHostedService<SessionCleanupService>();
 
 // Add distributed memory cache
 builder.Services.AddDistributedMemoryCache();

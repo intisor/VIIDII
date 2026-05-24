@@ -51,6 +51,7 @@
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime StartTime { get; set; }
         public DateTime? EndTime { get; set; }
+        public DateTime ExpiresAt { get; set; } = DateTime.UtcNow.AddHours(24);
         public required string Title { get; set; }
         public List<User.Departments> AllowedDepartments { get; set; } = new();
         public List<User.Levels> AllowedLevels { get; set; } = new();

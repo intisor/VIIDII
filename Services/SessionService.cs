@@ -33,14 +33,14 @@ public class SessionService
         var lecturers = MockApiService.GetLecturers();
         return lecturers.Any(l => l.MatricNo == matricNo);
     }
-    public Session CreateSession(string lecturerId, string title, List<User.Departments> allowedDepartments,List<User.Levels> allowedLevels, bool? replaceExisting = false)
+    public Session CreateSession(string lecturerId, string title, List<User.Departments> allowedDepartments, List<User.Levels> allowedLevels, bool? replaceExisting = false)
     {
         var lecturers = MockApiService.GetLecturers();
         if (!lecturers.Any(l => l.MatricNo == lecturerId))
             return null;
 
         var existingSession = _sessions.Values
-            .FirstOrDefault(s => s.LecturerMatricNo == lecturerId && s.Status == SessionStatus.Active);
+            .FirstOrDefault(s => s.LecturerMatricNo == lecturerId && s.Status == SessionStatus.Active && s.ExpiresAt > DateTime.UtcNow);
 
         if (existingSession != null)
         {
@@ -55,7 +55,9 @@ public class SessionService
             LecturerMatricNo = lecturerId,
             Title = title,
             AllowedDepartments = allowedDepartments ?? new List<User.Departments>(),
-            AllowedLevels = allowedLevels ?? new List<User.Levels>()
+            AllowedLevels = allowedLevels ?? new List<User.Levels>(),
+            CreatedAt = DateTime.UtcNow,
+            ExpiresAt = DateTime.UtcNow.AddHours(24)
         };
 
         session.AllowedDepartments = session.AllowedDepartments.Contains(User.Departments.Any) ? [.. Enum.GetValues<User.Departments>()] : session.AllowedDepartments;
@@ -87,8 +89,8 @@ public class SessionService
     }
     public (Session Session, string? Error) JoinSession(string sessionId, string participantId, string? connectionId)
     {
-        if (!_sessions.TryGetValue(sessionId, out var session) || session.Status == SessionStatus.Ended)
-            return (null, "Session not found or inactive.");
+        if (!_sessions.TryGetValue(sessionId, out var session) || session.Status == SessionStatus.Ended || session.ExpiresAt < DateTime.UtcNow)
+            return (null, "Session not found, inactive, or expired.");
         var user = MockApiService.GetUsers().FirstOrDefault(u => u.MatricNo == participantId);
         if (user is null)
             return (null, "Invalid user.");
@@ -248,6 +250,13 @@ public class SessionService
 
         if (_sessions.TryGetValue(sessionId, out var session))
         {
+            // Check if session has expired
+            if (session.ExpiresAt < DateTime.UtcNow)
+            {
+                Console.WriteLine($"[SessionService C#] Session {sessionId} has expired. Removing from cache.");
+                _sessions.TryRemove(sessionId, out _);
+                return null;
+            }
             Console.WriteLine($"[SessionService C#] Found session {sessionId} in-memory cache.");
             return session;
         }
@@ -260,6 +269,12 @@ public class SessionService
             var dbSession = await persistenceService.GetSessionWithParticipantsAsync(sessionId);
             if (dbSession != null)
             {
+                // Check if database session has expired
+                if (dbSession.ExpiresAt < DateTime.UtcNow)
+                {
+                    Console.WriteLine($"[SessionService C#] Session {sessionId} from database has expired.");
+                    return null;
+                }
                 // Reconstruct standard collections to avoid null references
                 dbSession.ParticipantIds ??= new HashSet<string>();
                 dbSession.ParticipantStatuses ??= new Dictionary<string, Session.StudentStatus>();
@@ -301,7 +316,9 @@ public class SessionService
 
     public List<Session> GetSessionsByLecturer(string lecturerId) =>
         _sessions.Values
-            .Where(s => s.LecturerMatricNo == lecturerId && (s.Status == SessionStatus.Active || s.Status == SessionStatus.Started))
+            .Where(s => s.LecturerMatricNo == lecturerId 
+                && (s.Status == SessionStatus.Active || s.Status == SessionStatus.Started)
+                && s.ExpiresAt > DateTime.UtcNow)
             .ToList();
 
     public async Task<List<Session>> GetSessionsByLecturerAsync(string lecturerId)
@@ -335,7 +352,8 @@ public class SessionService
         _sessions.Values
             .FirstOrDefault(s =>
                 (s.Status == SessionStatus.Started || s.Status == SessionStatus.Active)
-                && s.ParticipantIds.Contains(participantId));
+                && s.ParticipantIds.Contains(participantId)
+                && s.ExpiresAt > DateTime.UtcNow);
 
     public async Task<Session?> GetSessionByParticipantAsync(string participantId)
     {
@@ -343,7 +361,8 @@ public class SessionService
         var session = _sessions.Values
             .FirstOrDefault(s =>
                 (s.Status == SessionStatus.Started || s.Status == SessionStatus.Active)
-                && s.ParticipantIds.Contains(participantId));
+                && s.ParticipantIds.Contains(participantId)
+                && s.ExpiresAt > DateTime.UtcNow);
 
         if (session != null) return session;
 
