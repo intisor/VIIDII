@@ -9,186 +9,139 @@
 
 <style>
     .join-session-container {
-        max-width: 1200px;
+        max-width: 1100px;
         margin: 2rem auto;
-        padding: 2rem;
+        padding: 0 1.5rem;
+        display: flex;
+        flex-direction: column;
+        gap: 1.125rem;
     }
 
     .page-header {
-        background: linear-gradient(135deg, #8338EC 0%, #C19BF5 100%);
-        color: white;
-        padding: 2rem;
-        border-radius: 1rem;
-        margin-bottom: 2rem;
-        box-shadow: 0 8px 24px rgba(131, 56, 236, 0.2);
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--r-lg);
+        padding: 1.75rem;
     }
 
     .page-header h1 {
+        font-size: 1.625rem;
+        font-weight: 700;
+        margin-bottom: 0.375rem;
+        color: var(--text);
+    }
+    
+    .page-header p {
+        color: var(--text-mid);
+        font-size: 0.875rem;
         margin: 0;
-        font-size: 2rem;
     }
 
     .join-methods {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: 2rem;
-        margin-bottom: 2rem;
+        gap: 1.125rem;
     }
 
     .method-card {
-        background: white;
-        padding: 2rem;
-        border-radius: 1rem;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--r-lg);
+        padding: 1.375rem;
     }
 
     .method-card h2 {
-        color: #333;
-        font-size: 1.5rem;
-        margin-top: 0;
+        font-size: 0.9375rem;
+        font-weight: 600;
+        color: var(--text);
+        margin-bottom: 0.375rem;
+    }
+    
+    .method-card p {
+        color: var(--text-mid);
+        font-size: 0.875rem;
         margin-bottom: 1rem;
-    }
-
-    .form-group {
-        margin-bottom: 1.5rem;
-    }
-
-    .form-label {
-        display: block;
-        font-weight: 600;
-        margin-bottom: 0.5rem;
-        color: #333;
-    }
-
-    .form-control {
-        width: 100%;
-        padding: 0.75rem;
-        border: 2px solid #ddd;
-        border-radius: 0.5rem;
-        font-size: 1rem;
-        transition: border-color 0.3s ease;
-    }
-
-    .form-control:focus {
-        outline: none;
-        border-color: #8338EC;
-    }
-
-    .btn-primary {
-        width: 100%;
-        padding: 0.75rem;
-        background: linear-gradient(128.97deg, #8338EC 2.4%, #C19BF5 85.87%);
-        color: white;
-        border: none;
-        border-radius: 0.5rem;
-        font-size: 1rem;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.3s ease;
-    }
-
-    .btn-primary:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 16px rgba(131, 56, 236, 0.3);
     }
 
     .sessions-list {
-        background: white;
-        padding: 2rem;
-        border-radius: 1rem;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--r-lg);
+        padding: 1.375rem;
     }
 
     .sessions-list h2 {
-        color: #333;
-        font-size: 1.5rem;
-        margin-top: 0;
-        margin-bottom: 1.5rem;
+        font-size: 0.9375rem;
+        font-weight: 600;
+        color: var(--text);
+        margin-bottom: 1.125rem;
     }
 
     .session-item {
-        background: #f8f9fa;
-        padding: 1.5rem;
-        border-radius: 0.5rem;
-        margin-bottom: 1rem;
+        background: var(--surface-up);
+        border: 1px solid var(--border);
+        padding: 0.875rem 1rem;
+        border-radius: var(--r);
+        margin-bottom: 0.625rem;
         display: flex;
         justify-content: space-between;
         align-items: center;
-        transition: all 0.3s ease;
+        transition: border-color var(--t);
     }
 
     .session-item:hover {
-        background: #e9ecef;
-        transform: translateX(5px);
+        border-color: var(--border-mid);
     }
 
     .session-info h3 {
-        margin: 0 0 0.5rem 0;
-        color: #333;
-        font-size: 1.25rem;
+        margin: 0 0 0.2rem 0;
+        color: var(--text);
+        font-size: 0.875rem;
+        font-weight: 600;
     }
 
     .session-meta {
-        color: #666;
-        font-size: 0.875rem;
+        color: var(--text-mid);
+        font-size: 0.75rem;
     }
 
     .session-status {
-        padding: 0.5rem 1rem;
-        border-radius: 2rem;
-        font-size: 0.875rem;
-        font-weight: 600;
+        padding: 0.2rem 0.6rem;
+        border-radius: 100px;
+        font-size: 0.6875rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
     }
 
     .status-active {
-        background: #d4edda;
-        color: #155724;
+        background: var(--success-dim);
+        color: var(--success);
+        border: 1px solid rgba(34, 197, 94, 0.2);
     }
 
     .status-scheduled {
-        background: #fff3cd;
-        color: #856404;
+        background: var(--warning-dim);
+        color: var(--warning);
+        border: 1px solid rgba(245, 158, 11, 0.2);
     }
 
     .btn-join {
-        padding: 0.5rem 1.5rem;
-        background: #8338EC;
+        padding: 0.375rem 0.875rem;
+        background: var(--accent);
         color: white;
         border: none;
-        border-radius: 0.5rem;
+        border-radius: var(--r-sm);
         font-weight: 600;
+        font-size: 0.8125rem;
         cursor: pointer;
-        transition: all 0.3s ease;
+        transition: background var(--t);
         margin-left: 1rem;
+        font-family: inherit;
     }
 
     .btn-join:hover {
-        background: #6c2bcc;
-        transform: scale(1.05);
-    }
-
-    .alert {
-        padding: 1rem;
-        border-radius: 0.5rem;
-        margin-bottom: 1rem;
-    }
-
-    .alert-info {
-        background: #d1ecf1;
-        color: #0c5460;
-        border: 1px solid #bee5eb;
-    }
-
-    .alert-warning {
-        background: #fff3cd;
-        color: #856404;
-        border: 1px solid #ffeeba;
-    }
-
-    .alert-danger {
-        background: #f8d7da;
-        color: #721c24;
-        border: 1px solid #f5c6cb;
+        background: var(--accent-hover);
     }
 
     @@media (max-width: 768px) {
@@ -228,13 +181,13 @@ else
                     <label class="form-label">Session Code</label>
                     <input type="text" class="form-control" @bind="SessionCode" placeholder="Enter session code" />
                 </div>
-                <button class="btn-primary" @onclick="JoinByCode">Join Session</button>
+                <button class="btn-primary-custom" @onclick="JoinByCode">Join Session</button>
             </div>
 
             <div class="method-card">
                 <h2>Quick Join</h2>
                 <p>Join the most recent active session automatically.</p>
-                <button class="btn-primary" @onclick="JoinLatestSession">Join Latest Session</button>
+                <button class="btn-primary-custom" @onclick="JoinLatestSession">Join Latest Session</button>
             </div>
         </div>
 
@@ -295,8 +248,7 @@ else
     {
         try
         {
-            AvailableSessions = SessionService.GetAllSessions()
-                .Where(s => s.Status == SessionStatus.Active || s.IsSessionStarted)
+            AvailableSessions = (await SessionService.GetActiveSessionsAsync())
                 .Where(IsSessionAllowedForUser)
                 .OrderByDescending(s => s.IsSessionStarted)
                 .ThenByDescending(s => s.CreatedAt)
@@ -316,10 +268,10 @@ else
         var deptAllowed = session.AllowedDepartments.Contains(User.Departments.Any) ||
                           (CurrentUser.Department is not null && session.AllowedDepartments.Contains(CurrentUser.Department.Value));
 
-        var levelAllowed = session.AllowedLevels.Contains(User.Levels.Any) ||
-                           (CurrentUser.Level is not null && session.AllowedLevels.Contains(CurrentUser.Level.Value));
+        var lvlAllowed = session.AllowedLevels.Contains(User.Levels.Any) ||
+                         (CurrentUser.Level is not null && session.AllowedLevels.Contains(CurrentUser.Level.Value));
 
-        return deptAllowed && levelAllowed;
+        return deptAllowed && lvlAllowed;
     }
 
     private async Task JoinByCode()
@@ -335,7 +287,7 @@ else
 
         try
         {
-            var session = SessionService.GetSessionByCode(SessionCode);
+            var session = await SessionService.GetSessionByIdAsync(SessionCode);
             if (session != null)
             {
                 await JoinSelectedSession(session);
@@ -381,7 +333,7 @@ else
 
         try
         {
-            var session = SessionService.GetSession(sessionId);
+            var session = await SessionService.GetSessionByIdAsync(sessionId);
             if (session != null)
             {
                 await JoinSelectedSession(session);

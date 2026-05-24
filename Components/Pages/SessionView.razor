@@ -1,4 +1,5 @@
 @page "/session/{SessionId}"
+@layout SessionLayout
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @implements IAsyncDisposable
 @inject AuthService AuthService
@@ -31,15 +32,29 @@ else if (CurrentSession == null)
 else
 {
     <div class="session-container">
-        <!-- Session Header -->
+        <!-- Compact Top Bar -->
         <div class="session-header">
-            <h1>@CurrentSession.Title</h1>
-            <p>Session ID: <strong>@SessionId</strong></p>
-            <p>Status: <strong>@CurrentSession.Status</strong></p>
-            @if (State.IsLecturer && State.ParticipantCount > 0)
-            {
-                <span class="participant-badge">@State.ParticipantCount participant(s)</span>
-            }
+            <div class="session-header-left">
+                <h1>@CurrentSession.Title</h1>
+                @if (State.IsSessionStarted)
+                {
+                    <span class="live-badge"><span class="live-dot"></span>LIVE</span>
+                }
+                else
+                {
+                    <span class="status-badge">@CurrentSession.Status</span>
+                }
+            </div>
+            <div class="session-header-right">
+                <span class="session-code">@SessionId</span>
+                @if (State.IsLecturer && State.ParticipantCount > 0)
+                {
+                    <span class="participant-badge">
+                        <i class="fas fa-users"></i>
+                        @State.ParticipantCount
+                    </span>
+                }
+            </div>
         </div>
 
         <!-- Error Banner -->
@@ -88,10 +103,11 @@ else
             </div>
         }
 
-        <!-- Video Section -->
+        <!-- Session Body: sidebar layout -->
         @if (State.IsSessionStarted || State.IsTestingCamera)
         {
-            <div class="video-section">
+            <div class="session-body">
+                <div class="video-panel">
                 <div class="video-container" id="videoContainer">
                     <!-- Main Video Element -->
                     <video id="sessionVideo" 
@@ -165,55 +181,55 @@ else
                         </div>
                     }
                 </div>
-            </div>
-        }
+                </div> <!-- /video-panel -->
 
-        <!-- Tab Section (Messages & Participants) -->
-        @if (State.IsSessionStarted)
-        {
-            <div class="tab-section @(State.IsTabExpanded ? "expanded" : "")">
-                <!-- Tab Headers -->
-                <div class="tab-headers">
-                    <button class="tab-header @(State.ActiveTab == "messages" ? "active" : "")" 
-                            @onclick='() => State.SetTab("messages")'>
-                        <i class="fas fa-comments"></i>
-                        <span>Messages</span>
-                    </button>
-                    <button class="tab-header @(State.ActiveTab == "participants" ? "active" : "")" 
-                            @onclick='() => State.SetTab("participants")'>
-                        <i class="fas fa-users"></i>
-                        <span>Participants (@State.ParticipantCount)</span>
-                    </button>
-                    <button class="tab-toggle" @onclick="ToggleTabExpansion">
-                        <i class="fas fa-@(State.IsTabExpanded ? "compress" : "expand")"></i>
-                    </button>
-                </div>
+                <!-- Side Panel: chat + participants + issue buttons -->
+                @if (State.IsSessionStarted)
+                {
+                    <div class="side-panel">
+                        <div class="tab-section">
+                            <!-- Tab Headers -->
+                            <div class="tab-headers">
+                                <button class="tab-header @(State.ActiveTab == "messages" ? "active" : "")" 
+                                        @onclick='() => State.SetTab("messages")'>
+                                    <i class="fas fa-comments"></i>
+                                    <span>Messages</span>
+                                </button>
+                                <button class="tab-header @(State.ActiveTab == "participants" ? "active" : "")" 
+                                        @onclick='() => State.SetTab("participants")'>
+                                    <i class="fas fa-users"></i>
+                                    <span>Participants (@State.ParticipantCount)</span>
+                                </button>
+                            </div>
 
-                <!-- Tab Content -->
-                <div class="tab-content">
-                    @if (State.ActiveTab == "messages")
-                    {
-                        <MessagingPanel SessionId="@SessionId"
-                                       IsLecturer="@State.IsLecturer"
-                                       HubConnection="@_hubConnection"
-                                       CurrentUserId="@(State.CurrentUser?.MatricNo ?? "")" />
-                    }
-                    else
-                    {
-                        <ParticipantPanel Participants="@State.Participants"
-                                         ParticipantStatuses="@State.ParticipantStatuses"
-                                         HubConnection="@_hubConnection"
-                                         SessionId="@SessionId"
-                                         IsLecturer="@State.IsLecturer" />
-                    }
-                </div>
-            </div>
-        }
+                            <!-- Tab Content -->
+                            <div class="tab-content">
+                                @if (State.ActiveTab == "messages")
+                                {
+                                    <MessagingPanel SessionId="@SessionId"
+                                                   IsLecturer="@State.IsLecturer"
+                                                   HubConnection="@_hubConnection"
+                                                   CurrentUserId="@(State.CurrentUser?.MatricNo ?? "")" />
+                                }
+                                else
+                                {
+                                    <ParticipantPanel Participants="@State.Participants"
+                                                     ParticipantStatuses="@State.ParticipantStatuses"
+                                                     HubConnection="@_hubConnection"
+                                                     SessionId="@SessionId"
+                                                     IsLecturer="@State.IsLecturer" />
+                                }
+                            </div>
+                        </div>
 
-        <!-- Issue Buttons (Student Only) -->
-        @if (!State.IsLecturer && State.IsSessionStarted)
-        {
-            <IssueButtons HubConnection="@_hubConnection" />
+                        <!-- Issue flags (student only, inside side panel) -->
+                        @if (!State.IsLecturer)
+                        {
+                            <IssueButtons HubConnection="@_hubConnection" />
+                        }
+                    </div>
+                }
+            </div> <!-- /session-body -->
         }
     </div>
 
@@ -245,25 +261,30 @@ else
     // Lifecycle Methods
     protected override async Task OnInitializedAsync()
     {
+        Console.WriteLine($"[SessionView C#] OnInitializedAsync started. SessionId: {SessionId}");
         try
         {
             // Load user FIRST
             State.CurrentUser = await AuthService.GetCurrentUserAsync();
             if (State.CurrentUser == null)
             {
+                Console.WriteLine($"[SessionView C#] OnInitializedAsync: User not logged in, redirecting to /login");
                 _isNavigating = true;
                 Navigation.NavigateTo("/login", forceLoad: true);
                 return;
             }
+            Console.WriteLine($"[SessionView C#] Current User loaded: MatricNo={State.CurrentUser.MatricNo}, Name={State.CurrentUser.Name}");
 
             // Load session
-            CurrentSession = SessionService.GetSessionById(SessionId);
+            CurrentSession = await SessionService.GetSessionByIdAsync(SessionId);
             if (CurrentSession == null)
             {
+                Console.WriteLine($"[SessionView C#] OnInitializedAsync: Session {SessionId} not found in SessionService, redirecting to /dashboard");
                 _isNavigating = true;
                 Navigation.NavigateTo("/dashboard", forceLoad: true);
                 return;
             }
+            Console.WriteLine($"[SessionView C#] Loaded Session from SessionService: Title='{CurrentSession.Title}', Status={CurrentSession.Status}, Lecturer={CurrentSession.LecturerMatricNo}");
 
             // NOW try to restore state (after user is loaded)
             await TryRestoreSessionStateAsync();
@@ -275,9 +296,12 @@ else
             State.IsSessionStarted = CurrentSession.IsSessionStarted;
             State.IsLecturer = CurrentSession.LecturerMatricNo == State.CurrentUser.MatricNo;
 
+            Console.WriteLine($"[SessionView C#] Session initialized: IsLecturer={State.IsLecturer}, IsSessionStarted={State.IsSessionStarted}");
+
             // Show test camera for lecturer before session starts
             if (State.IsLecturer && !State.IsSessionStarted)
             {
+                Console.WriteLine($"[SessionView C#] Lecturer view - showing test camera section");
                 State.ShowTestCameraSection = true;
             }
 
@@ -289,35 +313,41 @@ else
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Critical error in OnInitializedAsync: {ex.Message}");
+            Console.WriteLine($"[SessionView C#] Critical error in OnInitializedAsync: {ex.Message}");
             State.SetError($"Failed to load session: {ex.Message}");
         }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        Console.WriteLine($"[SessionView C#] OnAfterRenderAsync. firstRender: {firstRender}, IsLecturer: {State.IsLecturer}, SessionStarted: {State.IsSessionStarted}");
         if (firstRender)
         {
             try
             {
                 // Check if mobile
                 State.IsMobileDevice = await SessionJsInterop.IsMobileAsync();
+                Console.WriteLine($"[SessionView C#] Mobile device check: IsMobile={State.IsMobileDevice}");
 
                 // Create DotNetObjectReference for callbacks
                 _dotNetRef = DotNetObjectReference.Create(this);
+                Console.WriteLine($"[SessionView C#] Created DotNetObjectReference for Javascript callback routing");
 
                 // Initialize JS interop
+                Console.WriteLine($"[SessionView C#] Initializing sessionInterop.js...");
                 await SessionJsInterop.InitializeAsync(SessionId, State.IsLecturer, _dotNetRef);
 
                 // Setup tab visibility listener for students
                 if (!State.IsLecturer)
                 {
+                    Console.WriteLine($"[SessionView C#] Student view - setting up tab visibility listener");
                     await SessionJsInterop.SetupTabVisibilityListenerAsync();
                 }
 
                 // If student and session already started, setup peer
                 if (!State.IsLecturer && State.IsSessionStarted)
                 {
+                    Console.WriteLine($"[SessionView C#] Student view - Session already started. Instantly triggering peer connection");
                     _pendingStudentPeerSetup = false;
                     await SetupStudentPeerConnectionAsync();
                 }
@@ -326,12 +356,13 @@ else
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error in OnAfterRenderAsync: {ex.Message}");
+                Console.WriteLine($"[SessionView C#] Error in OnAfterRenderAsync: {ex.Message}");
                 State.SetError($"Initialization error: {ex.Message}");
             }
         }
         else if (_pendingStudentPeerSetup && !State.IsLecturer)
         {
+            Console.WriteLine($"[SessionView C#] Triggering pending student peer setup on subsequent render");
             _pendingStudentPeerSetup = false;
             await SetupStudentPeerConnectionAsync();
         }
@@ -340,6 +371,7 @@ else
     // SignalR Setup
     private async Task SetupHubConnectionAsync()
     {
+        Console.WriteLine($"[SessionView C#] SetupHubConnectionAsync starting. Target Hub: {Navigation.ToAbsoluteUri("/sessionHub")}");
         try
         {
             _hubConnection = new HubConnectionBuilder()
@@ -351,15 +383,17 @@ else
 
             await _hubConnection.StartAsync();
             State.IsHubConnected = true;
+            Console.WriteLine($"[SessionView C#] SignalR connected. ConnectionId: {_hubConnection.ConnectionId}");
 
             // Join session
+            Console.WriteLine($"[SessionView C#] Sending JoinSession request to hub. SessionId: {SessionId}");
             await _hubConnection.SendAsync("JoinSession", SessionId);
 
-            Console.WriteLine($"SignalR connected and joined session: {SessionId}");
+            Console.WriteLine($"[SessionView C#] SignalR joined session: {SessionId}");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"SignalR connection error: {ex.Message}");
+            Console.WriteLine($"[SessionView C#] SignalR connection error: {ex.Message}");
             State.SetError("Failed to connect to session. Please refresh the page.");
         }
     }
@@ -397,12 +431,14 @@ else
     {
         if (State.IsTestingCamera) return; // Prevent multiple clicks
 
+        Console.WriteLine("[SessionView C#] [Lecturer] TestCamera invoked");
         try
         {
             State.IsTestingCamera = true;
             State.StartLoading("Starting camera test...");
 
             // Use test video element
+            Console.WriteLine("[SessionView C#] [Lecturer] Invoking browser getUserMedia for test video container...");
             var result = await JSRuntime.InvokeAsync<object>("eval", @"
                 (async () => {
                     try {
@@ -422,6 +458,7 @@ else
                 })()
             ");
 
+            Console.WriteLine($"[SessionView C#] [Lecturer] browser getUserMedia response: {System.Text.Json.JsonSerializer.Serialize(result)}");
             State.StopLoading();
             StateHasChanged();
         }
@@ -429,12 +466,13 @@ else
         {
             State.SetError($"Camera test failed: {ex.Message}");
             State.IsTestingCamera = false;
-            Console.WriteLine($"TestCamera error: {ex.Message}");
+            Console.WriteLine($"[SessionView C#] [Lecturer] TestCamera error: {ex.Message}");
         }
     }
 
     private async Task StopTestCamera()
     {
+        Console.WriteLine("[SessionView C#] [Lecturer] StopTestCamera invoked");
         try
         {
             await JSRuntime.InvokeVoidAsync("eval", @"
@@ -445,13 +483,14 @@ else
                     delete window.testStream;
                 }
             ");
+            Console.WriteLine("[SessionView C#] [Lecturer] Stopped local test stream tracks and cleared #testVideo");
 
             State.IsTestingCamera = false;
             StateHasChanged();
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error stopping test camera: {ex.Message}");
+            Console.WriteLine($"[SessionView C#] [Lecturer] Error stopping test camera: {ex.Message}");
             // Don't set error here, just log it
             State.IsTestingCamera = false;
         }
@@ -459,6 +498,7 @@ else
 
     private async Task StartSessionWithCamera()
     {
+        Console.WriteLine("[SessionView C#] [Lecturer] StartSessionWithCamera called (stopping camera test and starting session)");
         await StopTestCamera();
         await StartSession();
     }
@@ -466,14 +506,19 @@ else
     private async Task StartSession()
     {
         if (CurrentSession == null || !State.IsLecturer || State.IsLoading || State.IsWebcamActive)
+        {
+            Console.WriteLine($"[SessionView C#] [Lecturer] StartSession ignored: Session is null, not lecturer, already loading, or webcam already active");
             return;
+        }
 
+        Console.WriteLine($"[SessionView C#] [Lecturer] Starting Session. SessionId: {SessionId}");
         try
         {
             State.StartLoading("Starting session...");
 
             // Update session in service
-            SessionService.StartSession(SessionId);
+            Console.WriteLine($"[SessionView C#] [Lecturer] Calling SessionService.StartSessionAsync...");
+            await SessionService.StartSessionAsync(SessionId);
             CurrentSession.IsSessionStarted = true;
             State.IsSessionStarted = true;
             State.ShowTestCameraSection = false;
@@ -482,6 +527,7 @@ else
             await Task.Yield();
 
             // Start webcam via JS interop
+            Console.WriteLine($"[SessionView C#] [Lecturer] Calling SessionJsInterop.StartWebcamAsync...");
             var result = await SessionJsInterop.StartWebcamAsync(SessionId);
 
             // Parse result safely
@@ -498,7 +544,7 @@ else
                         State.IsWebcamActive = true;
                         State.StopLoading();
                         State.ClearError();
-                        Console.WriteLine("Webcam started successfully");
+                        Console.WriteLine("[SessionView C#] [Lecturer] Webcam started successfully on client side");
                     }
                     else
                     {
@@ -506,12 +552,13 @@ else
                             ? resultDict["error"].GetString() 
                             : "Unknown error";
                         State.SetError($"Camera failed: {error}. Please check permissions and try again.");
-                        Console.WriteLine($"Webcam start failed: {error}");
+                        Console.WriteLine($"[SessionView C#] [Lecturer] Webcam start failed: {error}");
                     }
                 }
             }
             else
             {
+                Console.WriteLine("[SessionView C#] [Lecturer] Webcam start returned null result");
                 State.SetError("Failed to start camera. Please refresh and try again.");
             }
 
@@ -519,15 +566,20 @@ else
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error starting session: {ex.Message}");
+            Console.WriteLine($"[SessionView C#] [Lecturer] Error starting session: {ex.Message}");
             State.SetError($"Failed to start session: {ex.Message}");
         }
     }
 
     private async Task ToggleScreenShare()
     {
-        if (!State.IsLecturer || !State.IsWebcamActive || State.IsLoading) return;
+        if (!State.IsLecturer || !State.IsWebcamActive || State.IsLoading)
+        {
+            Console.WriteLine("[SessionView C#] [Lecturer] ToggleScreenShare ignored: conditions not met");
+            return;
+        }
 
+        Console.WriteLine($"[SessionView C#] [Lecturer] ToggleScreenShare. Current state: IsScreenSharing={State.IsScreenSharing}");
         try
         {
             State.IsLoading = true;
@@ -537,10 +589,12 @@ else
             {
                 // Switch back to webcam - JS will handle this automatically when screen share stops
                 State.IsScreenSharing = false;
+                Console.WriteLine("[SessionView C#] [Lecturer] Disabling ScreenShare flag (reverting to webcam)");
             }
             else
             {
                 // Start screen share
+                Console.WriteLine("[SessionView C#] [Lecturer] Calling SessionJsInterop.StartScreenShareAsync...");
                 var result = await SessionJsInterop.StartScreenShareAsync();
                 
                 if (result != null)
@@ -554,7 +608,7 @@ else
                         if (success)
                         {
                             State.IsScreenSharing = true;
-                            Console.WriteLine("Screen share started successfully");
+                            Console.WriteLine("[SessionView C#] [Lecturer] Screen share started successfully on client side");
                         }
                         else
                         {
@@ -562,7 +616,7 @@ else
                                 ? resultDict["error"].GetString() 
                                 : "Unknown error";
                             State.SetError($"Screen share failed: {error}");
-                            Console.WriteLine($"Screen share failed: {error}");
+                            Console.WriteLine($"[SessionView C#] [Lecturer] Screen share failed: {error}");
                         }
                     }
                 }
@@ -573,7 +627,7 @@ else
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error toggling screen share: {ex.Message}");
+            Console.WriteLine($"[SessionView C#] [Lecturer] Error toggling screen share: {ex.Message}");
             State.SetError($"Screen share error: {ex.Message}");
             State.IsLoading = false;
         }
@@ -584,16 +638,19 @@ else
         if (CurrentSession == null || !State.IsLecturer || State.CurrentUser == null || State.IsLoading)
             return;
 
+        Console.WriteLine($"[SessionView C#] [Lecturer] EndSession invoked. SessionId: {SessionId}");
         try
         {
             State.StartLoading("Ending session...");
 
             // End session in service
+            Console.WriteLine($"[SessionView C#] [Lecturer] Calling SessionService.EndSession...");
             SessionService.EndSession(SessionId, State.CurrentUser.MatricNo);
 
             // Notify via SignalR
             if (_hubConnection != null && _hubConnection.State == HubConnectionState.Connected)
             {
+                Console.WriteLine($"[SessionView C#] [Lecturer] Sending EndSession to hub for SessionId: {SessionId}");
                 await _hubConnection.SendAsync("EndSession", SessionId);
             }
 
@@ -601,17 +658,19 @@ else
             await ClearSessionStorageAsync();
 
             // Cleanup JS resources
+            Console.WriteLine($"[SessionView C#] [Lecturer] Cleaning up JS media/peer resources...");
             await SessionJsInterop.CleanupAsync();
 
             State.StopLoading();
 
             // Navigate after cleanup
+            Console.WriteLine($"[SessionView C#] [Lecturer] Session ended successfully. Navigating back to dashboard.");
             _isNavigating = true;
             Navigation.NavigateTo("/dashboard", forceLoad: true);
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error ending session: {ex.Message}");
+            Console.WriteLine($"[SessionView C#] [Lecturer] Error ending session: {ex.Message}");
             State.SetError($"Error ending session: {ex.Message}");
         }
     }
@@ -621,30 +680,34 @@ else
     {
         if (State.IsLecturer) return;
 
+        Console.WriteLine($"[SessionView C#] [Student] SetupStudentPeerConnectionAsync. SessionId: {SessionId}");
         try
         {
             State.StartLoading("Setting up connection...");
 
+            Console.WriteLine($"[SessionView C#] [Student] Calling SessionJsInterop.SetupStudentPeerAsync...");
             var result = await SessionJsInterop.SetupStudentPeerAsync();
             
             // Result will have { success: true, peerId: "..." }
-            Console.WriteLine("Student peer setup initiated");
+            Console.WriteLine($"[SessionView C#] [Student] Peer setup response: {System.Text.Json.JsonSerializer.Serialize(result)}");
 
             State.StopLoading();
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error setting up student peer: {ex.Message}");
+            Console.WriteLine($"[SessionView C#] [Student] Error setting up student peer: {ex.Message}");
             State.RecordConnectionAttempt();
 
             if (State.ShouldRetryConnection() && !State.HasExceededMaxAttempts)
             {
-                // Retry after backoff delay
-                await Task.Delay((int)(Math.Pow(2, State.ConnectionAttempts - 1) * 1000));
+                var delay = (int)(Math.Pow(2, State.ConnectionAttempts - 1) * 1000);
+                Console.WriteLine($"[SessionView C#] [Student] Retrying connection attempt {State.ConnectionAttempts} in {delay}ms...");
+                await Task.Delay(delay);
                 await SetupStudentPeerConnectionAsync();
             }
             else if (State.HasExceededMaxAttempts)
             {
+                Console.WriteLine($"[SessionView C#] [Student] Max connection attempts exceeded ({State.ConnectionAttempts})");
                 State.SetError("Unable to connect to session. Please refresh the page.");
             }
         }
@@ -652,6 +715,7 @@ else
 
     private async Task PlayVideo()
     {
+        Console.WriteLine("[SessionView C#] [Student] PlayVideo invoked (user clicked mobile overlay to play remote stream)");
         try
         {
             await JSRuntime.InvokeVoidAsync("eval", @"
@@ -664,12 +728,13 @@ else
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error playing video: {ex.Message}");
+            Console.WriteLine($"[SessionView C#] [Student] Error playing video: {ex.Message}");
         }
     }
 
     private async Task RetryConnection()
     {
+        Console.WriteLine("[SessionView C#] [Student] RetryConnection clicked");
         State.ClearError();
         State.ConnectionAttempts = 0;
         await SetupStudentPeerConnectionAsync();
@@ -683,12 +748,13 @@ else
     // SignalR Event Handlers
     private async Task OnSessionStarted(string sessionId)
     {
-        Console.WriteLine($"SessionStarted event received: {sessionId}");
+        Console.WriteLine($"[SessionView C#] SignalR: OnSessionStarted event received. SessionId: {sessionId}");
 
         if (!State.IsLecturer && sessionId == SessionId)
         {
             await InvokeAsync(() =>
             {
+                Console.WriteLine($"[SessionView C#] [Student] Session started by lecturer. Activating peer connection.");
                 State.IsSessionStarted = true;
                 _pendingStudentPeerSetup = true;
                 StateHasChanged();
@@ -700,13 +766,14 @@ else
     {
         if (_isDisposed || _isNavigating) return;
 
-        Console.WriteLine($"SessionEnded event received: {sessionId}");
+        Console.WriteLine($"[SessionView C#] SignalR: OnSessionEnded event received. SessionId: {sessionId}");
 
         if (sessionId == SessionId)
         {
             try
             {
                 // Cleanup JS resources
+                Console.WriteLine($"[SessionView C#] Cleaning up JS media/peer resources...");
                 await SessionJsInterop.CleanupAsync();
 
                 // Clear storage
@@ -725,28 +792,31 @@ else
                 _isNavigating = true;
                 if (State.IsLecturer)
                 {
+                    Console.WriteLine($"[SessionView C#] [Lecturer] Session ended. Redirecting to recap page.");
                     Navigation.NavigateTo($"/session-recap/{sessionId}", forceLoad: true);
                 }
                 else
                 {
+                    Console.WriteLine($"[SessionView C#] [Student] Session ended. Redirecting to dashboard.");
                     Navigation.NavigateTo("/dashboard", forceLoad: true);
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error in OnSessionEnded: {ex.Message}");
+                Console.WriteLine($"[SessionView C#] Error in OnSessionEnded: {ex.Message}");
             }
         }
     }
 
     private async Task OnReceivePeerId(string userId, string peerId)
     {
-        Console.WriteLine($"ReceivePeerId: {userId} -> {peerId}");
+        Console.WriteLine($"[SessionView C#] SignalR: OnReceivePeerId. Student: {userId} -> PeerId: {peerId}");
 
         if (State.IsLecturer)
         {
             await InvokeAsync(() =>
             {
+                Console.WriteLine($"[SessionView C#] [Lecturer] Registering student peer {peerId} for user {userId}");
                 State.AddStudentPeer(peerId, userId);
                 StateHasChanged();
             });
@@ -755,7 +825,7 @@ else
 
     private async Task OnStreamChange(string streamType)
     {
-        Console.WriteLine($"Stream change: {streamType}");
+        Console.WriteLine($"[SessionView C#] SignalR: OnStreamChange. StreamType: {streamType}");
 
         await InvokeAsync(() =>
         {
@@ -766,13 +836,14 @@ else
         if (!State.IsLecturer)
         {
             // Notify JS to handle stream change
+            Console.WriteLine($"[SessionView C#] [Student] Calling SessionJsInterop.HandleStreamChangeAsync({streamType})...");
             await SessionJsInterop.HandleStreamChangeAsync(streamType);
         }
     }
 
     private async Task OnReceiveParticipants(Dictionary<string, string> participants)
     {
-        Console.WriteLine($"Received participants: {participants.Count}");
+        Console.WriteLine($"[SessionView C#] SignalR: OnReceiveParticipants. Count: {participants.Count}");
 
         await InvokeAsync(() =>
         {
@@ -787,7 +858,7 @@ else
 
     private async Task OnReceiveParticipantStatuses(Dictionary<string, string> statuses)
     {
-        Console.WriteLine($"Received participant statuses: {statuses.Count}");
+        Console.WriteLine($"[SessionView C#] SignalR: OnReceiveParticipantStatuses. Count: {statuses.Count}");
 
         await InvokeAsync(() =>
         {
@@ -831,7 +902,7 @@ else
     [JSInvokable]
     public async Task OnLecturerPeerReady(string peerId)
     {
-        Console.WriteLine($"Lecturer peer ready: {peerId}");
+        Console.WriteLine($"[SessionView C#] [JSInvokable] OnLecturerPeerReady: PeerId={peerId}. Setting MyPeerId, IsPeerConnected=true, and triggering SessionStarted SignalR event.");
         State.MyPeerId = peerId;
         State.IsPeerConnected = true;
 
@@ -847,7 +918,7 @@ else
     [JSInvokable]
     public void OnStudentConnected(string peerId)
     {
-        Console.WriteLine($"Student connected: {peerId}");
+        Console.WriteLine($"[SessionView C#] [JSInvokable] OnStudentConnected: Student PeerId={peerId}. Registering/updating student connection in state.");
         State.AddStudentPeer(peerId);
         StateHasChanged();
     }
@@ -855,7 +926,7 @@ else
     [JSInvokable]
     public void OnStudentDisconnected(string peerId)
     {
-        Console.WriteLine($"Student disconnected: {peerId}");
+        Console.WriteLine($"[SessionView C#] [JSInvokable] OnStudentDisconnected: Student PeerId={peerId}. Removing student connection from state.");
         State.RemoveStudentPeer(peerId);
         StateHasChanged();
     }
@@ -863,7 +934,7 @@ else
     [JSInvokable]
     public async Task OnStreamTypeChanged(string streamType)
     {
-        Console.WriteLine($"Stream type changed to: {streamType}");
+        Console.WriteLine($"[SessionView C#] [JSInvokable] OnStreamTypeChanged: StreamType={streamType}. Updating local state and broadcasting stream change to students via SignalR.");
         State.CurrentStreamType = streamType;
 
         // Notify students via SignalR
@@ -878,7 +949,7 @@ else
     [JSInvokable]
     public async Task OnStudentPeerReady(string peerId)
     {
-        Console.WriteLine($"Student peer ready: {peerId}");
+        Console.WriteLine($"[SessionView C#] [JSInvokable] OnStudentPeerReady: Student PeerId={peerId}. Sending peer ID to SignalR Hub.");
         State.MyPeerId = peerId;
 
         // Send peer ID to SignalR so lecturer can connect
@@ -893,7 +964,7 @@ else
     [JSInvokable]
     public void OnStreamReceived()
     {
-        Console.WriteLine("Stream received");
+        Console.WriteLine($"[SessionView C#] [JSInvokable] OnStreamReceived: Media stream received from lecturer. Setting IsStreamLoaded=true, IsPeerConnected=true, stopping loading state.");
         State.IsStreamLoaded = true;
         State.IsPeerConnected = true;
         State.ShowMobilePlayOverlay = State.IsMobileDevice;
@@ -904,7 +975,7 @@ else
     [JSInvokable]
     public void OnStreamLost()
     {
-        Console.WriteLine("Stream lost");
+        Console.WriteLine("[SessionView C#] [JSInvokable] OnStreamLost: Media stream lost/disconnected. Setting IsStreamLoaded=false.");
         State.IsStreamLoaded = false;
         State.SetError("Connection to lecturer lost. Reconnecting...");
         StateHasChanged();
@@ -913,7 +984,7 @@ else
     [JSInvokable]
     public void OnPeerError(string errorType)
     {
-        Console.WriteLine($"Peer error: {errorType}");
+        Console.WriteLine($"[SessionView C#] [JSInvokable] OnPeerError: Error occurred: '{errorType}'. Connection attempt #{State.ConnectionAttempts}. Processing retry logic.");
         State.RecordConnectionAttempt();
 
         if (State.ShouldRetryConnection() && !State.HasExceededMaxAttempts)
@@ -931,7 +1002,7 @@ else
     [JSInvokable]
     public void OnConnectedToLecturer(string lecturerPeerId)
     {
-        Console.WriteLine($"Connected to lecturer: {lecturerPeerId}");
+        Console.WriteLine($"[SessionView C#] [JSInvokable] OnConnectedToLecturer: Connected to Lecturer PeerId={lecturerPeerId}. Setting LecturerPeerId in state.");
         State.LecturerPeerId = lecturerPeerId;
         State.ClearError();
         StateHasChanged();
@@ -940,7 +1011,7 @@ else
     [JSInvokable]
     public void OnConnectionFailed(string errorType)
     {
-        Console.WriteLine($"Connection failed: {errorType}");
+        Console.WriteLine($"[SessionView C#] [JSInvokable] OnConnectionFailed: Connection to lecturer failed: '{errorType}'. Connection attempt #{State.ConnectionAttempts}. Processing retry logic.");
         State.RecordConnectionAttempt();
 
         if (!State.HasExceededMaxAttempts)
@@ -959,13 +1030,13 @@ else
     public void OnFileChunkReceived(string jsonData)
     {
         // Phase 3 - File sharing
-        Console.WriteLine("File chunk received (Phase 3 feature)");
+        Console.WriteLine("[SessionView C#] [JSInvokable] OnFileChunkReceived (Phase 3 feature)");
     }
 
     [JSInvokable]
     public void OnFileUploadProgress(double progress, int sentChunks, int totalChunks)
     {
-        Console.WriteLine($"File upload progress: {progress:F0}% ({sentChunks}/{totalChunks})");
+        Console.WriteLine($"[SessionView C#] [JSInvokable] OnFileUploadProgress: {progress:F0}% ({sentChunks}/{totalChunks})");
         // State can track progress here if needed
         StateHasChanged();
     }
@@ -973,14 +1044,14 @@ else
     [JSInvokable]
     public void OnFileDownloadComplete(string messageId, string fileName)
     {
-        Console.WriteLine($"File download complete: {fileName}");
+        Console.WriteLine($"[SessionView C#] [JSInvokable] OnFileDownloadComplete: {fileName}");
         StateHasChanged();
     }
 
     [JSInvokable]
     public void OnFileDownloadError(string messageId, string error)
     {
-        Console.WriteLine($"File download error for message {messageId}: {error}");
+        Console.WriteLine($"[SessionView C#] [JSInvokable] OnFileDownloadError: message {messageId}: {error}");
         State.SetError($"File download failed: {error}");
         StateHasChanged();
     }
@@ -988,6 +1059,7 @@ else
     [JSInvokable]
     public async Task OnTabVisibilityChanged(bool isVisible)
     {
+        Console.WriteLine($"[SessionView C#] [JSInvokable] OnTabVisibilityChanged: IsVisible={isVisible}. Reporting tab status to SignalR Hub.");
         if (State.IsLecturer) return;
 
         // Report to SignalR for engagement tracking (Phase 4)
@@ -999,7 +1071,7 @@ else
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error updating tab status: {ex.Message}");
+                Console.WriteLine($"[SessionView C#] [JSInvokable] Error updating tab status: {ex.Message}");
             }
         }
     }

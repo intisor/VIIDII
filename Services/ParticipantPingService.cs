@@ -29,7 +29,7 @@ namespace VIIDII.Services
         {
             while (!stoppingToken.IsCancellationRequested)
             {
-                var sessions = _sessionService.GetActiveSessions();
+                var sessions = await _sessionService.GetActiveSessionsAsync();
                 foreach (var session in sessions)
                 {
                     foreach (var participantId in session.ParticipantIds)

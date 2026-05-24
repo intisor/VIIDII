@@ -82,6 +82,21 @@ app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseRouting();
 app.UseSession();
+app.Use(async (context, next) =>
+{
+    try
+    {
+        if (context.Session != null && !context.Session.Keys.Contains("SessionInit"))
+        {
+            context.Session.SetString("SessionInit", "1");
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[Middleware] Warning: Could not initialize session: {ex.Message}");
+    }
+    await next();
+});
 app.UseAntiforgery();
 
 // Map Blazor components

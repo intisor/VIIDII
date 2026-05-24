@@ -25,10 +25,10 @@ namespace VIIDII.Hubs
             var matricNo = Context.GetHttpContext()?.Session.GetString("MatricNo");
             await Groups.AddToGroupAsync(Context.ConnectionId, sessionId);
             await Clients.Group(sessionId).SendAsync("StartSession", sessionId);
-            var session = _sessionService.GetSessionById(sessionId);
+            var session = await _sessionService.GetSessionByIdAsync(sessionId);
             if(session != null)
             {
-                if (IsSessionLecturer(sessionId,matricNo))
+                if (await IsSessionLecturerAsync(sessionId,matricNo))
                 {
                     session.LecturerConnectionId = Context.ConnectionId;
                     Console.WriteLine($"Lecturer {matricNo} set LecturerConnectionId: {session.LecturerConnectionId}");
@@ -66,7 +66,7 @@ namespace VIIDII.Hubs
         public async Task JoinSession(string sessionId)
         {
             var matricNo = Context.GetHttpContext()?.Session.GetString("MatricNo");
-            var session = _sessionService.GetSessionById(sessionId);
+            var session = await _sessionService.GetSessionByIdAsync(sessionId);
             if (session == null || session.Status == SessionStatus.Ended)
             {
                 Console.WriteLine($"JoinSession failed: Session {sessionId} not found.");
@@ -75,7 +75,7 @@ namespace VIIDII.Hubs
 
 
             await Groups.AddToGroupAsync(Context.ConnectionId, sessionId);
-            if (!IsSessionLecturer(sessionId, matricNo))
+            if (!await IsSessionLecturerAsync(sessionId, matricNo))
             {
                 var (joinedSession, error) = _sessionService.JoinSession(sessionId, matricNo, Context.ConnectionId);
                 if (joinedSession is null)
@@ -103,9 +103,9 @@ namespace VIIDII.Hubs
         public async Task EndSession(string sessionId)
         {
             var matricNo = Context.GetHttpContext()?.Session.GetString("MatricNo");
-            var session = _sessionService.GetSessionById(sessionId);
+            var session = await _sessionService.GetSessionByIdAsync(sessionId);
 
-            if (session != null && IsSessionLecturer(sessionId, matricNo))
+            if (session != null && await IsSessionLecturerAsync(sessionId, matricNo))
             {
                 _sessionService.EndSession(sessionId, matricNo);
                 // Notify all clients in the session that it has ended
@@ -118,7 +118,7 @@ namespace VIIDII.Hubs
         {
             await Clients.Group(sessionId).SendAsync("SessionStarted", sessionId); // Inform everyone
 
-            var session = _sessionService.GetSessionById(sessionId);
+            var session = await _sessionService.GetSessionByIdAsync(sessionId);
             if (session != null && !string.IsNullOrEmpty(session.LecturerConnectionId) && session.Status == SessionStatus.Started)
             {
                 // Send initial scores to the lecturer
@@ -135,7 +135,7 @@ namespace VIIDII.Hubs
         public async Task NotifyStreamChange(string sessionId, string streamType)
         {
             var matricNo = Context.GetHttpContext()?.Session.GetString("MatricNo");
-            if (IsSessionLecturer(sessionId, matricNo))
+            if (await IsSessionLecturerAsync(sessionId, matricNo))
             {
                 await Clients.Group(sessionId).SendAsync("ReceiveStreamChange", streamType);
                 Console.WriteLine($"Notified stream change ({streamType}) to session {sessionId}");
@@ -172,7 +172,7 @@ namespace VIIDII.Hubs
             var httpContext = Context.GetHttpContext();
             var matricNo = httpContext?.Session.GetString("MatricNo");
             var userName = MockApiService.GetUsers().FirstOrDefault(s => s.MatricNo == matricNo).Name;
-            var isLecturer = IsSessionLecturer(sessionId, matricNo);
+            var isLecturer = await IsSessionLecturerAsync(sessionId, matricNo);
             var comment = _messageService.CreateComment(sessionId, matricNo, userName, content, postId, isLecturer);
             await Clients.Group(sessionId).SendAsync("ReceiveComment", comment);
         }
@@ -183,21 +183,21 @@ namespace VIIDII.Hubs
             await Clients.Caller.SendAsync("ReceiveMessages", messages);
         }
 
-        private bool IsSessionLecturer(string sessionId, string matricNo)
+        private async Task<bool> IsSessionLecturerAsync(string sessionId, string matricNo)
         {
             if (string.IsNullOrEmpty(matricNo))
             {
                 return false;
             }
-            var session = _sessionService.GetSessionById(sessionId);
+            var session = await _sessionService.GetSessionByIdAsync(sessionId);
             return session != null && session.LecturerMatricNo == matricNo;
         }
 
         public async Task UpdateTabStatus(bool isActive)
         {
             var matricNo = Context.GetHttpContext()?.Session.GetString("MatricNo");
-            var session = _sessionService.GetSessionByParticipant(matricNo);
-            if (session is not null && !IsSessionLecturer(session.SessionId, matricNo) && session.IsSessionStarted)
+            var session = await _sessionService.GetSessionByParticipantAsync(matricNo);
+            if (session is not null && !await IsSessionLecturerAsync(session.SessionId, matricNo) && session.IsSessionStarted)
             {
                 var status = isActive ? Session.StudentStatus.Active : Session.StudentStatus.InActive;
                 if (_sessionService.UpdateParticipantStatus(session.SessionId, matricNo, status))
@@ -219,8 +219,8 @@ namespace VIIDII.Hubs
         public async Task FlagIssue(string issue)
         {
             var matricNo = Context.GetHttpContext()?.Session.GetString("MatricNo");
-            var session = _sessionService.GetSessionByParticipant(matricNo);
-            if (session is not null && !IsSessionLecturer(session.SessionId, matricNo) && session.IsSessionStarted)
+            var session = await _sessionService.GetSessionByParticipantAsync(matricNo);
+            if (session is not null && !await IsSessionLecturerAsync(session.SessionId, matricNo) && session.IsSessionStarted)
             {
                 var status = issue == "BatteryLow" ? Session.StudentStatus.BatteryLow : Session.StudentStatus.DataFinished;
                 if (_sessionService.UpdateParticipantStatus(session.SessionId, matricNo, status))
@@ -242,8 +242,8 @@ namespace VIIDII.Hubs
         public async Task ConfirmActive()
         {
             var matricNo = Context.GetHttpContext()?.Session.GetString("MatricNo");
-            var session = _sessionService.GetSessionByParticipant(matricNo);
-            if (session is not null && !IsSessionLecturer(session.SessionId, matricNo) && session.IsSessionStarted)
+            var session = await _sessionService.GetSessionByParticipantAsync(matricNo);
+            if (session is not null && !await IsSessionLecturerAsync(session.SessionId, matricNo) && session.IsSessionStarted)
             {
                 _lastSeen[matricNo] = DateTime.UtcNow;
                 if (_sessionService.UpdateParticipantStatus(session.SessionId, matricNo, Session.StudentStatus.Active))
@@ -268,8 +268,8 @@ namespace VIIDII.Hubs
             var matricNo = Context.GetHttpContext()?.Session.GetString("MatricNo");
             if (!string.IsNullOrEmpty(matricNo))
             {
-                var session = _sessionService.GetSessionByParticipant(matricNo);
-                if (session is not null && !IsSessionLecturer(session.SessionId, matricNo))
+                var session = await _sessionService.GetSessionByParticipantAsync(matricNo);
+                if (session is not null && !await IsSessionLecturerAsync(session.SessionId, matricNo))
                 {
                     if (_sessionService.UpdateParticipantStatus(session.SessionId, matricNo, Session.StudentStatus.Disconnected))
                     {
@@ -324,10 +324,10 @@ namespace VIIDII.Hubs
         public async Task PromptEngagement(string sessionId)
         {
             var matricNo = Context.GetHttpContext()?.Session.GetString("MatricNo");
-            var session = _sessionService.GetSessionById(sessionId);
+            var session = await _sessionService.GetSessionByIdAsync(sessionId);
 
             // Only lecturer can prompt engagement
-            if (session != null && IsSessionLecturer(sessionId, matricNo))
+            if (session != null && await IsSessionLecturerAsync(sessionId, matricNo))
             {
                 // Broadcast "Are You There?" to all students in session (except lecturer)
                 await Clients.GroupExcept(sessionId, Context.ConnectionId).SendAsync("AreYouThere");

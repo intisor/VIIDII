@@ -57,6 +57,21 @@ public class AuthService
             // Store user in memory for Blazor (not in session during interactive render)
             _currentUser = user;
             Console.WriteLine($"[AuthService] User stored in memory for {matricNo}");
+
+            // Set session for SSR and other middleware compatibility
+            var httpContext = _httpContextAccessor.HttpContext;
+            if (httpContext?.Session != null)
+            {
+                try
+                {
+                    httpContext.Session.SetString("MatricNo", matricNo);
+                    Console.WriteLine($"[AuthService] Session set with MatricNo: {matricNo}");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[AuthService] Warning: Failed to set session: {ex.Message}. Falling back to in-memory login state.");
+                }
+            }
             
             // Return user; state is kept in-memory for the Blazor circuit
             return (true, null, user);
@@ -78,8 +93,24 @@ public class AuthService
             Console.WriteLine($"[AuthService.GetCurrentUserAsync] Returning stored user: {_currentUser.Name}");
             return _currentUser;
         }
+
+        // If in-memory is null, try to load from HttpContext session (for SSR/enhanced navigation)
+        var httpContext = _httpContextAccessor.HttpContext;
+        if (httpContext?.Session != null)
+        {
+            var matricNo = httpContext.Session.GetString("MatricNo");
+            if (!string.IsNullOrEmpty(matricNo))
+            {
+                Console.WriteLine($"[AuthService.GetCurrentUserAsync] Found MatricNo in session: {matricNo}. Loading user...");
+                _currentUser = await _userService.GetUserByMatricNoAsync(matricNo);
+                if (_currentUser != null)
+                {
+                    return _currentUser;
+                }
+            }
+        }
         
-        Console.WriteLine($"[AuthService.GetCurrentUserAsync] No in-memory user found, returning null");
+        Console.WriteLine($"[AuthService.GetCurrentUserAsync] No user found, returning null");
         return null;
     }
 

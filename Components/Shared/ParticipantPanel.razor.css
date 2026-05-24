@@ -10,36 +10,38 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 1rem;
-    border-bottom: 2px solid #eee;
+    padding: 0.75rem 0.5rem;
+    border-bottom: 1px solid var(--border);
 }
 
 .panel-header h3 {
     margin: 0;
-    font-size: 1.2rem;
-    color: #333;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--text);
     display: flex;
     align-items: center;
     gap: 0.5rem;
 }
 
 .btn-prompt {
-    background: linear-gradient(135deg, #8338EC, #C19BF5);
+    background: var(--accent);
     color: white;
     border: none;
-    padding: 0.6rem 1.25rem;
-    border-radius: 0.5rem;
+    padding: 0.45rem 0.875rem;
+    border-radius: var(--r-sm);
+    font-size: 0.75rem;
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: background var(--t);
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.35rem;
+    font-family: inherit;
 }
 
 .btn-prompt:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(131, 56, 236, 0.3);
+    background: var(--accent-hover);
 }
 
 .empty-state {
@@ -48,131 +50,134 @@
     align-items: center;
     justify-content: center;
     flex: 1;
-    color: #999;
-    padding: 3rem 1rem;
+    color: var(--text-faint);
+    padding: 2.5rem 1rem;
 }
 
 .empty-state i {
-    font-size: 3rem;
-    margin-bottom: 1rem;
+    font-size: 2rem;
+    margin-bottom: 0.75rem;
     opacity: 0.5;
 }
 
 .empty-state .hint {
-    font-size: 0.875rem;
-    color: #bbb;
+    font-size: 0.75rem;
+    color: var(--text-faint);
 }
 
 .engagement-stats {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 1rem;
-    padding: 1rem;
-    background: #f8f9fa;
+    gap: 0.5rem;
+    padding: 0.75rem 0.5rem;
+    background: transparent;
 }
 
 .stat-card {
-    background: white;
-    padding: 1rem;
-    border-radius: 0.75rem;
+    background: var(--surface-up);
+    border: 1px solid var(--border);
+    padding: 0.625rem;
+    border-radius: var(--r-sm);
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    gap: 0.5rem;
 }
 
 .stat-card i {
-    font-size: 2rem;
+    font-size: 1.25rem;
 }
 
 .stat-card.active i {
-    color: #28a745;
+    color: var(--success);
 }
 
 .stat-card.inactive i {
-    color: #ffc107;
+    color: var(--warning);
 }
 
 .stat-card.issues i {
-    color: #dc3545;
+    color: var(--danger);
 }
 
 .stat-card .count {
     display: block;
-    font-size: 1.5rem;
+    font-size: 1.125rem;
     font-weight: 700;
-    color: #333;
+    color: var(--text);
+    line-height: 1.2;
 }
 
 .stat-card .label {
     display: block;
-    font-size: 0.8rem;
-    color: #666;
+    font-size: 0.625rem;
+    color: var(--text-mid);
     text-transform: uppercase;
+    letter-spacing: 0.05em;
 }
 
 .participants-list {
     flex: 1;
     overflow-y: auto;
-    padding: 1rem;
+    padding: 0.5rem;
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: 0.5rem;
 }
 
 .participant-item {
-    background: white;
-    border-radius: 0.75rem;
-    padding: 1rem;
+    background: var(--surface-up);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    padding: 0.625rem 0.75rem;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-    border-left: 4px solid #dee2e6;
-    transition: all 0.2s;
+    border-left: 3px solid var(--border-mid);
+    transition: all var(--t);
 }
 
 .participant-item:hover {
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+    border-color: var(--border-strong);
 }
 
 .participant-item.status-active {
-    border-left-color: #28a745;
+    border-left-color: var(--success);
 }
 
 .participant-item.status-inactive {
-    border-left-color: #ffc107;
+    border-left-color: var(--warning);
 }
 
 .participant-item.status-batterylow {
-    border-left-color: #fd7e14;
+    border-left-color: var(--warning);
 }
 
 .participant-item.status-datafinished {
-    border-left-color: #dc3545;
+    border-left-color: var(--danger);
 }
 
 .participant-item.status-disconnected {
-    border-left-color: #6c757d;
+    border-left-color: var(--text-faint);
 }
 
 .participant-info {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: 0.625rem;
 }
 
 .participant-avatar {
-    width: 40px;
-    height: 40px;
+    width: 28px;
+    height: 28px;
     border-radius: 50%;
-    background: linear-gradient(135deg, #8338EC, #C19BF5);
-    color: white;
+    background: var(--surface-high);
+    border: 1px solid var(--border-mid);
+    color: var(--text);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-weight: 700;
-    font-size: 0.875rem;
+    font-weight: 600;
+    font-size: 0.75rem;
 }
 
 .participant-details {
@@ -182,87 +187,79 @@
 
 .participant-name {
     font-weight: 600;
-    color: #333;
+    font-size: 0.8125rem;
+    color: var(--text);
 }
 
 .participant-id {
-    font-size: 0.75rem;
-    color: #999;
+    font-size: 0.6875rem;
+    color: var(--text-mid);
 }
 
 .participant-status {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    padding: 0.4rem 0.75rem;
-    border-radius: 1rem;
-    font-size: 0.8rem;
+    gap: 0.35rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: 100px;
+    font-size: 0.6875rem;
     font-weight: 600;
-    background: #f8f9fa;
-    color: #666;
+    background: var(--surface-high);
+    color: var(--text-mid);
 }
 
 .participant-status i {
-    font-size: 1rem;
+    font-size: 0.75rem;
 }
 
 .status-active .participant-status {
-    background: #d4edda;
-    color: #155724;
+    background: var(--success-dim);
+    color: var(--success);
 }
 
 .status-inactive .participant-status {
-    background: #fff3cd;
-    color: #856404;
+    background: var(--warning-dim);
+    color: var(--warning);
 }
 
 .status-batterylow .participant-status {
-    background: #ffe5cc;
-    color: #cc5500;
+    background: var(--warning-dim);
+    color: var(--warning);
 }
 
 .status-datafinished .participant-status {
-    background: #f8d7da;
-    color: #721c24;
+    background: var(--danger-dim);
+    color: var(--danger);
 }
 
 .status-disconnected .participant-status {
-    background: #e2e3e5;
-    color: #383d41;
+    background: var(--surface);
+    color: var(--text-faint);
 }
 
 /* Scrollbar */
 .participants-list::-webkit-scrollbar {
-    width: 6px;
+    width: 4px;
 }
 
 .participants-list::-webkit-scrollbar-track {
-    background: #f1f1f1;
+    background: transparent;
 }
 
 .participants-list::-webkit-scrollbar-thumb {
-    background: #ccc;
-    border-radius: 10px;
-}
-
-.participants-list::-webkit-scrollbar-thumb:hover {
-    background: #999;
+    background: var(--border-mid);
+    border-radius: 4px;
 }
 
 /* Responsive */
 @media (max-width: 768px) {
     .engagement-stats {
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(3, 1fr);
     }
 
     .panel-header {
-        flex-direction: column;
-        gap: 1rem;
-        align-items: stretch;
-    }
-
-    .btn-prompt {
-        width: 100%;
-        justify-content: center;
+        flex-direction: row;
+        gap: 0.5rem;
+        align-items: center;
     }
 }

@@ -7,10 +7,70 @@
 <PageTitle>Create Session - VIIDII</PageTitle>
 
 <style>
-    .create-session-container { max-width: 800px; margin: 2rem auto; padding: 1rem; }
-    .session-header { padding: 1rem 0; margin-bottom: 1rem; }
-    .form-card { background: white; padding: 1rem; border-radius: 0.5rem; }
-    .checkbox-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.5rem; margin-top: 0.5rem; }
+    .create-session-container {
+        max-width: 760px;
+        margin: 2rem auto;
+        padding: 0 1.5rem;
+        display: flex;
+        flex-direction: column;
+        gap: 1.125rem;
+    }
+    
+    .session-header {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--r-lg);
+        padding: 1.75rem;
+    }
+
+    .session-header h1 {
+        font-size: 1.625rem;
+        font-weight: 700;
+        margin: 0;
+        color: var(--text);
+    }
+
+    .form-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--r-lg);
+        padding: 1.75rem;
+    }
+
+    .checkbox-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+        gap: 0.75rem;
+        margin-top: 0.75rem;
+        background: var(--surface-up);
+        padding: 1rem;
+        border: 1px solid var(--border-mid);
+        border-radius: var(--r);
+    }
+
+    .form-check {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .form-check-input {
+        accent-color: var(--accent);
+        cursor: pointer;
+        width: 14px;
+        height: 14px;
+    }
+
+    .form-check-label {
+        font-size: 0.875rem;
+        color: var(--text-mid);
+        cursor: pointer;
+        user-select: none;
+    }
+
+    .form-check-input:checked + .form-check-label {
+        color: var(--text);
+    }
 </style>
 
     <div class="create-session-container">
@@ -40,9 +100,9 @@
 
                 <div class="form-group">
                     <label class="form-label">Allowed Departments</label>
-                    <div class="form-check">
+                    <div class="form-check" style="margin-bottom: 0.5rem;">
                         <InputCheckbox class="form-check-input" @bind-Value="SelectAllDepartments" id="selectAllDepts" @onchange="OnSelectAllDepartmentsChanged" />
-                        <label class="form-check-label" for="selectAllDepts"><strong>Select All Departments</strong></label>
+                        <label class="form-check-label" for="selectAllDepts" style="font-weight:600; color:var(--text);">Select All Departments</label>
                     </div>
                     <div class="checkbox-grid">
                         @foreach (var dept in Enum.GetValues<User.Departments>())
@@ -58,11 +118,11 @@
                     </div>
                 </div>
 
-                <div class="form-group">
+                <div class="form-group" style="margin-bottom: 1.75rem;">
                     <label class="form-label">Allowed Levels</label>
-                    <div class="form-check">
+                    <div class="form-check" style="margin-bottom: 0.5rem;">
                         <InputCheckbox class="form-check-input" @bind-Value="SelectAllLevels" id="selectAllLevels" @onchange="OnSelectAllLevelsChanged" />
-                        <label class="form-check-label" for="selectAllLevels"><strong>Select All Levels</strong></label>
+                        <label class="form-check-label" for="selectAllLevels" style="font-weight:600; color:var(--text);">Select All Levels</label>
                     </div>
                     <div class="checkbox-grid">
                         @foreach (var level in Enum.GetValues<User.Levels>())
@@ -78,10 +138,12 @@
                     </div>
                 </div>
 
-                <button type="submit" class="btn btn-primary" disabled="@IsLoading">
-                    @if (IsLoading) { <span>Creating...</span> } else { <span>Create Session</span> }
-                </button>
-                <button type="button" class="btn btn-secondary" @onclick="GoBack">Cancel</button>
+                <div style="display:flex; gap:0.625rem;">
+                    <button type="submit" class="btn-primary-custom" disabled="@IsLoading">
+                        @if (IsLoading) { <span>Creating...</span> } else { <span>Create Session</span> }
+                    </button>
+                    <button type="button" class="btn-secondary-custom" @onclick="GoBack">Cancel</button>
+                </div>
             </EditForm>
         </div>
     </div>

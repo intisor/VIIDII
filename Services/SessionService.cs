@@ -1,4 +1,4 @@
-﻿using VIIDII.Models;               
+using VIIDII.Models;               
 using System.Collections.Concurrent;
 
 namespace VIIDII.Services;
@@ -160,15 +160,16 @@ public class SessionService
 
         return session;
     }
-    public Session StartSession(string sessionId)
+    public async Task<Session?> StartSessionAsync(string sessionId)
     {
-        var session = GetSessionById(sessionId);
+        var session = await GetSessionByIdAsync(sessionId);
         if (session != null && session.Status != SessionStatus.Started) // Ensure it's not already started
         {
             session.IsSessionStarted = true;
             session.Status = SessionStatus.Started;
             session.StartTime = DateTime.UtcNow.AddHours(1); // Changed DateTimeOffset to DateTime
-            Console.WriteLine($"StartSession: Session {sessionId} started at {session.StartTime}, Participants: {string.Join(", ", session.ParticipantIds)}");            // Log initial 'Active' status for all current participants
+            Console.WriteLine($"[SessionService C#] StartSession: Session {sessionId} started at {session.StartTime}, Participants: {string.Join(", ", session.ParticipantIds)}");
+            // Log initial 'Active' status for all current participants
             foreach (var participantId in session.ParticipantIds.ToList()) // ToList to avoid modification issues if any
             {
                 if (!session.ParticipantEvents.ContainsKey(participantId))
@@ -178,8 +179,11 @@ public class SessionService
                 // Add initial active event at session start time
                 session.ParticipantEvents[participantId].Add((Session.StudentStatus.Active, session.StartTime));
                 session.ParticipantStatuses[participantId] = Session.StudentStatus.Active; // Ensure current status is active
-                Console.WriteLine($"Logged initial Active event for {participantId} at session start: {session.StartTime}");
+                Console.WriteLine($"[SessionService C#] Logged initial Active event for {participantId} at session start: {session.StartTime}");
             }
+
+            // Persist session start to database
+            await PersistSessionStartAsync(sessionId);
         }
         return session;
     }
@@ -237,23 +241,166 @@ public class SessionService
     }
     public Session GetSessionById(string sessionId) =>
         _sessions.TryGetValue(sessionId, out var session) ? session : null;
+
+    public async Task<Session?> GetSessionByIdAsync(string sessionId)
+    {
+        if (string.IsNullOrEmpty(sessionId)) return null;
+
+        if (_sessions.TryGetValue(sessionId, out var session))
+        {
+            Console.WriteLine($"[SessionService C#] Found session {sessionId} in-memory cache.");
+            return session;
+        }
+
+        Console.WriteLine($"[SessionService C#] Session {sessionId} NOT found in-memory. Querying SQL database...");
+        try
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var persistenceService = scope.ServiceProvider.GetRequiredService<Data.SessionPersistenceService>();
+            var dbSession = await persistenceService.GetSessionWithParticipantsAsync(sessionId);
+            if (dbSession != null)
+            {
+                // Reconstruct standard collections to avoid null references
+                dbSession.ParticipantIds ??= new HashSet<string>();
+                dbSession.ParticipantStatuses ??= new Dictionary<string, Session.StudentStatus>();
+                dbSession.ParticipantConnectionIds ??= new Dictionary<string, string>();
+                dbSession.ParticipantEvents ??= new Dictionary<string, List<(Session.StudentStatus, DateTime)>>();
+
+                // Populate ParticipantIds from database relationship
+                if (dbSession.Participants != null)
+                {
+                    foreach (var sp in dbSession.Participants)
+                    {
+                        if (sp.User != null && !string.IsNullOrEmpty(sp.User.MatricNo))
+                        {
+                            dbSession.ParticipantIds.Add(sp.User.MatricNo);
+                            if (!dbSession.ParticipantStatuses.ContainsKey(sp.User.MatricNo))
+                            {
+                                dbSession.ParticipantStatuses[sp.User.MatricNo] = Session.StudentStatus.Active;
+                            }
+                        }
+                    }
+                }
+
+                _sessions.TryAdd(sessionId, dbSession);
+                Console.WriteLine($"[SessionService C#] Reconstructed active session {sessionId} from DB into memory cache with {dbSession.ParticipantIds.Count} participants.");
+                return dbSession;
+            }
+            else
+            {
+                Console.WriteLine($"[SessionService C#] Session {sessionId} not found in SQL database.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SessionService C#] Exception querying database for session {sessionId}: {ex.Message}");
+        }
+
+        return null;
+    }
+
     public List<Session> GetSessionsByLecturer(string lecturerId) =>
         _sessions.Values
             .Where(s => s.LecturerMatricNo == lecturerId && (s.Status == SessionStatus.Active || s.Status == SessionStatus.Started))
             .ToList();
+
+    public async Task<List<Session>> GetSessionsByLecturerAsync(string lecturerId)
+    {
+        Console.WriteLine($"[SessionService C#] GetSessionsByLecturerAsync for lecturer {lecturerId}");
+        try
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var persistenceService = scope.ServiceProvider.GetRequiredService<Data.SessionPersistenceService>();
+            var dbSessions = await persistenceService.GetSessionsByLecturerAsync(lecturerId);
+            
+            var result = new List<Session>();
+            foreach (var dbSession in dbSessions)
+            {
+                var memorySession = await GetSessionByIdAsync(dbSession.SessionId);
+                if (memorySession != null)
+                {
+                    result.Add(memorySession);
+                }
+            }
+            return result;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SessionService C#] Exception in GetSessionsByLecturerAsync: {ex.Message}. Falling back to in-memory check.");
+            return GetSessionsByLecturer(lecturerId);
+        }
+    }
+
     public Session GetSessionByParticipant(string participantId) =>
         _sessions.Values
             .FirstOrDefault(s =>
                 (s.Status == SessionStatus.Started || s.Status == SessionStatus.Active)
                 && s.ParticipantIds.Contains(participantId));
+
+    public async Task<Session?> GetSessionByParticipantAsync(string participantId)
+    {
+        Console.WriteLine($"[SessionService C#] GetSessionByParticipantAsync for student {participantId}");
+        var session = _sessions.Values
+            .FirstOrDefault(s =>
+                (s.Status == SessionStatus.Started || s.Status == SessionStatus.Active)
+                && s.ParticipantIds.Contains(participantId));
+
+        if (session != null) return session;
+
+        try
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var persistenceService = scope.ServiceProvider.GetRequiredService<Data.SessionPersistenceService>();
+            var dbSession = await persistenceService.GetSessionByParticipantAsync(participantId);
+            if (dbSession != null)
+            {
+                return await GetSessionByIdAsync(dbSession.SessionId);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SessionService C#] Exception in GetSessionByParticipantAsync: {ex.Message}");
+        }
+
+        return null;
+    }
+
     public List<Session> GetSessionsBy<TKey>(TKey key, Func<Session, TKey> selector) =>
         _sessions.Values
             .Where(s => Equals(selector(s), key))
             .ToList();
+
     public List<Session> GetActiveSessions() =>
         _sessions.Values
             .Where(s => s.Status == SessionStatus.Active || s.Status == SessionStatus.Started)
             .ToList();
+
+    public async Task<List<Session>> GetActiveSessionsAsync()
+    {
+        Console.WriteLine("[SessionService C#] GetActiveSessionsAsync requested");
+        try
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var persistenceService = scope.ServiceProvider.GetRequiredService<Data.SessionPersistenceService>();
+            var dbSessions = await persistenceService.GetActiveSessionsAsync();
+            
+            var result = new List<Session>();
+            foreach (var dbSession in dbSessions)
+            {
+                var memorySession = await GetSessionByIdAsync(dbSession.SessionId);
+                if (memorySession != null)
+                {
+                    result.Add(memorySession);
+                }
+            }
+            return result;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SessionService C#] Exception in GetActiveSessionsAsync: {ex.Message}. Falling back to in-memory check.");
+            return GetActiveSessions();
+        }
+    }
     public Dictionary<string, ParticipantScoreDetails> CalculateAttendanceScore(string sessionId)
     {
         if (!_sessions.TryGetValue(sessionId, out var session))

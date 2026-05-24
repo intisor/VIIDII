@@ -1,76 +1,67 @@
 @inject NavigationManager Navigation
 @inject AuthService AuthService
+@using VIIDII.Models
 
-<div class="navbar navbar-expand-lg">
-    <div class="container-fluid">
-        <a class="navbar-brand" href="/">VIIDII</a>
-        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-            <span class="navbar-toggler-icon"></span>
-        </button>
-        <div class="collapse navbar-collapse" id="navbarNav">
-            <ul class="navbar-nav me-auto">
-                <li class="nav-item">
-                    <a class="nav-link" href="/">Home</a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link" href="/about">About</a>
-                </li>
-                @if (CurrentUser != null)
+<nav class="viidii-nav">
+    <div class="nav-inner">
+
+        <!-- Wordmark -->
+        <a class="nav-logo" href="/">VIIDII</a>
+
+        <!-- Primary links -->
+        <div class="nav-links">
+            <a class="nav-link" href="/">Home</a>
+            <a class="nav-link" href="/about">About</a>
+
+            @if (CurrentUser != null)
+            {
+                <a class="nav-link" href="@DashboardLink">Dashboard</a>
+
+                @if (CurrentUser.Role == Role.Lecturer)
                 {
-                    <li class="nav-item">
-                        <a class="nav-link" href="@DashboardLink">Dashboard</a>
-                    </li>
-                    @if (CurrentUser.Role == Role.Lecturer)
-                    {
-                        <li class="nav-item">
-                            <a class="nav-link" href="/create-session">Create Session</a>
-                        </li>
-                    }
-                    @if (CurrentUser.Role == Role.Student || CurrentUser.Role == Role.Lecturer)
-                    {
-                        <li class="nav-item">
-                            <a class="nav-link" href="/join-session">Join Session</a>
-                        </li>
-                    }
-                    @if (CurrentUser.Role == Role.Admin)
-                    {
-                        <li class="nav-item">
-                            <a class="nav-link" href="/admin">Admin Panel</a>
-                        </li>
-                    }
+                    <a class="nav-link" href="/create-session">New Session</a>
                 }
-            </ul>
-            <ul class="navbar-nav ms-auto">
-                @if (CurrentUser != null)
+
+                @if (CurrentUser.Role == Role.Student || CurrentUser.Role == Role.Lecturer)
                 {
-                    <li class="nav-item">
-                        <span class="nav-link text-light">
-                            <strong>@CurrentUser.Name</strong> (@CurrentUser.Role)
-                        </span>
-                    </li>
-                    <li class="nav-item">
-                        <button class="nav-link btn btn-link text-danger" @onclick="Logout">Logout</button>
-                    </li>
+                    <a class="nav-link" href="/join-session">Join Session</a>
                 }
-                else
+
+                @if (CurrentUser.Role == Role.Admin)
                 {
-                    <li class="nav-item">
-                        <a class="nav-link btn btn-outline-light" href="/login">Login</a>
-                    </li>
+                    <a class="nav-link" href="/admin">Admin</a>
                 }
-            </ul>
+            }
         </div>
+
+        <!-- Right-side actions -->
+        <div class="nav-actions">
+            @if (CurrentUser != null)
+            {
+                <div class="nav-user-chip">
+                    <span class="nav-user-role">@CurrentUser.Role</span>
+                    <span class="nav-user-name">@CurrentUser.Name</span>
+                </div>
+                <button class="nav-logout" @onclick="Logout">Sign out</button>
+            }
+            else
+            {
+                <a class="nav-login-btn" href="/login">Sign in</a>
+            }
+        </div>
+
     </div>
-</div>
+</nav>
 
 @code {
     private User? CurrentUser;
+
     private string DashboardLink => CurrentUser switch
     {
-        { Role: Role.Admin } => "/admin",
+        { Role: Role.Admin }    => "/admin",
         { Role: Role.Lecturer } => "/lecturer/home",
-        { Role: Role.Student } => "/student/home",
-        _ => "/dashboard"
+        { Role: Role.Student }  => "/student/home",
+        _                       => "/dashboard"
     };
 
     protected override async Task OnInitializedAsync()
