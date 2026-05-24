@@ -74,31 +74,44 @@ else
             </div>
         }
 
-        <!-- Test Camera Section (Lecturer Only, Before Session Starts) -->
+        <!-- Setup configuration section (Lecturer Only, Before Session Starts) -->
         @if (State.IsLecturer && !State.IsSessionStarted && State.ShowTestCameraSection)
         {
-            <div class="test-camera-section">
-                <h3>Test Your Camera</h3>
-                <p>Make sure your camera and microphone are working before starting the session.</p>
-                <div class="test-video-container">
-                    <video id="testVideo" autoplay playsinline muted class="test-video"></video>
-                </div>
-                <div class="test-controls">
-                    @if (!State.IsTestingCamera)
-                    {
-                        <button class="btn btn-primary" @onclick="TestCamera">
-                            <i class="fas fa-video"></i> Test Camera
-                        </button>
-                    }
-                    else
-                    {
-                        <button class="btn btn-secondary" @onclick="StopTestCamera">
-                            <i class="fas fa-stop"></i> Stop Test
-                        </button>
-                        <button class="btn btn-success" @onclick="StartSessionWithCamera">
-                            <i class="fas fa-play"></i> Looks Good - Start Session
-                        </button>
-                    }
+            <div class="setup-layout">
+                <div class="setup-card">
+                    <div class="setup-header">
+                        <h3>Device Preview</h3>
+                        <p>Configure and verify your camera output before launching the live classroom session.</p>
+                    </div>
+
+                    <div class="test-video-container">
+                        <video id="testVideo" autoplay playsinline muted class="test-video"></video>
+                        @if (!State.IsTestingCamera)
+                        {
+                            <div class="camera-off-placeholder">
+                                <i class="fas fa-video-slash"></i>
+                                <span>Webcam is currently offline</span>
+                            </div>
+                        }
+                    </div>
+
+                    <div class="test-controls">
+                        @if (!State.IsTestingCamera)
+                        {
+                            <button class="btn btn-primary btn-lg" @onclick="TestCamera" id="test-camera-btn">
+                                <i class="fas fa-video"></i> Start Camera Test
+                            </button>
+                        }
+                        else
+                        {
+                            <button class="btn btn-secondary" @onclick="StopTestCamera" id="stop-test-btn">
+                                <i class="fas fa-stop"></i> Stop Test
+                            </button>
+                            <button class="btn btn-success" @onclick="StartSessionWithCamera" id="start-session-btn">
+                                <i class="fas fa-play"></i> Start Session
+                            </button>
+                        }
+                    </div>
                 </div>
             </div>
         }
@@ -114,7 +127,7 @@ else
                            autoplay 
                            playsinline 
                            muted="@State.IsLecturer"
-                           class="session-video">
+                           class="session-video @(State.IsLecturer ? "local-stream" : "")">
                     </video>
 
                     <!-- Loading Overlay -->

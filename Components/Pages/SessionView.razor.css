@@ -136,39 +136,93 @@
 }
 .btn-retry:hover { opacity: 0.85; }
 
-/* ── Pre-session: Test Camera ─────────────────────────────── */
-.test-camera-section {
+/* ── Pre-session: Test Camera Setup Card ──────────────────── */
+.setup-layout {
     flex: 1;
     display: flex;
-    flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 2rem;
-    gap: 1.25rem;
+    padding: 2rem 1.25rem;
+    background: var(--bg);
+    overflow-y: auto;
 }
 
-.test-camera-section h3 { font-size: 1rem; font-weight: 600; }
-.test-camera-section p  { color: var(--text-mid); font-size: 0.875rem; }
+.setup-card {
+    width: 100%;
+    max-width: 640px;
+    background: var(--surface);
+    border: 1px solid var(--border-mid);
+    border-radius: var(--r-lg);
+    padding: 2.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.75rem;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+}
+
+.setup-header {
+    text-align: center;
+}
+
+.setup-header h3 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 0.5rem;
+}
+
+.setup-header p {
+    font-size: 0.875rem;
+    color: var(--text-faint);
+    line-height: 1.4;
+    margin: 0;
+}
 
 .test-video-container {
     width: 100%;
-    max-width: 680px;
-    background: #000;
-    border-radius: var(--r-lg);
+    aspect-ratio: 16 / 9;
+    background: #070709;
+    border-radius: var(--r);
     overflow: hidden;
     position: relative;
-    padding-bottom: 56.25%;
     border: 1px solid var(--border-mid);
 }
 
 .test-video {
-    position: absolute;
-    top: 0; left: 0;
-    width: 100%; height: 100%;
+    width: 100%;
+    height: 100%;
     object-fit: cover;
+    transform: scaleX(-1); /* Mirror camera stream */
 }
 
-.test-controls { display: flex; gap: 0.625rem; flex-wrap: wrap; justify-content: center; }
+.camera-off-placeholder {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    color: var(--text-faint);
+    background: #070709;
+}
+
+.camera-off-placeholder i {
+    font-size: 2.25rem;
+    color: var(--border-strong);
+}
+
+.camera-off-placeholder span {
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.test-controls {
+    display: flex;
+    gap: 0.75rem;
+    justify-content: center;
+    flex-wrap: wrap;
+}
 
 /* ── Session Body: sidebar layout ────────────────────────── */
 .session-body {
@@ -197,6 +251,10 @@
     height: 100%;
     object-fit: contain;
     display: block;
+}
+
+.session-video.local-stream {
+    transform: scaleX(-1); /* Mirror local feed for natural interaction */
 }
 
 /* ── Video Overlays ──────────────────────────────────────── */
