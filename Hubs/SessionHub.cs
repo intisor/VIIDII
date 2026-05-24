@@ -101,7 +101,13 @@ namespace VIIDII.Hubs
 
             if (!string.IsNullOrEmpty(session.LecturerConnectionId))
             {
-                var participants = session.ParticipantIds.ToDictionary(id => id, id => id);
+                // Send participant names instead of just IDs
+                var participants = new Dictionary<string, string>();
+                foreach (var id in session.ParticipantIds)
+                {
+                    var user = await _userService.GetUserByMatricNoAsync(id);
+                    participants[id] = user?.Name ?? id;
+                }
                 await Clients.Client(session.LecturerConnectionId).SendAsync("ReceiveParticipants", participants);
                 Console.WriteLine($"Sent participants to lecturer: {string.Join(", ", participants.Keys)}");
             }
