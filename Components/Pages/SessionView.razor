@@ -117,7 +117,7 @@ else
         }
 
         <!-- Session Body: sidebar layout -->
-        @if (State.IsSessionStarted || State.IsTestingCamera)
+        @if (State.IsSessionStarted || State.IsTestingCamera || !State.IsLecturer)
         {
             <div class="session-body">
                 <div class="video-panel">
@@ -139,8 +139,17 @@ else
                         </div>
                     }
 
+                    <!-- Pre-session: Waiting for Lecturer (Student Only) -->
+                    @if (!State.IsLecturer && !State.IsSessionStarted && !State.IsLoading)
+                    {
+                        <div class="waiting-overlay">
+                            <div class="spinner"></div>
+                            <p>Waiting for lecturer to start the session...</p>
+                        </div>
+                    }
+
                     <!-- Mobile Play Overlay -->
-                    @if (State.ShowMobilePlayOverlay && !State.IsLecturer)
+                    @if (State.ShowMobilePlayOverlay && !State.IsLecturer && State.IsSessionStarted)
                     {
                         <div class="mobile-play-overlay" @onclick="PlayVideo">
                             <div class="play-button">
@@ -531,10 +540,17 @@ else
 
             // Update session in service
             Console.WriteLine($"[SessionView C#] [Lecturer] Calling SessionService.StartSessionAsync...");
-            await SessionService.StartSessionAsync(SessionId);
-            CurrentSession.IsSessionStarted = true;
-            State.IsSessionStarted = true;
-            State.ShowTestCameraSection = false;
+            var updatedSession = await SessionService.StartSessionAsync(SessionId);
+            
+            if (updatedSession != null)
+            {
+                CurrentSession = updatedSession;
+                CurrentSession.IsSessionStarted = true;
+                State.IsSessionStarted = true;
+                State.Status = CurrentSession.Status;
+                State.ShowTestCameraSection = false;
+                Console.WriteLine($"[SessionView C#] [Lecturer] Session status updated to: {CurrentSession.Status}");
+            }
 
             StateHasChanged();
             await Task.Yield();
