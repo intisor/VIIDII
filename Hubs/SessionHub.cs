@@ -162,28 +162,56 @@ namespace VIIDII.Hubs
 
         public async Task CreatePost(string sessionId, string content, bool isFile)
         {
-            var httpContext = Context.GetHttpContext();
-            var matricNo = httpContext?.Session.GetString("MatricNo");
-            var user = await _userService.GetUserByMatricNoAsync(matricNo);
-            var userName = user?.Name ?? matricNo;
-            var post = _messageService.CreatePost(sessionId, matricNo, userName, content, true,isFile);
-            await Clients.Group(sessionId).SendAsync("ReceivePost", post); // Changed from Clients.Others to Clients.Group(sessionId)
-            // Optionally, PostCreated can still be sent if the caller needs specific confirmation beyond receiving the post itself.
-            // For now, let's assume ReceivePost is sufficient for the caller to see their own post.
-            // If specific UI updates are needed only for the caller upon their post creation (e.g. clearing input), PostCreated can be kept.
-            // Let's keep PostCreated for now, as it might be used for UI cues like clearing the input field or showing a 'sent' status.
-            await Clients.Caller.SendAsync("PostCreated", post.id);
+            try
+            {
+                var httpContext = Context.GetHttpContext();
+                var matricNo = httpContext?.Session.GetString("MatricNo");
+                
+                if (string.IsNullOrEmpty(matricNo))
+                {
+                    await Clients.Caller.SendAsync("Error", "Session not found. Please log in again.");
+                    return;
+                }
+
+                var user = await _userService.GetUserByMatricNoAsync(matricNo);
+                var userName = user?.Name ?? matricNo;
+                var post = _messageService.CreatePost(sessionId, matricNo, userName, content, true, isFile);
+                
+                await Clients.Group(sessionId).SendAsync("ReceivePost", post);
+                await Clients.Caller.SendAsync("PostCreated", post.id);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[CreatePost] Error: {ex.Message}");
+                await Clients.Caller.SendAsync("Error", "Failed to create post. Please try again.");
+            }
         }
 
         public async Task CreateComment(string sessionId, string postId, string content)
         {
-            var httpContext = Context.GetHttpContext();
-            var matricNo = httpContext?.Session.GetString("MatricNo");
-            var user = await _userService.GetUserByMatricNoAsync(matricNo);
-            var userName = user?.Name ?? matricNo;
-            var isLecturer = await IsSessionLecturerAsync(sessionId, matricNo);
-            var comment = _messageService.CreateComment(sessionId, matricNo, userName, content, postId, isLecturer);
-            await Clients.Group(sessionId).SendAsync("ReceiveComment", comment);
+            try
+            {
+                var httpContext = Context.GetHttpContext();
+                var matricNo = httpContext?.Session.GetString("MatricNo");
+                
+                if (string.IsNullOrEmpty(matricNo))
+                {
+                    await Clients.Caller.SendAsync("Error", "Session not found. Please log in again.");
+                    return;
+                }
+
+                var user = await _userService.GetUserByMatricNoAsync(matricNo);
+                var userName = user?.Name ?? matricNo;
+                var isLecturer = await IsSessionLecturerAsync(sessionId, matricNo);
+                var comment = _messageService.CreateComment(sessionId, matricNo, userName, content, postId, isLecturer);
+                
+                await Clients.Group(sessionId).SendAsync("ReceiveComment", comment);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[CreateComment] Error: {ex.Message}");
+                await Clients.Caller.SendAsync("Error", "Failed to create comment. Please try again.");
+            }
         }
 
         public async Task GetMessages(string sessionId)
