@@ -785,6 +785,19 @@ window.sessionInterop = (function () {
         return !document.hidden;
     }
 
+    function saveSessionState(state) {
+        sessionStorage.setItem('sessionState', JSON.stringify(state ?? {}));
+    }
+
+    function restoreSessionState() {
+        const raw = sessionStorage.getItem('sessionState');
+        return raw ? JSON.parse(raw) : null;
+    }
+
+    function clearSessionState() {
+        sessionStorage.removeItem('sessionState');
+    }
+
     // Setup tab visibility listener (reports to Blazor)
     function setupTabVisibilityListener() {
         if (window.sessionInteropVisibilityRegistered) {
@@ -820,6 +833,9 @@ window.sessionInterop = (function () {
         getBatteryLevel: getBatteryLevel,
         getNetworkStatus: getNetworkStatus,
         isTabVisible: isTabVisible,
+        saveSessionState: saveSessionState,
+        restoreSessionState: restoreSessionState,
+        clearSessionState: clearSessionState,
         setupTabVisibilityListener: setupTabVisibilityListener
     };
 })();

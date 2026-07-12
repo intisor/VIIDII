@@ -235,11 +235,12 @@ else
                                 }
                                 else
                                 {
-                                    <ParticipantPanel Participants="@State.Participants"
-                                                     ParticipantStatuses="@State.ParticipantStatuses"
-                                                     HubConnection="@_hubConnection"
-                                                     SessionId="@SessionId"
-                                                     IsLecturer="@State.IsLecturer" />
+                                    <ParticipantPanel @key="@_participantPanelVersion"
+                                                      Participants="@State.Participants"
+                                                      ParticipantStatuses="@State.ParticipantStatuses"
+                                                      HubConnection="@_hubConnection"
+                                                      SessionId="@SessionId"
+                                                      IsLecturer="@State.IsLecturer" />
                                 }
                             </div>
                         </div>
@@ -279,6 +280,7 @@ else
     private bool _isNavigating = false; // Prevent render after navigation
     private bool IsLecturer => State.IsLecturer;
     private bool _pendingStudentPeerSetup = false;
+    private int _participantPanelVersion = 0;
 
     // Lifecycle Methods
     protected override async Task OnInitializedAsync()
@@ -693,9 +695,9 @@ else
             State.StopLoading();
 
             // Navigate after cleanup
-            Console.WriteLine($"[SessionView C#] [Lecturer] Session ended successfully. Navigating back to dashboard.");
+            Console.WriteLine($"[SessionView C#] [Lecturer] Session ended successfully. Navigating to recap page.");
             _isNavigating = true;
-            Navigation.NavigateTo("/dashboard", forceLoad: true);
+            Navigation.NavigateTo($"/session-recap/{SessionId}", forceLoad: true);
         }
         catch (Exception ex)
         {
@@ -845,8 +847,8 @@ else
         {
             await InvokeAsync(() =>
             {
-                Console.WriteLine($"[SessionView C#] [Lecturer] Registering student peer {peerId} for user {userId}");
                 State.AddStudentPeer(peerId, userId);
+                _participantPanelVersion++;
                 StateHasChanged();
             });
         }
@@ -876,11 +878,13 @@ else
 
         await InvokeAsync(() =>
         {
-            foreach (var participant in participants)
+            State.Participants.Clear();
+            foreach (var participant in participants.OrderBy(p => p.Key))
             {
                 State.AddParticipant(participant.Key, participant.Value);
             }
 
+            _participantPanelVersion++;
             StateHasChanged();
         });
     }
@@ -891,7 +895,8 @@ else
 
         await InvokeAsync(() =>
         {
-            foreach (var status in statuses)
+            State.ParticipantStatuses.Clear();
+            foreach (var status in statuses.OrderBy(s => s.Key))
             {
                 if (Enum.TryParse<Session.StudentStatus>(status.Value, out var studentStatus))
                 {
@@ -899,6 +904,7 @@ else
                 }
             }
 
+            _participantPanelVersion++;
             StateHasChanged();
         });
     }
@@ -949,6 +955,10 @@ else
     {
         Console.WriteLine($"[SessionView C#] [JSInvokable] OnStudentConnected: Student PeerId={peerId}. Registering/updating student connection in state.");
         State.AddStudentPeer(peerId);
+        if (State.IsLecturer)
+        {
+            _participantPanelVersion++;
+        }
         StateHasChanged();
     }
 
@@ -957,6 +967,10 @@ else
     {
         Console.WriteLine($"[SessionView C#] [JSInvokable] OnStudentDisconnected: Student PeerId={peerId}. Removing student connection from state.");
         State.RemoveStudentPeer(peerId);
+        if (State.IsLecturer)
+        {
+            _participantPanelVersion++;
+        }
         StateHasChanged();
     }
 
@@ -1024,266 +1038,50 @@ else
         {
             State.SetError("Unable to establish connection. Please refresh the page.");
         }
-
-        StateHasChanged();
-    }
-
-    [JSInvokable]
-    public void OnConnectedToLecturer(string lecturerPeerId)
-    {
-        Console.WriteLine($"[SessionView C#] [JSInvokable] OnConnectedToLecturer: Connected to Lecturer PeerId={lecturerPeerId}. Setting LecturerPeerId in state.");
-        State.LecturerPeerId = lecturerPeerId;
-        State.ClearError();
-        StateHasChanged();
-    }
-
-    [JSInvokable]
-    public void OnConnectionFailed(string errorType)
-    {
-        Console.WriteLine($"[SessionView C#] [JSInvokable] OnConnectionFailed: Connection to lecturer failed: '{errorType}'. Connection attempt #{State.ConnectionAttempts}. Processing retry logic.");
-        State.RecordConnectionAttempt();
-
-        if (!State.HasExceededMaxAttempts)
-        {
-            State.SetError("Connection failed. Retrying...");
-        }
-        else
-        {
-            State.SetError("Unable to connect. Please refresh the page.");
-        }
-
-        StateHasChanged();
-    }
-
-    [JSInvokable]
-    public void OnFileChunkReceived(string jsonData)
-    {
-        // Phase 3 - File sharing
-        Console.WriteLine("[SessionView C#] [JSInvokable] OnFileChunkReceived (Phase 3 feature)");
-    }
-
-    [JSInvokable]
-    public void OnFileUploadProgress(double progress, int sentChunks, int totalChunks)
-    {
-        Console.WriteLine($"[SessionView C#] [JSInvokable] OnFileUploadProgress: {progress:F0}% ({sentChunks}/{totalChunks})");
-        // State can track progress here if needed
-        StateHasChanged();
-    }
-
-    [JSInvokable]
-    public void OnFileDownloadComplete(string messageId, string fileName)
-    {
-        Console.WriteLine($"[SessionView C#] [JSInvokable] OnFileDownloadComplete: {fileName}");
-        StateHasChanged();
-    }
-
-    [JSInvokable]
-    public void OnFileDownloadError(string messageId, string error)
-    {
-        Console.WriteLine($"[SessionView C#] [JSInvokable] OnFileDownloadError: message {messageId}: {error}");
-        State.SetError($"File download failed: {error}");
-        StateHasChanged();
-    }
-
-    [JSInvokable]
-    public async Task OnTabVisibilityChanged(bool isVisible)
-    {
-        Console.WriteLine($"[SessionView C#] [JSInvokable] OnTabVisibilityChanged: IsVisible={isVisible}. Reporting tab status to SignalR Hub.");
-        if (State.IsLecturer) return;
-
-        // Report to SignalR for engagement tracking (Phase 4)
-        if (_hubConnection != null)
-        {
-            try
-            {
-                await _hubConnection.SendAsync("UpdateTabStatus", isVisible);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[SessionView C#] [JSInvokable] Error updating tab status: {ex.Message}");
-            }
-        }
-    }
-
-    // Helper Methods
-    private void ToggleTabExpansion()
-    {
-        State.IsTabExpanded = !State.IsTabExpanded;
-    }
-
-    private string GetStatusIcon(Session.StudentStatus status)
-    {
-        return status switch
-        {
-            Session.StudentStatus.Active => "check-circle",
-            Session.StudentStatus.InActive => "exclamation-circle",
-            Session.StudentStatus.BatteryLow => "battery-quarter",
-            Session.StudentStatus.DataFinished => "signal",
-            Session.StudentStatus.Disconnected => "times-circle",
-            _ => "user"
-        };
-    }
-
-    // Session Persistence (Browser Storage)
-    private async Task SaveSessionStateAsync()
-    {
-        if (_isDisposed || State.CurrentUser == null) return;
-
-        try
-        {
-            var storageKey = $"viidii_session_{SessionId}_{State.CurrentUser.MatricNo}";
-            var stateData = new
-            {
-                SessionId = State.SessionId,
-                IsSessionStarted = State.IsSessionStarted,
-                IsLecturer = State.IsLecturer,
-                MyPeerId = State.MyPeerId,
-                LecturerPeerId = State.LecturerPeerId,
-                JoinedAt = DateTime.UtcNow,
-                UserId = State.CurrentUser.MatricNo
-            };
-
-            var json = System.Text.Json.JsonSerializer.Serialize(stateData);
-            await JSRuntime.InvokeVoidAsync("sessionStorage.setItem", storageKey, json);
-            
-            Console.WriteLine($"Session state saved to storage: {storageKey}");
-        }
-        catch (JSDisconnectedException)
-        {
-            Console.WriteLine("JS disconnected, cannot save state");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error saving session state: {ex.Message}");
-        }
     }
 
     private async Task TryRestoreSessionStateAsync()
     {
-        try
+        var restored = await SessionJsInterop.RestoreSessionStateAsync();
+        if (restored is not System.Text.Json.JsonElement json || json.ValueKind != System.Text.Json.JsonValueKind.Object)
         {
-            // Try to get user MatricNo from auth service first (might not be available yet)
-            var tempUser = await AuthService.GetCurrentUserAsync();
-            if (tempUser == null) return;
-
-            var storageKey = $"viidii_session_{SessionId}_{tempUser.MatricNo}";
-            var json = await JSRuntime.InvokeAsync<string>("sessionStorage.getItem", storageKey);
-
-            if (!string.IsNullOrEmpty(json))
-            {
-                var stateData = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, System.Text.Json.JsonElement>>(json);
-                if (stateData != null)
-                {
-                    State.IsRestoredFromStorage = true;
-                    
-                    // Check if this is a recent session (within last 30 minutes)
-                    if (stateData.ContainsKey("JoinedAt"))
-                    {
-                        var joinedAtStr = stateData["JoinedAt"].GetString();
-                        if (DateTime.TryParse(joinedAtStr, out var joinedAt))
-                        {
-                            var timeSinceJoin = DateTime.UtcNow - joinedAt;
-                            
-                            if (timeSinceJoin.TotalMinutes > 30)
-                            {
-                                // Session too old, clear storage and start fresh
-                                await ClearSessionStorageAsync();
-                                State.IsRestoredFromStorage = false;
-                                return;
-                            }
-                        }
-                    }
-
-                    Console.WriteLine($"Session state restored from storage: {storageKey}");
-                }
-            }
+            return;
         }
-        catch (JSDisconnectedException)
+
+        if (json.TryGetProperty("isTestingCamera", out var isTestingCamera) && isTestingCamera.ValueKind == System.Text.Json.JsonValueKind.True || isTestingCamera.ValueKind == System.Text.Json.JsonValueKind.False)
         {
-            Console.WriteLine("JS disconnected, cannot restore state");
+            State.IsTestingCamera = isTestingCamera.GetBoolean();
         }
-        catch (Exception ex)
+
+        if (json.TryGetProperty("showTestCameraSection", out var showTestCameraSection) && (showTestCameraSection.ValueKind == System.Text.Json.JsonValueKind.True || showTestCameraSection.ValueKind == System.Text.Json.JsonValueKind.False))
         {
-            Console.WriteLine($"Error restoring session state: {ex.Message}");
-            State.IsRestoredFromStorage = false;
+            State.ShowTestCameraSection = showTestCameraSection.GetBoolean();
         }
     }
 
-    private async Task ClearSessionStorageAsync()
+    private Task SaveSessionStateAsync()
     {
-        if (_isDisposed || State.CurrentUser == null) return;
+        var state = new
+        {
+            sessionId = SessionId,
+            isSessionStarted = State.IsSessionStarted,
+            isLecturer = State.IsLecturer,
+            isTestingCamera = State.IsTestingCamera,
+            showTestCameraSection = State.ShowTestCameraSection
+        };
 
-        try
-        {
-            var storageKey = $"viidii_session_{SessionId}_{State.CurrentUser.MatricNo}";
-            await JSRuntime.InvokeVoidAsync("sessionStorage.removeItem", storageKey);
-            Console.WriteLine($"Session storage cleared: {storageKey}");
-        }
-        catch (JSDisconnectedException)
-        {
-            Console.WriteLine("JS disconnected, cannot clear storage");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error clearing session storage: {ex.Message}");
-        }
+        return SessionJsInterop.SaveSessionStateAsync(state);
     }
 
-    // Cleanup
+    private Task ClearSessionStorageAsync() => SessionJsInterop.ClearSessionStateAsync();
+
     public async ValueTask DisposeAsync()
     {
-        if (_isDisposed) return;
         _isDisposed = true;
 
-        try
+        if (_hubConnection is not null)
         {
-            // Only clear storage if user intentionally ended/left session
-            // (Not on refresh or accidental close)
-            if (CurrentSession?.Status == SessionStatus.Ended)
-            {
-                await ClearSessionStorageAsync();
-            }
-
-            // Dispose DotNetObjectReference
-            _dotNetRef?.Dispose();
-
-            // Stop HubConnection
-            if (_hubConnection != null)
-            {
-                try
-                {
-                    if (_hubConnection.State == HubConnectionState.Connected)
-                    {
-                        await _hubConnection.StopAsync();
-                    }
-                    await _hubConnection.DisposeAsync();
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Error disposing HubConnection: {ex.Message}");
-                }
-            }
-
-            // Cleanup JS interop
-            try
-            {
-                await SessionJsInterop.CleanupAsync();
-            }
-            catch (JSDisconnectedException)
-            {
-                // Expected when browser closes
-                Console.WriteLine("JS disconnected during cleanup (expected)");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error cleaning up JS interop: {ex.Message}");
-            }
-
-            Console.WriteLine("SessionView disposed");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error in DisposeAsync: {ex.Message}");
+            await _hubConnection.DisposeAsync();
         }
     }
 }

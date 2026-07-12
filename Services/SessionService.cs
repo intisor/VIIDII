@@ -154,7 +154,7 @@ public class SessionService
         if (session.LecturerMatricNo != lecturerId || (session.Status != SessionStatus.Started && session.Status != SessionStatus.Active))
             return null;
         session.Status = SessionStatus.Ended;
-        session.EndTime = DateTime.UtcNow.AddHours(1);
+        session.EndTime = DateTime.UtcNow;
         session.IsSessionStarted = false;
 
         // Persist session end to database asynchronously

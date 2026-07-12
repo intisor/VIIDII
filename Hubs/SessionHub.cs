@@ -121,6 +121,23 @@ namespace VIIDII.Hubs
             if (session != null && await IsSessionLecturerAsync(sessionId, matricNo))
             {
                 _sessionService.EndSession(sessionId, matricNo);
+
+                if (!string.IsNullOrEmpty(session.LecturerConnectionId))
+                {
+                    var participants = new Dictionary<string, string>();
+                    foreach (var id in session.ParticipantIds)
+                    {
+                        var user = await _userService.GetUserByMatricNoAsync(id);
+                        participants[id] = user?.Name ?? id;
+                    }
+
+                    var statuses = _sessionService.GetParticipantStatus(sessionId);
+                    var scores = _sessionService.CalculateAttendanceScore(sessionId);
+                    await Clients.Client(session.LecturerConnectionId).SendAsync("ReceiveParticipants", participants);
+                    await Clients.Client(session.LecturerConnectionId).SendAsync("ReceiveParticipantStatuses", statuses);
+                    await Clients.Client(session.LecturerConnectionId).SendAsync("ReceiveParticipantScoreDetails", scores);
+                }
+
                 // Notify all clients in the session that it has ended
                 await Clients.Group(sessionId).SendAsync("SessionEnded", sessionId);
                 Console.WriteLine($"Session {sessionId} ended by lecturer {matricNo}");

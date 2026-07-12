@@ -1,0 +1,161 @@
+@page "/session-recap/{SessionId}"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject AuthService AuthService
+@inject SessionService SessionService
+@inject NavigationManager Navigation
+@using VIIDII.Models
+@using VIIDII.Services
+
+<PageTitle>Session Recap - @SessionId</PageTitle>
+
+@if (CurrentUser is null)
+{
+    <div class="alert alert-warning" style="margin:2rem auto;max-width:640px;">Please log in first.</div>
+}
+else if (Session is null)
+{
+    <div class="alert alert-danger" style="margin:2rem auto;max-width:640px;">Session not found.</div>
+}
+else if (!CanViewRecap)
+{
+    <div class="alert alert-warning" style="margin:2rem auto;max-width:640px;">Access denied.</div>
+}
+else
+{
+    <div class="session-recap container py-4">
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+            <div>
+                <h1 class="mb-1">@Session.Title</h1>
+                <div class="text-muted">Session ended @Session.EndTime?.ToString("g")</div>
+            </div>
+            <div class="text-end">
+                <div class="badge bg-secondary mb-2">@Session.Status</div>
+                <div class="text-muted small">@Session.SessionId</div>
+            </div>
+        </div>
+
+        <div class="row g-3 mb-4">
+            <div class="col-md-4">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <div class="text-muted small text-uppercase">Average Attendance Score</div>
+                        <div class="display-6">@AverageAttendanceScore.ToString("F1")%</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <div class="text-muted small text-uppercase">Participants Above 70%</div>
+                        <div class="display-6">@ParticipantsAbove70Percent</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <div class="text-muted small text-uppercase">Most Common Penalty</div>
+                        <div class="display-6 fs-4">@MostCommonPenaltyReason</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @if (Scores.Count == 0)
+        {
+            <div class="alert alert-info">No attendance data available for this session.</div>
+        }
+        else
+        {
+            <div class="card">
+                <div class="card-header">
+                    Attendance Breakdown
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>Participant</th>
+                                <th>Score (%)</th>
+                                <th>Active (min)</th>
+                                <th>Inactive (min)</th>
+                                <th>Battery Low (min)</th>
+                                <th>Data Finished (min)</th>
+                                <th>Disconnected (min)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var scoreEntry in Scores.OrderByDescending(s => s.Value.FinalScorePercentage))
+                            {
+                                var details = scoreEntry.Value;
+                                <tr>
+                                    <td>@details.ParticipantName (@details.ParticipantId)</td>
+                                    <td>@details.FinalScorePercentage.ToString("F1")</td>
+                                    <td>@details.TimeActiveMinutes.ToString("F1")</td>
+                                    <td>@details.TimeInactiveMinutes.ToString("F1")</td>
+                                    <td>@details.TimeBatteryLowMinutes.ToString("F1")</td>
+                                    <td>@details.TimeDataFinishedMinutes.ToString("F1")</td>
+                                    <td>@details.TimeDisconnectedMinutes.ToString("F1")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
+
+        <div class="mt-4">
+            <button class="btn btn-primary" @onclick="GoBack">Back to dashboard</button>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public string SessionId { get; set; } = string.Empty;
+
+    private User? CurrentUser;
+    private Session? Session;
+    private Dictionary<string, SessionService.ParticipantScoreDetails> Scores = new();
+    private double AverageAttendanceScore;
+    private string MostCommonPenaltyReason = "N/A";
+    private int ParticipantsAbove70Percent;
+    private bool CanViewRecap;
+
+    protected override async Task OnInitializedAsync()
+    {
+        CurrentUser = await AuthService.GetCurrentUserAsync();
+        if (CurrentUser is null)
+        {
+            Navigation.NavigateTo("/login");
+            return;
+        }
+
+        Session = SessionService.GetSessionById(SessionId);
+        CanViewRecap = Session is not null && CurrentUser.Role == Role.Lecturer && Session.LecturerMatricNo == CurrentUser.MatricNo;
+        if (!CanViewRecap || Session is null)
+        {
+            return;
+        }
+
+        Scores = SessionService.CalculateAttendanceScore(SessionId);
+        if (Scores.Count > 0)
+        {
+            AverageAttendanceScore = Scores.Values.Average(s => s.FinalScorePercentage);
+            ParticipantsAbove70Percent = Scores.Values.Count(s => s.FinalScorePercentage >= 70);
+            var penaltyCounts = new Dictionary<string, int>();
+            foreach (var scoreDetail in Scores.Values)
+            {
+                if (scoreDetail.TimeInactiveMinutes > 0) penaltyCounts["Inactive"] = penaltyCounts.GetValueOrDefault("Inactive") + 1;
+                if (scoreDetail.TimeBatteryLowMinutes > 0) penaltyCounts["Battery Low"] = penaltyCounts.GetValueOrDefault("Battery Low") + 1;
+                if (scoreDetail.TimeDataFinishedMinutes > 0) penaltyCounts["Data Finished"] = penaltyCounts.GetValueOrDefault("Data Finished") + 1;
+                if (scoreDetail.TimeDisconnectedMinutes > 0) penaltyCounts["Disconnected"] = penaltyCounts.GetValueOrDefault("Disconnected") + 1;
+            }
+
+            MostCommonPenaltyReason = penaltyCounts.Count > 0
+                ? penaltyCounts.OrderByDescending(kvp => kvp.Value).First().Key
+                : "N/A";
+        }
+    }
+
+    private void GoBack() => Navigation.NavigateTo("/dashboard", forceLoad: true);
+}

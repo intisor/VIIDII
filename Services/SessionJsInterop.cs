@@ -104,6 +104,21 @@ public interface ISessionJsInterop
     /// Setup tab visibility change listener
     /// </summary>
     Task SetupTabVisibilityListenerAsync();
+
+    /// <summary>
+    /// Save session state to browser storage
+    /// </summary>
+    Task SaveSessionStateAsync(object state);
+
+    /// <summary>
+    /// Restore session state from browser storage
+    /// </summary>
+    Task<object?> RestoreSessionStateAsync();
+
+    /// <summary>
+    /// Clear session state from browser storage
+    /// </summary>
+    Task ClearSessionStateAsync();
 }
 
 public class SessionJsInterop : ISessionJsInterop
@@ -385,6 +400,58 @@ public class SessionJsInterop : ISessionJsInterop
         {
             Console.WriteLine($"Error in SetupTabVisibilityListenerAsync: {ex.Message}");
             throw;
+        }
+    }
+
+    public async Task SaveSessionStateAsync(object state)
+    {
+        try
+        {
+            await _jsRuntime.InvokeVoidAsync("sessionInterop.saveSessionState", state);
+        }
+        catch (JSException ex)
+        {
+            Console.WriteLine($"JS Error in SaveSessionStateAsync: {ex.Message}");
+            throw;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error in SaveSessionStateAsync: {ex.Message}");
+            throw;
+        }
+    }
+
+    public async Task<object?> RestoreSessionStateAsync()
+    {
+        try
+        {
+            return await _jsRuntime.InvokeAsync<object?>("sessionInterop.restoreSessionState");
+        }
+        catch (JSException ex)
+        {
+            Console.WriteLine($"JS Error in RestoreSessionStateAsync: {ex.Message}");
+            return null;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error in RestoreSessionStateAsync: {ex.Message}");
+            return null;
+        }
+    }
+
+    public async Task ClearSessionStateAsync()
+    {
+        try
+        {
+            await _jsRuntime.InvokeVoidAsync("sessionInterop.clearSessionState");
+        }
+        catch (JSException ex)
+        {
+            Console.WriteLine($"JS Error in ClearSessionStateAsync: {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error in ClearSessionStateAsync: {ex.Message}");
         }
     }
 }
