@@ -85,6 +85,9 @@ public class SessionService
         if (!session.ParticipantIds.Contains(participantId))
             return null;
         session.ParticipantIds.Remove(participantId);
+        session.ParticipantConnectionIds.Remove(participantId);
+
+        _ = PersistParticipantLeaveAsync(sessionId, participantId);
         return session;
     }
     public (Session Session, string? Error) JoinSession(string sessionId, string participantId, string? connectionId)
@@ -127,11 +130,12 @@ public class SessionService
             var joinTime = DateTime.UtcNow.AddHours(1);
             if (joinTime > session.StartTime)
             {
-                var absentDuration = (joinTime - session.StartTime).TotalMinutes;
                 session.ParticipantEvents[participantId].Add((Session.StudentStatus.Disconnected, session.StartTime));
-                Console.WriteLine($"JoinSession: {participantId} absent for {absentDuration:F1} min, Disconnected at {session.StartTime}, Active at {joinTime}");
+                _ = PersistAttendanceStatusAsync(sessionId, participantId, Session.StudentStatus.Disconnected, session.StartTime);
+                Console.WriteLine($"JoinSession: {participantId} absent before joining, Disconnected at {session.StartTime}, Active at {joinTime}");
             }
             session.ParticipantEvents[participantId].Add((Session.StudentStatus.Active, joinTime));
+            _ = PersistAttendanceStatusAsync(sessionId, participantId, Session.StudentStatus.Active, joinTime);
             Console.WriteLine($"Logged Active event for {participantId} joining started session at: {joinTime}");
         }
 
@@ -153,8 +157,9 @@ public class SessionService
             return null;
         if (session.LecturerMatricNo != lecturerId || (session.Status != SessionStatus.Started && session.Status != SessionStatus.Active))
             return null;
+        var endedAt = DateTime.UtcNow;
         session.Status = SessionStatus.Ended;
-        session.EndTime = DateTime.UtcNow;
+        session.EndTime = endedAt;
         session.IsSessionStarted = false;
 
         // Persist session end to database asynchronously
@@ -181,6 +186,7 @@ public class SessionService
                 // Add initial active event at session start time
                 session.ParticipantEvents[participantId].Add((Session.StudentStatus.Active, session.StartTime));
                 session.ParticipantStatuses[participantId] = Session.StudentStatus.Active; // Ensure current status is active
+                _ = PersistAttendanceStatusAsync(sessionId, participantId, Session.StudentStatus.Active, session.StartTime);
                 Console.WriteLine($"[SessionService C#] Logged initial Active event for {participantId} at session start: {session.StartTime}");
             }
 
@@ -224,6 +230,7 @@ public class SessionService
             }
             var eventTimestamp = DateTime.UtcNow.AddHours(1); // Changed DateTimeOffset to DateTime
             session.ParticipantEvents[participantId].Add((status, eventTimestamp));
+            _ = PersistAttendanceStatusAsync(sessionId, participantId, status, eventTimestamp);
             Console.WriteLine($"UpdateParticipantStatus: {participantId} status {status} at {eventTimestamp} in session {sessionId}"); return true; // Indicates a scorable event was logged
         }
         // If session not started, or participant/session not found, but we might still want to update current status if possible
@@ -286,7 +293,7 @@ public class SessionService
                 {
                     foreach (var sp in dbSession.Participants)
                     {
-                        if (sp.User != null && !string.IsNullOrEmpty(sp.User.MatricNo))
+                        if (sp.User != null && !string.IsNullOrEmpty(sp.User.MatricNo) && sp.LeftAt == null)
                         {
                             dbSession.ParticipantIds.Add(sp.User.MatricNo);
                             if (!dbSession.ParticipantStatuses.ContainsKey(sp.User.MatricNo))
@@ -296,6 +303,8 @@ public class SessionService
                         }
                     }
                 }
+
+                await LoadAttendanceStateAsync(dbSession);
 
                 _sessions.TryAdd(sessionId, dbSession);
                 Console.WriteLine($"[SessionService C#] Reconstructed active session {sessionId} from DB into memory cache with {dbSession.ParticipantIds.Count} participants.");
@@ -312,6 +321,30 @@ public class SessionService
         }
 
         return null;
+    }
+
+    public async Task<Session?> GetSessionByDbIdAsync(int sessionDbId)
+    {
+        if (sessionDbId <= 0)
+        {
+            return null;
+        }
+
+        var cachedSession = _sessions.Values.FirstOrDefault(s => s.Id == sessionDbId);
+        if (cachedSession != null)
+        {
+            return cachedSession;
+        }
+
+        using var scope = _serviceProvider.CreateScope();
+        var persistenceService = scope.ServiceProvider.GetRequiredService<Data.SessionPersistenceService>();
+        var dbSession = await persistenceService.GetSessionByDatabaseIdAsync(sessionDbId);
+        if (dbSession == null)
+        {
+            return null;
+        }
+
+        return await GetSessionByIdAsync(dbSession.SessionId);
     }
 
     public List<Session> GetSessionsByLecturer(string lecturerId) =>
@@ -341,6 +374,7 @@ public class SessionService
             }
             return result;
         }
+
         catch (Exception ex)
         {
             Console.WriteLine($"[SessionService C#] Exception in GetSessionsByLecturerAsync: {ex.Message}. Falling back to in-memory check.");
@@ -420,6 +454,58 @@ public class SessionService
             return GetActiveSessions();
         }
     }
+
+    public async Task<Dictionary<string, ParticipantScoreDetails>> CalculateAttendanceScoreFromPersistenceAsync(string sessionId)
+    {
+        if (string.IsNullOrWhiteSpace(sessionId))
+        {
+            return new Dictionary<string, ParticipantScoreDetails>();
+        }
+
+        using var scope = _serviceProvider.CreateScope();
+        var persistenceService = scope.ServiceProvider.GetRequiredService<Data.SessionPersistenceService>();
+        var session = await persistenceService.GetSessionWithParticipantsAsync(sessionId);
+        if (session == null)
+        {
+            return new Dictionary<string, ParticipantScoreDetails>();
+        }
+
+        var endTime = session.EndTime ?? DateTime.UtcNow;
+        var totalSessionMinutes = (endTime - session.StartTime).TotalMinutes;
+        if (totalSessionMinutes <= 0)
+        {
+            return new Dictionary<string, ParticipantScoreDetails>();
+        }
+
+        var attendanceLogs = await persistenceService.GetAttendanceLogsAsync(sessionId);
+        var participantNames = session.Participants?
+            .Where(participant => participant.User != null && !string.IsNullOrWhiteSpace(participant.User.MatricNo))
+            .ToDictionary(participant => participant.User.MatricNo, participant => participant.User.Name, StringComparer.OrdinalIgnoreCase)
+            ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        var logsByParticipant = attendanceLogs
+            .Where(log => log.Student != null && !string.IsNullOrWhiteSpace(log.Student.MatricNo))
+            .GroupBy(log => log.Student.MatricNo, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.OrderBy(log => log.Timestamp).ToList(), StringComparer.OrdinalIgnoreCase);
+
+        var participantIds = new HashSet<string>(participantNames.Keys, StringComparer.OrdinalIgnoreCase);
+        participantIds.UnionWith(logsByParticipant.Keys);
+
+        var result = new Dictionary<string, ParticipantScoreDetails>(participantIds.Count, StringComparer.OrdinalIgnoreCase);
+        foreach (var participantId in participantIds)
+        {
+            logsByParticipant.TryGetValue(participantId, out var participantLogs);
+            result[participantId] = CalculateScorePerParticipantFromLogs(
+                session,
+                participantId,
+                participantNames.GetValueOrDefault(participantId, "Unknown User"),
+                totalSessionMinutes,
+                participantLogs ?? []);
+        }
+
+        return result;
+    }
+
     public Dictionary<string, ParticipantScoreDetails> CalculateAttendanceScore(string sessionId)
     {
         if (!_sessions.TryGetValue(sessionId, out var session))
@@ -438,7 +524,19 @@ public class SessionService
 
         Console.WriteLine($"CalculateAttendanceScore: Session {sessionId}, Start={session.StartTime}, End={endTime}, Duration={totalSessionMinutes:F1} min");
 
-        // Initialize or use cached user details (all times are UTC for consistency)
+        // Prefer persisted participant identities for reconstructed sessions before falling back to legacy mock data.
+        var participantNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (session.Participants != null)
+        {
+            foreach (var participant in session.Participants)
+            {
+                if (participant.User != null && !string.IsNullOrWhiteSpace(participant.User.MatricNo))
+                {
+                    participantNames[participant.User.MatricNo] = participant.User.Name;
+                }
+            }
+        }
+
         _userDetailsCache ??= MockApiService.GetUsers().ToDictionary(u => u.MatricNo, u => u.Name);
 
         // Single-pass participant ID collection, including past participants with events/statuses
@@ -453,7 +551,7 @@ public class SessionService
                 session,
                 participantId,
                 totalSessionMinutes,
-                _userDetailsCache.GetValueOrDefault(participantId, "Unknown User")
+                participantNames.GetValueOrDefault(participantId, _userDetailsCache.GetValueOrDefault(participantId, "Unknown User"))
             );
         }
 
@@ -534,6 +632,61 @@ public class SessionService
 
         Console.WriteLine($"CalculateScore: {participantId} Final: TotalCredit={totalCreditMinutes:F1}, Possible={totalSessionMinutes:F1}, Percentage={details.FinalScorePercentage:F1}%");
 
+        return details;
+    }
+
+    private ParticipantScoreDetails CalculateScorePerParticipantFromLogs(
+        Session session,
+        string participantId,
+        string participantName,
+        double totalSessionMinutes,
+        List<AttendanceLog> logs)
+    {
+        var details = new ParticipantScoreDetails
+        {
+            ParticipantId = participantId,
+            ParticipantName = participantName,
+            TotalSessionMinutes = totalSessionMinutes
+        };
+
+        if (logs.Count == 0)
+        {
+            UpdateDurationForStatus(details, Session.StudentStatus.Disconnected, totalSessionMinutes);
+            return details;
+        }
+
+        var sessionEnd = session.EndTime ?? DateTime.UtcNow;
+        double totalCreditMinutes = 0;
+        Session.StudentStatus? previousStatus = null;
+
+        var firstLog = logs[0];
+        if (firstLog.Timestamp > session.StartTime)
+        {
+            var preJoinDuration = (firstLog.Timestamp - session.StartTime).TotalMinutes;
+            if (preJoinDuration > 0)
+            {
+                UpdateDurationForStatus(details, Session.StudentStatus.Disconnected, preJoinDuration);
+            }
+        }
+
+        for (var i = 0; i < logs.Count; i++)
+        {
+            var currentLog = logs[i];
+            var duration = currentLog.Duration > TimeSpan.Zero
+                ? currentLog.Duration.TotalMinutes
+                : ((i < logs.Count - 1 ? logs[i + 1].Timestamp : sessionEnd) - currentLog.Timestamp).TotalMinutes;
+            if (duration <= 0.01)
+            {
+                previousStatus = currentLog.Status;
+                continue;
+            }
+
+            totalCreditMinutes += CalculateSegmentCredit(currentLog.Status, previousStatus, duration);
+            UpdateDurationForStatus(details, currentLog.Status, duration);
+            previousStatus = currentLog.Status;
+        }
+
+        details.FinalScorePercentage = Math.Round(Math.Clamp((totalCreditMinutes / totalSessionMinutes) * 100, 0, 100), 2);
         return details;
     }
 
@@ -671,6 +824,73 @@ public class SessionService
         catch (Exception ex)
         {
             Console.WriteLine($"[SessionService] Error persisting session start: {ex.Message}");
+        }
+    }
+
+    private async Task PersistParticipantLeaveAsync(string sessionId, string participantMatricNo)
+    {
+        try
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var persistenceService = scope.ServiceProvider.GetRequiredService<Data.SessionPersistenceService>();
+            var success = await persistenceService.RemoveParticipantAsync(sessionId, participantMatricNo);
+            if (success)
+            {
+                Console.WriteLine($"[SessionService] Participant {participantMatricNo} leave persisted in session {sessionId}");
+            }
+            else
+            {
+                Console.WriteLine($"[SessionService] Failed to persist participant leave for {participantMatricNo} in session {sessionId}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SessionService] Error persisting participant leave: {ex.Message}");
+        }
+    }
+
+    private async Task PersistAttendanceStatusAsync(string sessionId, string participantMatricNo, Session.StudentStatus status, DateTime timestamp)
+    {
+        try
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var persistenceService = scope.ServiceProvider.GetRequiredService<Data.SessionPersistenceService>();
+            await persistenceService.LogAttendanceStatusAsync(sessionId, participantMatricNo, status, timestamp);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SessionService] Error persisting attendance status: {ex.Message}");
+        }
+    }
+
+    private async Task LoadAttendanceStateAsync(Session session)
+    {
+        try
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var persistenceService = scope.ServiceProvider.GetRequiredService<Data.SessionPersistenceService>();
+            var attendanceLogs = await persistenceService.GetAttendanceLogsAsync(session.SessionId);
+
+            foreach (var log in attendanceLogs.OrderBy(log => log.Timestamp))
+            {
+                var participantId = log.Student?.MatricNo;
+                if (string.IsNullOrEmpty(participantId))
+                {
+                    continue;
+                }
+
+                if (!session.ParticipantEvents.ContainsKey(participantId))
+                {
+                    session.ParticipantEvents[participantId] = new List<(Session.StudentStatus status, DateTime timeStamp)>();
+                }
+
+                session.ParticipantEvents[participantId].Add((log.Status, log.Timestamp));
+                session.ParticipantStatuses[participantId] = log.Status;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SessionService] Error loading attendance state: {ex.Message}");
         }
     }
 }

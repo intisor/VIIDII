@@ -132,7 +132,7 @@ namespace VIIDII.Hubs
                     }
 
                     var statuses = _sessionService.GetParticipantStatus(sessionId);
-                    var scores = _sessionService.CalculateAttendanceScore(sessionId);
+                    var scores = await _sessionService.CalculateAttendanceScoreFromPersistenceAsync(sessionId);
                     await Clients.Client(session.LecturerConnectionId).SendAsync("ReceiveParticipants", participants);
                     await Clients.Client(session.LecturerConnectionId).SendAsync("ReceiveParticipantStatuses", statuses);
                     await Clients.Client(session.LecturerConnectionId).SendAsync("ReceiveParticipantScoreDetails", scores);
@@ -198,7 +198,7 @@ namespace VIIDII.Hubs
 
                 var user = await _userService.GetUserByMatricNoAsync(matricNo);
                 var userName = user?.Name ?? matricNo;
-                var post = _messageService.CreatePost(sessionId, matricNo, userName, content, true, isFile);
+                var post = await _messageService.CreatePostAsync(sessionId, matricNo, userName, content, true, isFile);
                 
                 await Clients.Group(sessionId).SendAsync("ReceivePost", post);
                 await Clients.Caller.SendAsync("PostCreated", post.id);
@@ -226,7 +226,7 @@ namespace VIIDII.Hubs
                 var user = await _userService.GetUserByMatricNoAsync(matricNo);
                 var userName = user?.Name ?? matricNo;
                 var isLecturer = await IsSessionLecturerAsync(sessionId, matricNo);
-                var comment = _messageService.CreateComment(sessionId, matricNo, userName, content, postId, isLecturer);
+                var comment = await _messageService.CreateCommentAsync(sessionId, matricNo, userName, content, postId, isLecturer);
                 
                 await Clients.Group(sessionId).SendAsync("ReceiveComment", comment);
             }
@@ -239,7 +239,7 @@ namespace VIIDII.Hubs
 
         public async Task GetMessages(string sessionId)
         {
-            var messages = _messageService.GetAllMessages(sessionId);
+            var messages = await _messageService.GetAllMessagesAsync(sessionId);
             await Clients.Caller.SendAsync("ReceiveMessages", messages);
         }
 
@@ -331,6 +331,8 @@ namespace VIIDII.Hubs
                 var session = await _sessionService.GetSessionByParticipantAsync(matricNo);
                 if (session is not null && !await IsSessionLecturerAsync(session.SessionId, matricNo))
                 {
+                    session.ParticipantConnectionIds.Remove(matricNo);
+
                     if (_sessionService.UpdateParticipantStatus(session.SessionId, matricNo, Session.StudentStatus.Disconnected))
                     {
                         if (!string.IsNullOrEmpty(session.LecturerConnectionId))
@@ -344,6 +346,8 @@ namespace VIIDII.Hubs
                             Console.WriteLine($"Sent updated scores to lecturer after {matricNo} disconnected");
                         }
                     }
+
+                    _sessionService.LeaveSession(session.SessionId, matricNo);
                 }
             }
             await base.OnDisconnectedAsync(exception);
@@ -357,7 +361,7 @@ namespace VIIDII.Hubs
             var matricNo = Context.GetHttpContext()?.Session.GetString("MatricNo");
             if (string.IsNullOrEmpty(matricNo)) return;
 
-            var success = _messageService.AddReaction(sessionId, messageId, matricNo, emoji);
+            var success = await _messageService.AddReactionAsync(sessionId, messageId, matricNo, emoji);
             if (success)
             {
                 // Broadcast reaction to all in session
@@ -371,7 +375,7 @@ namespace VIIDII.Hubs
             var matricNo = Context.GetHttpContext()?.Session.GetString("MatricNo");
             if (string.IsNullOrEmpty(matricNo)) return;
 
-            var success = _messageService.RemoveReaction(sessionId, messageId, matricNo, emoji);
+            var success = await _messageService.RemoveReactionAsync(sessionId, messageId, matricNo, emoji);
             if (success)
             {
                 // Broadcast reaction removal to all in session

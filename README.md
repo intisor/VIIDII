@@ -1,117 +1,84 @@
-# FutaMeetWeb
+# VIIDII
 
-FutaMeetWeb is a real-time online meeting platform built for educational institutions, specifically designed to facilitate virtual classes between lecturers and students. The application leverages ASP.NET Core and SignalR to provide seamless video conferencing and chat functionality.
+VIIDII is a Blazor-based live classroom platform for lecturers and students. It combines Blazor interactive server components, SignalR, EF Core, and SQL Server LocalDB to support real-time teaching sessions, participant monitoring, messaging, attendance tracking, and post-session recap.
 
-## Features
+## Current Architecture
 
-- **Session Management**: Create, join, and manage interactive online sessions
-- **Real-time Communication**: Video conferencing with SignalR-powered WebRTC
-- **Live Chat**: Text-based communication within sessions
-- **Role-based Access Control**: Different interfaces for students, lecturers, and administrators
-- **Session Administration**: Monitor active sessions and participants
+- **Application model**: Blazor Web App on `.NET 10`
+- **UI**: Razor components under `Components/`
+- **Real-time coordination**: SignalR via `Hubs/SessionHub.cs`
+- **Persistence**: EF Core with `ViidiiDbContext`
+- **Database**: SQL Server LocalDB
+- **Session runtime**: in-memory live state for transient presence and active session coordination
+- **Durable history**: sessions, participants, messages, attendance logs, and recap data persisted in the database
 
-## Technology Stack
+## Core Features
 
-- **Backend**: ASP.NET Core (.NET 9.0)
-- **Real-time Communication**: SignalR
-- **Frontend**: Razor Pages, JavaScript, Bootstrap
-- **WebRTC Integration**: SimplePeer.js
-- **State Management**: ASP.NET Core Session
+- Lecturer-created live sessions
+- Student join and participation workflow
+- Real-time participant status monitoring
+- Attendance scoring and session recap
+- Lecturer posts, comments, and reactions
+- Session cleanup and background participant activity checks
 
-## Prerequisites
+## Phase 6 Status
 
-- .NET 9.0 SDK
-- Visual Studio 2022 or later (recommended)
-- Modern web browser with WebRTC support
+Phase 6 durability work is now implemented for the main recap and history paths.
 
-## Getting Started
+Completed in this phase:
+- Durable participant join and leave persistence
+- Attendance status transition logging
+- Reconstruction-free recap scoring from persisted attendance logs
+- Persisted attendance segment durations for closed status intervals
+- Final attendance segment closure when a session ends
+- DB-backed message identifiers and persistence-aware message flow
+- Session recap loading through the database-aware path
 
-### Installation
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/intisor/FutaMeetWeb.git
-   ```
-
-2. Navigate to the project directory:
-   ```bash
-   cd FutaMeetWeb
-   ```
-
-3. Restore dependencies:
-   ```bash
-   dotnet restore
-   ```
-
-4. Build the project:
-   ```bash
-   dotnet build
-   ```
-
-5. Run the application:
-   ```bash
-   dotnet run
-   ```
-
-6. Access the application at `https://localhost:5001` or `http://localhost:5000`
-
-### Development Setup
-
-1. Open the solution file `FutaMeetWeb.sln` in Visual Studio
-2. Make sure all NuGet packages are restored
-3. Set the startup project to `FutaMeetWeb`
-4. Press F5 to start debugging
-
-## Usage
-
-### Authentication
-
-For demo purposes, the application has pre-configured user accounts:
-- Lecturer: Matric No: `Lec001`
-- Student: Matric No: `123456` or `654321`
-- Administrator: Matric No: `Admin`
-
-### Creating a Session (Lecturers)
-
-1. Log in with lecturer credentials
-2. Navigate to "Create Session"
-3. Enter a session title and create the session
-4. Share the generated session ID with students
-
-### Joining a Session (Students)
-
-1. Log in with student credentials
-2. Navigate to "Join Session"
-3. Select an available session from the dropdown or enter a session ID
-4. Participate in the video conference and chat
-
-### Administration
-
-1. Log in with admin credentials
-2. Navigate to "Admin" to view active sessions and participants
+Still intentionally kept in memory:
+- Active SignalR connection presence
+- Runtime-only live coordination state for in-progress sessions
 
 ## Project Structure
 
-- `/Hubs`: SignalR hubs for real-time communication
-- `/Models`: Application data models
-- `/Pages`: Razor Pages for UI
-- `/Services`: Business logic and service classes
-- `/wwwroot`: Static files (CSS, JS, client libraries)
+- `Components/` - Blazor UI components and pages
+- `Data/` - EF Core context, seeding, and persistence bridge services
+- `Hubs/` - SignalR hub endpoints for live session behavior
+- `Models/` - domain entities and enums
+- `Services/` - application services and repositories
+- `wwwroot/` - static assets
 
-## Contributing
+## Prerequisites
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+- .NET 10 SDK
+- Visual Studio 2026 or later
+- SQL Server LocalDB
 
-## License
+## Getting Started
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+1. Restore packages:
+   - `dotnet restore`
+2. Build the project:
+   - `dotnet build`
+3. Run the app:
+   - `dotnet run`
 
-## Acknowledgments
+The app applies migrations and seeds required data at startup.
 
-- Federal University of Technology, Akure (FUTA)
-- SignalR and WebRTC for enabling real-time communication capabilities
-- Bootstrap for responsive UI components
+## Development Notes
+
+- The root solution is `VIIDII.slnx`.
+- The main project is `VIIDII.csproj`.
+- The application uses startup migration/seeding in `Program.cs`.
+- Recap and historical attendance analytics should use persisted data paths, not transient runtime-only state.
+
+## Technology Summary
+
+- Blazor Web App
+- ASP.NET Core SignalR
+- Entity Framework Core
+- SQL Server LocalDB
+- Bootstrap
+
+## Repository Goal
+
+VIIDII is being evolved from a runtime-centric classroom app into a hybrid architecture where live presence remains memory-backed but recap, analytics, messaging history, and attendance history are durable and restart-safe.

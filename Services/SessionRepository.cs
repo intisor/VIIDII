@@ -94,6 +94,21 @@ namespace VIIDII.Services
         /// </summary>
         public async Task<SessionParticipant> AddParticipantAsync(int sessionPk, int userId)
         {
+            var existingParticipant = await _context.SessionParticipants
+                .FirstOrDefaultAsync(sp => sp.SessionId == sessionPk && sp.UserId == userId);
+
+            if (existingParticipant != null)
+            {
+                existingParticipant.LeftAt = null;
+                if (existingParticipant.JoinedAt == default)
+                {
+                    existingParticipant.JoinedAt = DateTime.UtcNow;
+                }
+
+                await _context.SaveChangesAsync();
+                return existingParticipant;
+            }
+
             var participant = new SessionParticipant
             {
                 SessionId = sessionPk,
@@ -116,9 +131,63 @@ namespace VIIDII.Services
             if (participant == null)
                 return false;
 
-            _context.SessionParticipants.Remove(participant);
+            participant.LeftAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
             return true;
+        }
+
+        public async Task<AttendanceLog> AddAttendanceLogAsync(int sessionPk, int userId, Session.StudentStatus status, DateTime timestamp)
+        {
+            var previousLog = await _context.AttendanceLogs
+                .Where(log => log.SessionId == sessionPk && log.StudentId == userId)
+                .OrderByDescending(log => log.Timestamp)
+                .FirstOrDefaultAsync();
+
+            if (previousLog != null && timestamp > previousLog.Timestamp)
+            {
+                previousLog.Duration = timestamp - previousLog.Timestamp;
+            }
+
+            var attendanceLog = new AttendanceLog
+            {
+                SessionId = sessionPk,
+                StudentId = userId,
+                Status = status,
+                Duration = TimeSpan.Zero,
+                Timestamp = timestamp
+            };
+
+            await _context.AttendanceLogs.AddAsync(attendanceLog);
+            await _context.SaveChangesAsync();
+            return attendanceLog;
+        }
+
+        public async Task<List<AttendanceLog>> GetAttendanceLogsAsync(int sessionPk)
+        {
+            return await _context.AttendanceLogs
+                .Where(log => log.SessionId == sessionPk)
+                .Include(log => log.Student)
+                .OrderBy(log => log.Timestamp)
+                .ToListAsync();
+        }
+
+        public async Task FinalizeAttendanceLogsAsync(int sessionPk, DateTime endTime)
+        {
+            var latestLogs = await _context.AttendanceLogs
+                .Where(log => log.SessionId == sessionPk)
+                .GroupBy(log => log.StudentId)
+                .Select(group => group.OrderByDescending(log => log.Timestamp).First())
+                .ToListAsync();
+
+            foreach (var log in latestLogs)
+            {
+                if (log.Duration == TimeSpan.Zero && endTime > log.Timestamp)
+                {
+                    log.Duration = endTime - log.Timestamp;
+                }
+            }
+
+            await _context.SaveChangesAsync();
         }
 
         /// <summary>

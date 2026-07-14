@@ -1,7 +1,8 @@
 using System;
-using System.Collections.Concurrent;
-using System.Linq;
 using System.Collections.Generic;
+using System.Linq;
+using VIIDII.Data;
+using VIIDII.Models;
 
 namespace VIIDII.Services
 {
@@ -10,13 +11,13 @@ namespace VIIDII.Services
     public class Reaction
     {
         public required string UserId { get; set; }
-        public required string Emoji { get; set; } // For now: just "??"
+        public required string Emoji { get; set; }
         public DateTime Timestamp { get; set; } = DateTime.UtcNow;
     }
 
     public class Message
     {
-        public string id { get; set; } = Guid.CreateVersion7().ToString();
+        public required string id { get; set; }
         public required string sessionId { get; set; }
         public required string userId { get; set; }
         public required string UserName { get; set; }
@@ -25,184 +26,147 @@ namespace VIIDII.Services
         public bool isLecturerPost { get; set; }
         public bool isComment { get; set; }
         public MessageType messageType { get; set; } = MessageType.Text;
-        public DateTime createdAt { get; set; } = DateTime.UtcNow.AddHours(1);
+        public DateTime createdAt { get; set; } = DateTime.UtcNow;
         public List<Reaction> Reactions { get; set; } = new();
 
-        // Helper properties
-        public int ThumbsUpCount => Reactions.Count(r => r.Emoji == "??");
+        public int ThumbsUpCount => Reactions.Count(r => r.Emoji == "👍");
         public bool HasUserReacted(string userId) => Reactions.Any(r => r.UserId == userId);
     }
 
     public class MessageService
     {
-        private readonly ConcurrentBag<Message> _messages = new ConcurrentBag<Message>();
-        private readonly IServiceProvider _serviceProvider;
+        private readonly MessagePersistenceService _persistenceService;
+        private readonly SessionService _sessionService;
 
-        public MessageService(IServiceProvider serviceProvider)
+        public MessageService(MessagePersistenceService persistenceService, SessionService sessionService)
         {
-            _serviceProvider = serviceProvider;
+            _persistenceService = persistenceService;
+            _sessionService = sessionService;
         }
 
-        public Message CreatePost(string sessionId, string userId, string userName, string content, bool isLecturer, bool isFile = false)
+        public async Task<Message> CreatePostAsync(string sessionId, string userId, string userName, string content, bool isLecturer, bool isFile = false)
         {
             if (!isLecturer)
             {
                 throw new InvalidOperationException("Only lecturers can create posts.");
             }
 
-            var message = new Message
+            var persisted = await _persistenceService.CreateAndPersistPostAsync(sessionId, userId, content);
+            if (persisted == null)
             {
-                sessionId = sessionId,
-                userId = userId,
-                UserName = userName,
-                content = content,
-                isLecturerPost = true,
-                isComment = false,
-                messageType = isFile ? MessageType.File : MessageType.Text
-            };
-            message.parentId = message.id; // Set ParentId to itself for posts
-            _messages.Add(message);
+                throw new InvalidOperationException("Failed to create post.");
+            }
 
-            // Persist to database asynchronously
-            _ = PersistPostCreationAsync(sessionId, userId, content);
-
-            return message;
+            return await MapMessageAsync(persisted, sessionId, userId, userName, isFile);
         }
 
-        private async Task PersistPostCreationAsync(string sessionId, string userId, string content)
+        public async Task<Message> CreateCommentAsync(string sessionId, string userId, string userName, string content, string postId, bool isLecturer)
         {
-            try
-            {
-                using var scope = _serviceProvider.CreateScope();
-                var persistenceService = scope.ServiceProvider.GetRequiredService<Data.MessagePersistenceService>();
-                var userService = scope.ServiceProvider.GetRequiredService<UserService>();
-                var user = await userService.GetUserByMatricNoAsync(userId);
-                if (user == null)
-                {
-                    Console.WriteLine($"[MessageService] User {userId} not found for persistence");
-                    return;
-                }
-                await persistenceService.CreateAndPersistPostAsync(sessionId, userId, content);
-                Console.WriteLine($"[MessageService] Post persisted for {userId} in session {sessionId}");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[MessageService] Error persisting post creation: {ex.Message}");
-            }
-        }
-
-        public Message CreateComment(string sessionId, string userId, string userName, string content, string postId, bool isLecturer)
-        {
-            var post = _messages.FirstOrDefault(m => m.id == postId && m.sessionId == sessionId);
-            if (post == null)
+            if (!int.TryParse(postId, out var parentMessageId))
             {
                 throw new InvalidOperationException("Post not found.");
             }
-            if (post.parentId != post.id || !post.isLecturerPost)
+
+            var persisted = await _persistenceService.CreateAndPersistCommentAsync(sessionId, userId, content, parentMessageId);
+            if (persisted == null)
             {
-                throw new InvalidOperationException("Can only reply to lecturer posts.");
+                throw new InvalidOperationException("Failed to create comment.");
             }
 
-            var message = new Message
+            return await MapMessageAsync(persisted, sessionId, userId, userName, false, isLecturer);
+        }
+
+        public async Task<List<Message>> GetAllMessagesAsync(string sessionId)
+        {
+            var messages = await _persistenceService.GetSessionPostsAsync(sessionId);
+            var result = new List<Message>(messages.Count);
+
+            foreach (var message in messages)
             {
-                sessionId = sessionId,
-                userId = userId,
-                UserName = userName,
-                content = content,
-                parentId = postId,
-                isLecturerPost = isLecturer, // This indicates if the *commenter* is a lecturer
-                isComment = true,
+                result.Add(await MapMessageAsync(message));
+            }
+
+            return result.OrderBy(m => m.createdAt).ToList();
+        }
+
+        public async Task<bool> AddReactionAsync(string sessionId, string messageId, string userId, string emoji)
+        {
+            if (!int.TryParse(messageId, out var parsedMessageId))
+            {
+                return false;
+            }
+
+            var updatedMessage = await _persistenceService.AddReactionAsync(parsedMessageId, userId, emoji);
+            return updatedMessage != null && updatedMessage.Session.SessionId == sessionId;
+        }
+
+        public async Task<bool> RemoveReactionAsync(string sessionId, string messageId, string userId, string emoji)
+        {
+            if (!int.TryParse(messageId, out var parsedMessageId))
+            {
+                return false;
+            }
+
+            var updatedMessage = await _persistenceService.RemoveReactionAsync(parsedMessageId, userId, emoji);
+            return updatedMessage != null && updatedMessage.Session.SessionId == sessionId;
+        }
+
+        private async Task<Message> MapMessageAsync(Models.Message message, string? sessionId = null, string? userId = null, string? userName = null, bool isFile = false, bool? isLecturerOverride = null)
+        {
+            ArgumentNullException.ThrowIfNull(message);
+
+            var resolvedSessionId = sessionId ?? message.Session?.SessionId ?? await ResolveSessionIdAsync(message.SessionId);
+            var resolvedUserId = userId ?? message.Author?.MatricNo ?? await ResolveUserIdAsync(message.AuthorId);
+            var resolvedUserName = userName ?? message.Author?.Name ?? resolvedUserId;
+            var reactions = ParseReactions(message.Reaction);
+            var isLecturer = isLecturerOverride ?? (message.Author?.Role == Role.Lecturer);
+
+            return new Message
+            {
+                id = message.Id.ToString(),
+                sessionId = resolvedSessionId,
+                userId = resolvedUserId,
+                UserName = resolvedUserName,
+                content = message.Content,
+                parentId = message.ParentId?.ToString() ?? message.Id.ToString(),
+                isLecturerPost = isLecturer,
+                isComment = message.ParentId.HasValue,
+                messageType = isFile ? MessageType.File : MessageType.Text,
+                createdAt = message.CreatedAt,
+                Reactions = reactions
             };
-
-            _messages.Add(message);
-
-            // Persist to database asynchronously
-            _ = PersistCommentCreationAsync(sessionId, userId, content, postId);
-
-            return message;
         }
 
-        private async Task PersistCommentCreationAsync(string sessionId, string userId, string content, string postId)
+        private static List<Reaction> ParseReactions(string? reactionData)
         {
-            try
+            if (string.IsNullOrWhiteSpace(reactionData))
             {
-                using var scope = _serviceProvider.CreateScope();
-                var persistenceService = scope.ServiceProvider.GetRequiredService<Data.MessagePersistenceService>();
-                
-                // We need to look up the database Message.Id for the post
-                var dbPost = await persistenceService.GetMessageByIdAsync(int.Parse(postId));
-                if (dbPost == null)
+                return new List<Reaction>();
+            }
+
+            return reactionData
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(entry => entry.Split(':', 2, StringSplitOptions.TrimEntries))
+                .Where(parts => parts.Length == 2)
+                .Select(parts => new Reaction
                 {
-                    Console.WriteLine($"[MessageService] Post {postId} not found in database");
-                    return;
-                }
-
-                await persistenceService.CreateAndPersistCommentAsync(sessionId, userId, content, dbPost.Id);
-                Console.WriteLine($"[MessageService] Comment persisted for {userId} in session {sessionId}");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[MessageService] Error persisting comment creation: {ex.Message}");
-            }
-        }
-
-        public List<Message> GetAllMessages(string sessionId)
-        {
-            return _messages
-                .Where(m => m.sessionId == sessionId)
-                .OrderBy(m => m.createdAt)
+                    UserId = parts[0],
+                    Emoji = parts[1],
+                    Timestamp = DateTime.UtcNow
+                })
                 .ToList();
         }
 
-        public bool AddReaction(string sessionId, string messageId, string userId, string emoji)
+        private async Task<string> ResolveSessionIdAsync(int sessionDbId)
         {
-            var message = _messages.FirstOrDefault(m => m.id == messageId && m.sessionId == sessionId);
-            if (message == null) return false;
-
-            // Check if user already reacted with this emoji
-            if (message.Reactions.Any(r => r.UserId == userId && r.Emoji == emoji))
-            {
-                return false; // Already reacted
-            }
-
-            message.Reactions.Add(new Reaction
-            {
-                UserId = userId,
-                Emoji = emoji,
-                Timestamp = DateTime.UtcNow
-            });
-
-            // Persist reaction to database asynchronously
-            _ = PersistReactionAsync(messageId, userId, emoji);
-
-            return true;
+            var session = await _sessionService.GetSessionByDbIdAsync(sessionDbId);
+            return session?.SessionId ?? sessionDbId.ToString();
         }
 
-        private async Task PersistReactionAsync(string messageId, string userId, string emoji)
+        private async Task<string> ResolveUserIdAsync(int authorId)
         {
-            try
-            {
-                using var scope = _serviceProvider.CreateScope();
-                var persistenceService = scope.ServiceProvider.GetRequiredService<Data.MessagePersistenceService>();
-                await persistenceService.AddReactionAsync(int.Parse(messageId), userId, emoji);
-                Console.WriteLine($"[MessageService] Reaction '{emoji}' from {userId} persisted for message {messageId}");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[MessageService] Error persisting reaction: {ex.Message}");
-            }
-        }
-
-        public bool RemoveReaction(string sessionId, string messageId, string userId, string emoji)
-        {
-            var message = _messages.FirstOrDefault(m => m.id == messageId && m.sessionId == sessionId);
-            if (message == null) return false;
-
-            var reaction = message.Reactions.FirstOrDefault(r => r.UserId == userId && r.Emoji == emoji);
-            if (reaction == null) return false;
-
-            message.Reactions.Remove(reaction);
-            return true;
+            var user = await _persistenceService.GetUserByIdAsync(authorId);
+            return user?.MatricNo ?? authorId.ToString();
         }
     }
 }

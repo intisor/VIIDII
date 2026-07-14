@@ -65,6 +65,7 @@ namespace VIIDII.Data
 
             session.Status = SessionStatus.Ended;
             session.EndTime = DateTime.UtcNow;
+            await _sessionRepository.FinalizeAttendanceLogsAsync(session.Id, session.EndTime.Value);
 
             return await _sessionRepository.UpdateSessionAsync(session);
         }
@@ -122,12 +123,53 @@ namespace VIIDII.Data
             return await _sessionRepository.RemoveParticipantAsync(session.Id, userId);
         }
 
+        public async Task<bool> RemoveParticipantAsync(string sessionId, string participantMatricNo)
+        {
+            var participant = await _userService.GetUserByMatricNoAsync(participantMatricNo);
+            if (participant == null)
+            {
+                return false;
+            }
+
+            return await RemoveParticipantAsync(sessionId, participant.Id);
+        }
+
+        public async Task<bool> LogAttendanceStatusAsync(string sessionId, string participantMatricNo, Session.StudentStatus status, DateTime? timestamp = null)
+        {
+            var session = await _sessionRepository.GetSessionByIdAsync(sessionId);
+            if (session == null)
+                return false;
+
+            var participant = await _userService.GetUserByMatricNoAsync(participantMatricNo);
+            if (participant == null)
+                return false;
+
+            await _sessionRepository.AddAttendanceLogAsync(session.Id, participant.Id, status, timestamp ?? DateTime.UtcNow);
+            return true;
+        }
+
+        public async Task<List<AttendanceLog>> GetAttendanceLogsAsync(string sessionId)
+        {
+            var session = await _sessionRepository.GetSessionByIdAsync(sessionId);
+            if (session == null)
+            {
+                return new List<AttendanceLog>();
+            }
+
+            return await _sessionRepository.GetAttendanceLogsAsync(session.Id);
+        }
+
         /// <summary>
         /// Get session with all participant details
         /// </summary>
         public async Task<Models.Session?> GetSessionWithParticipantsAsync(string sessionId)
         {
             return await _sessionRepository.GetSessionByIdAsync(sessionId);
+        }
+
+        public async Task<Models.Session?> GetSessionByDatabaseIdAsync(int sessionId)
+        {
+            return await _sessionRepository.GetSessionByPkAsync(sessionId);
         }
 
         /// <summary>

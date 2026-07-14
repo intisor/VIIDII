@@ -130,14 +130,14 @@ else
             return;
         }
 
-        Session = SessionService.GetSessionById(SessionId);
+        Session = await SessionService.GetSessionByIdAsync(SessionId);
         CanViewRecap = Session is not null && CurrentUser.Role == Role.Lecturer && Session.LecturerMatricNo == CurrentUser.MatricNo;
         if (!CanViewRecap || Session is null)
         {
             return;
         }
 
-        Scores = SessionService.CalculateAttendanceScore(SessionId);
+        Scores = await SessionService.CalculateAttendanceScoreFromPersistenceAsync(SessionId);
         if (Scores.Count > 0)
         {
             AverageAttendanceScore = Scores.Values.Average(s => s.FinalScorePercentage);

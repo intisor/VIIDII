@@ -8,6 +8,15 @@
     <InvariantGlobalization>false</InvariantGlobalization>
     <NoWarn>$(NoWarn);CS8602;CS8603;CS8604;CS8618;CS8619;CS8629;CS8714</NoWarn>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="VIIDII.Tests\**\*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include=".github\agents\chief mhi.agent.md" />
+    <None Include="VIIDII.Tests\VIIDII.Tests.csproj" />
+  </ItemGroup>
 	
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Components.QuickGrid" Version="9.0.0" />

@@ -95,11 +95,30 @@ namespace VIIDII.Data
             if (message == null)
                 return null;
 
-            // Store reaction as serialized emoji (for now, just store the emoji string)
-            if (string.IsNullOrEmpty(message.Reaction))
-                message.Reaction = reaction;
-            else if (!message.Reaction.Contains(reaction))
-                message.Reaction += $",{reaction}";
+            var reactions = ParseReactionEntries(message.Reaction);
+            var entry = $"{authorMatricNo}:{reaction}";
+            if (!reactions.Contains(entry, StringComparer.Ordinal))
+            {
+                reactions.Add(entry);
+                message.Reaction = string.Join(',', reactions);
+            }
+
+            return await _messageRepository.UpdateMessageAsync(message);
+        }
+
+        public async Task<Models.Message?> RemoveReactionAsync(int messageId, string authorMatricNo, string reaction)
+        {
+            var author = await _userService.GetUserByMatricNoAsync(authorMatricNo);
+            if (author == null)
+                return null;
+
+            var message = await _messageRepository.GetMessageByIdAsync(messageId);
+            if (message == null)
+                return null;
+
+            var reactions = ParseReactionEntries(message.Reaction);
+            reactions.RemoveAll(entry => string.Equals(entry, $"{authorMatricNo}:{reaction}", StringComparison.Ordinal));
+            message.Reaction = reactions.Count == 0 ? null : string.Join(',', reactions);
 
             return await _messageRepository.UpdateMessageAsync(message);
         }
@@ -154,6 +173,23 @@ namespace VIIDII.Data
                 return new List<Models.Message>();
 
             return await _messageRepository.GetUserMessagesAsync(author.Id);
+        }
+
+        public async Task<User?> GetUserByIdAsync(int userId)
+        {
+            return await _userService.GetUserByIdAsync(userId);
+        }
+
+        private static List<string> ParseReactionEntries(string? reactionData)
+        {
+            if (string.IsNullOrWhiteSpace(reactionData))
+            {
+                return new List<string>();
+            }
+
+            return reactionData
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToList();
         }
     }
 }

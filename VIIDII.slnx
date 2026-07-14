@@ -9,4 +9,5 @@
       <Platform>Any CPU</Platform>
     </Configuration>
   </Project>
+  <Project Path="VIIDII.Tests/VIIDII.Tests.csproj" />
 </Solution>
