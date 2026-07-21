@@ -449,6 +449,29 @@
     min-height: 0;
 }
 
+.lecturer-side-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 0.875rem;
+    overflow: hidden;
+}
+
+.lecturer-panel-section {
+    min-height: 0;
+}
+
+.lecturer-messages-section {
+    flex: 1 1 50%;
+    overflow: hidden;
+}
+
+.lecturer-participants-section {
+    flex: 1 1 50%;
+    overflow-y: auto;
+    border-top: 1px solid var(--border);
+    padding-top: 0.875rem;
+}
+
 .tab-content::-webkit-scrollbar { width: 4px; }
 .tab-content::-webkit-scrollbar-track { background: transparent; }
 .tab-content::-webkit-scrollbar-thumb { background: var(--border-mid); border-radius: 4px; }
@@ -484,6 +507,10 @@
         border-left: none;
         border-top: 1px solid var(--border);
         flex: 1;
+    }
+
+    .lecturer-side-panel {
+        overflow-y: auto;
     }
 
     .session-header h1 { font-size: 0.875rem; max-width: 180px; }

@@ -225,24 +225,46 @@ else
                             </div>
 
                             <!-- Tab Content -->
-                            <div class="tab-content">
-                                @if (State.ActiveTab == "messages")
-                                {
-                                    <MessagingPanel SessionId="@SessionId"
-                                                   IsLecturer="@State.IsLecturer"
-                                                   HubConnection="@_hubConnection"
-                                                   CurrentUserId="@(State.CurrentUser?.MatricNo ?? "")" />
-                                }
-                                else
-                                {
-                                    <ParticipantPanel @key="@_participantPanelVersion"
-                                                      Participants="@State.Participants"
-                                                      ParticipantStatuses="@State.ParticipantStatuses"
-                                                      HubConnection="@_hubConnection"
-                                                      SessionId="@SessionId"
-                                                      IsLecturer="@State.IsLecturer" />
-                                }
-                            </div>
+                            @if (State.IsLecturer)
+                            {
+                                <div class="tab-content lecturer-side-panel">
+                                    <div class="lecturer-panel-section lecturer-messages-section">
+                                        <MessagingPanel SessionId="@SessionId"
+                                                       IsLecturer="@State.IsLecturer"
+                                                       HubConnection="@_hubConnection"
+                                                       CurrentUserId="@(State.CurrentUser?.MatricNo ?? "")" />
+                                    </div>
+                                    <div class="lecturer-panel-section lecturer-participants-section">
+                                        <ParticipantPanel @key="@_participantPanelVersion"
+                                                          Participants="@State.Participants"
+                                                          ParticipantStatuses="@State.ParticipantStatuses"
+                                                          HubConnection="@_hubConnection"
+                                                          SessionId="@SessionId"
+                                                          IsLecturer="@State.IsLecturer" />
+                                    </div>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="tab-content">
+                                    @if (State.ActiveTab == "messages")
+                                    {
+                                        <MessagingPanel SessionId="@SessionId"
+                                                       IsLecturer="@State.IsLecturer"
+                                                       HubConnection="@_hubConnection"
+                                                       CurrentUserId="@(State.CurrentUser?.MatricNo ?? "")" />
+                                    }
+                                    else
+                                    {
+                                        <ParticipantPanel @key="@_participantPanelVersion"
+                                                          Participants="@State.Participants"
+                                                          ParticipantStatuses="@State.ParticipantStatuses"
+                                                          HubConnection="@_hubConnection"
+                                                          SessionId="@SessionId"
+                                                          IsLecturer="@State.IsLecturer" />
+                                    }
+                                </div>
+                            }
                         </div>
 
                         <!-- Issue flags (student only, inside side panel) -->
