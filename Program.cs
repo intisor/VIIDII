@@ -28,9 +28,9 @@ builder.Services.AddScoped<MessageRepository>();
 builder.Services.AddScoped<SessionPersistenceService>();
 builder.Services.AddScoped<MessagePersistenceService>();
 
-// Register session/message services as Singletons, but provide IServiceProvider for async persistence access
+// Register session/message services
 builder.Services.AddSingleton<SessionService>();
-builder.Services.AddSingleton<MessageService>();
+builder.Services.AddScoped<MessageService>();
 builder.Services.AddSingleton<PasswordHasher<User>>();
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddSingleton<IServiceProvider>(sp => sp); // Explicit service provider for runtime access

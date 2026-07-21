@@ -440,7 +440,7 @@ else
         if (State.IsLecturer)
         {
             _hubConnection.On<Dictionary<string, string>>("ReceiveParticipants", OnReceiveParticipants);
-            _hubConnection.On<Dictionary<string, string>>("ReceiveParticipantStatuses", OnReceiveParticipantStatuses);
+                _hubConnection.On<Dictionary<string, Session.StudentStatus>>("ReceiveParticipantStatuses", OnReceiveParticipantStatuses);
         }
 
         // Engagement tracking (student only)
@@ -889,7 +889,7 @@ else
         });
     }
 
-    private async Task OnReceiveParticipantStatuses(Dictionary<string, string> statuses)
+    private async Task OnReceiveParticipantStatuses(Dictionary<string, Session.StudentStatus> statuses)
     {
         Console.WriteLine($"[SessionView C#] SignalR: OnReceiveParticipantStatuses. Count: {statuses.Count}");
 
@@ -898,10 +898,7 @@ else
             State.ParticipantStatuses.Clear();
             foreach (var status in statuses.OrderBy(s => s.Key))
             {
-                if (Enum.TryParse<Session.StudentStatus>(status.Value, out var studentStatus))
-                {
-                    State.UpdateParticipantStatus(status.Key, studentStatus);
-                }
+                State.UpdateParticipantStatus(status.Key, status.Value);
             }
 
             _participantPanelVersion++;
@@ -1005,6 +1002,16 @@ else
     }
 
     [JSInvokable]
+    public Task OnConnectedToLecturer(string lecturerPeerId)
+    {
+        Console.WriteLine($"[SessionView C#] [JSInvokable] OnConnectedToLecturer: Connected to lecturer peer {lecturerPeerId}. Marking peer connection active.");
+        State.IsPeerConnected = true;
+        State.StopLoading();
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    [JSInvokable]
     public void OnStreamReceived()
     {
         Console.WriteLine($"[SessionView C#] [JSInvokable] OnStreamReceived: Media stream received from lecturer. Setting IsStreamLoaded=true, IsPeerConnected=true, stopping loading state.");
@@ -1038,6 +1045,19 @@ else
         {
             State.SetError("Unable to establish connection. Please refresh the page.");
         }
+    }
+
+    [JSInvokable]
+    public async Task OnTabVisibilityChanged(bool isVisible)
+    {
+        Console.WriteLine($"[SessionView C#] [JSInvokable] OnTabVisibilityChanged: isVisible={isVisible}. Updating participant activity state.");
+
+        if (_hubConnection is null || State.IsLecturer || !State.IsSessionStarted)
+        {
+            return;
+        }
+
+        await _hubConnection.SendAsync("UpdateTabStatus", isVisible);
     }
 
     private async Task TryRestoreSessionStateAsync()
