@@ -60,7 +60,7 @@
             {
                 var status = ParticipantStatuses.ContainsKey(participant.Key)
                     ? ParticipantStatuses[participant.Key]
-                    : Session.StudentStatus.Disconnected;
+                    : Session.StudentStatus.Active;
 
                 <div class="participant-item status-@status.ToString().ToLower()">
                     <div class="participant-info">

@@ -286,14 +286,9 @@ else
             var participants = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (var connectedStudent in State.ConnectedStudents)
             {
-                participants[connectedStudent.Key] = connectedStudent.Value;
-            }
-
-            foreach (var peerId in State.StudentPeerIds)
-            {
-                if (!participants.ContainsKey(peerId))
+                if (!string.IsNullOrWhiteSpace(connectedStudent.Key) && !string.IsNullOrWhiteSpace(connectedStudent.Value))
                 {
-                    participants[peerId] = peerId;
+                    participants[connectedStudent.Key] = connectedStudent.Value;
                 }
             }
 
