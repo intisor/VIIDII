@@ -5,10 +5,10 @@
     <div class="panel-header">
         <h3>
             <i class="fas fa-users"></i> 
-            Participants (@Participants.Count)
+            Participants (@ParticipantCount)
         </h3>
         
-        @if (IsLecturer && Participants.Count > 0)
+        @if (IsLecturer && ParticipantCount > 0)
         {
             <button class="btn-prompt" @onclick="PromptEngagement">
                 <i class="fas fa-hand-paper"></i> Prompt All
@@ -16,7 +16,7 @@
         }
     </div>
 
-    @if (Participants.Count == 0)
+    @if (ParticipantCount == 0)
     {
         <div class="empty-state">
             <i class="fas fa-user-slash"></i>
@@ -56,10 +56,10 @@
 
         <!-- Participant List -->
         <div class="participants-list">
-            @foreach (var participant in Participants.OrderBy(p => p.Value))
+            @foreach (var participant in OrderedParticipants)
             {
-                var status = ParticipantStatuses.ContainsKey(participant.Key)
-                    ? ParticipantStatuses[participant.Key]
+                var status = SafeParticipantStatuses.TryGetValue(participant.Key, out var participantStatus)
+                    ? participantStatus
                     : Session.StudentStatus.Active;
 
                 <div class="participant-item status-@status.ToString().ToLower()">
@@ -89,9 +89,16 @@
     [Parameter] public string SessionId { get; set; } = string.Empty;
     [Parameter] public bool IsLecturer { get; set; }
 
-    private int ActiveCount => ParticipantStatuses.Count(p => p.Value == Session.StudentStatus.Active);
-    private int InactiveCount => ParticipantStatuses.Count(p => p.Value == Session.StudentStatus.InActive);
-    private int IssuesCount => ParticipantStatuses.Count(p => 
+    private Dictionary<string, string> SafeParticipants => Participants ?? new();
+    private Dictionary<string, Session.StudentStatus> SafeParticipantStatuses => ParticipantStatuses ?? new();
+    private IEnumerable<KeyValuePair<string, string>> OrderedParticipants =>
+        SafeParticipants
+            .Where(static p => !string.IsNullOrWhiteSpace(p.Key) && !string.IsNullOrWhiteSpace(p.Value))
+            .OrderBy(static p => p.Value, StringComparer.OrdinalIgnoreCase);
+    private int ParticipantCount => OrderedParticipants.Count();
+    private int ActiveCount => SafeParticipantStatuses.Count(p => p.Value == Session.StudentStatus.Active);
+    private int InactiveCount => SafeParticipantStatuses.Count(p => p.Value == Session.StudentStatus.InActive);
+    private int IssuesCount => SafeParticipantStatuses.Count(p => 
         p.Value == Session.StudentStatus.BatteryLow || 
         p.Value == Session.StudentStatus.DataFinished);
 
