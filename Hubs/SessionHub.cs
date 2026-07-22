@@ -409,9 +409,32 @@ namespace VIIDII.Hubs
             // Only lecturer can prompt engagement
             if (session != null && await IsSessionLecturerAsync(sessionId, matricNo))
             {
-                // Broadcast "Are You There?" to all students in session (except lecturer)
-                await Clients.GroupExcept(sessionId, Context.ConnectionId).SendAsync("AreYouThere");
-                Console.WriteLine($"Lecturer {matricNo} prompted engagement for session {sessionId}");
+                var promptedConnectionIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                Console.WriteLine($"[SessionHub] Lecturer {matricNo} manually prompted engagement for session {sessionId}");
+
+                foreach (var participantId in session.ParticipantIds)
+                {
+                    if (_sessionService.IsLecturer(participantId))
+                    {
+                        continue;
+                    }
+
+                    if (session.ParticipantConnectionIds.TryGetValue(participantId, out var connectionId) &&
+                        !string.IsNullOrWhiteSpace(connectionId))
+                    {
+                        RegisterEngagementPrompt(participantId, DateTime.UtcNow);
+                        promptedConnectionIds.Add(connectionId);
+                        await Clients.Client(connectionId).SendAsync("AreYouThere");
+                        Console.WriteLine($"[SessionHub] Sent direct AreYouThere to participant {participantId} via connection {connectionId}");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"[SessionHub] No direct connection for participant {participantId}; fallback broadcast will be used");
+                    }
+                }
+
+                await Clients.GroupExcept(sessionId, promptedConnectionIds.ToArray()).SendAsync("AreYouThere");
+                Console.WriteLine($"[SessionHub] Fallback broadcast sent to session {sessionId} for {promptedConnectionIds.Count} direct recipient(s)");
             }
         }
     }

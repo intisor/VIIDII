@@ -422,15 +422,37 @@ else
                 .WithAutomaticReconnect()
                 .Build();
 
+            _hubConnection.Reconnecting += async error =>
+            {
+                State.IsHubConnected = false;
+                await JSRuntime.InvokeVoidAsync("console.log", $"[VIIDII] SignalR reconnecting. session={SessionId}, error={error?.Message ?? "none"}");
+            };
+
+            _hubConnection.Reconnected += async connectionId =>
+            {
+                State.IsHubConnected = true;
+                await JSRuntime.InvokeVoidAsync("console.log", $"[VIIDII] SignalR reconnected. ConnectionId={connectionId}, session={SessionId}");
+                await _hubConnection.SendAsync("JoinSession", SessionId);
+                await JSRuntime.InvokeVoidAsync("console.log", $"[VIIDII] JoinSession resent after reconnect. session={SessionId}");
+            };
+
+            _hubConnection.Closed += async error =>
+            {
+                State.IsHubConnected = false;
+                await JSRuntime.InvokeVoidAsync("console.log", $"[VIIDII] SignalR closed. session={SessionId}, error={error?.Message ?? "none"}");
+            };
+
             RegisterSignalRHandlers();
 
             await _hubConnection.StartAsync();
             State.IsHubConnected = true;
             Console.WriteLine($"[SessionView C#] SignalR connected. ConnectionId: {_hubConnection.ConnectionId}");
+            await JSRuntime.InvokeVoidAsync("console.log", $"[VIIDII] SignalR connected. ConnectionId={_hubConnection.ConnectionId}, session={SessionId}, lecturer={State.IsLecturer}");
 
             // Join session
             Console.WriteLine($"[SessionView C#] Sending JoinSession request to hub. SessionId: {SessionId}");
             await _hubConnection.SendAsync("JoinSession", SessionId);
+            await JSRuntime.InvokeVoidAsync("console.log", $"[VIIDII] JoinSession sent. session={SessionId}, lecturer={State.IsLecturer}");
 
             Console.WriteLine($"[SessionView C#] SignalR joined session: {SessionId}");
 
@@ -475,6 +497,7 @@ else
         if (!State.IsLecturer)
         {
             _hubConnection.On("AreYouThere", OnAreYouThere);
+            _ = JSRuntime.InvokeVoidAsync("console.log", $"[VIIDII] AreYouThere handler registered. session={SessionId}");
         }
     }
 
@@ -969,13 +992,15 @@ else
 
     private async Task OnAreYouThere()
     {
-        Console.WriteLine("AreYouThere prompt received from lecturer");
+        Console.WriteLine($"[SessionView C#] AreYouThere received. SessionId={SessionId}, IsLecturer={State.IsLecturer}, HubConnected={State.IsHubConnected}, ConnectionId={_hubConnection?.ConnectionId}");
+        await JSRuntime.InvokeVoidAsync("console.log", $"[VIIDII] AreYouThere received. session={SessionId}, lecturer={State.IsLecturer}, hubConnected={State.IsHubConnected}, connectionId={_hubConnection?.ConnectionId}");
 
         await InvokeAsync(() =>
         {
             if (!State.IsLecturer)
             {
                 _showEngagementModal = true;
+                Console.WriteLine($"[SessionView C#] Setting engagement modal visible for student in session {SessionId}");
             }
 
             StateHasChanged();

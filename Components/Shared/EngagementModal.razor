@@ -1,42 +1,45 @@
 @using Microsoft.AspNetCore.SignalR.Client
 @using Microsoft.JSInterop
 @implements IAsyncDisposable
-@inject IJSRuntime JSRuntime
+@inject Microsoft.JSInterop.IJSRuntime JSRuntime
 
-<!-- Engagement Modal -->
-<div class="modal fade" id="engagementModal" tabindex="-1" aria-labelledby="engagementModalLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="engagementModalLabel">
-                    <i class="fas fa-hand-paper"></i> Are You There?
-                </h5>
-            </div>
-            <div class="modal-body">
-                <div class="engagement-content">
-                    <div class="attention-icon">
-                        <i class="fas fa-user-check"></i>
-                    </div>
-                    <p class="message">Your lecturer wants to confirm you're paying attention.</p>
-                    <p class="instruction">Click the button below to confirm you're actively participating.</p>
-                    
-                    @if (TimeRemaining > 0)
-                    {
-                        <div class="timer">
-                            <i class="fas fa-clock"></i>
-                            <span>@TimeRemaining seconds remaining</span>
-                        </div>
-                    }
+@if (IsShown || (ShouldShow && IsStudent))
+{
+    <div class="modal fade show d-block" tabindex="-1" aria-labelledby="engagementModalLabel" aria-modal="true" role="dialog">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="engagementModalLabel">
+                        <i class="fas fa-hand-paper"></i> Are You There?
+                    </h5>
                 </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-primary btn-lg w-100" @onclick="ConfirmActive">
-                    <i class="fas fa-check-circle"></i> I'm Here!
-                </button>
+                <div class="modal-body">
+                    <div class="engagement-content">
+                        <div class="attention-icon">
+                            <i class="fas fa-user-check"></i>
+                        </div>
+                        <p class="message">Your lecturer wants to confirm you're paying attention.</p>
+                        <p class="instruction">Click the button below to confirm you're actively participating.</p>
+
+                        @if (TimeRemaining > 0)
+                        {
+                            <div class="timer">
+                                <i class="fas fa-clock"></i>
+                                <span>@TimeRemaining seconds remaining</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary btn-lg w-100" @onclick="ConfirmActive">
+                        <i class="fas fa-check-circle"></i> I'm Here!
+                    </button>
+                </div>
             </div>
         </div>
     </div>
-</div>
+    <div class="modal-backdrop fade show"></div>
+}
 
 @code {
     [Parameter] public HubConnection? HubConnection { get; set; }
@@ -45,44 +48,36 @@
     [Parameter] public EventCallback OnHidden { get; set; }
 
     private bool IsShown = false;
-    private int TimeRemaining = 30; // 30 seconds to respond
+    private int TimeRemaining = 30;
     private System.Threading.Timer? _timer;
-    private object? _modalInstance;
+    private bool _isHiding;
 
     protected override async Task OnParametersSetAsync()
     {
-        // Auto-show when ShouldShow becomes true
-        if (ShouldShow && !IsShown && IsStudent)
+        if (ShouldShow && IsStudent && !IsShown)
         {
             await Show();
+            return;
         }
-    }
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (firstRender && IsStudent)
+        if (!ShouldShow && IsShown)
         {
-            // Initialize Bootstrap modal
-            _modalInstance = await JSRuntime.InvokeAsync<object>("eval", @"
-                new bootstrap.Modal(document.getElementById('engagementModal'))
-            ");
+            await Hide();
         }
     }
 
     public async Task Show()
     {
-        if (!IsStudent || IsShown) return;
+        if (!IsStudent || IsShown)
+        {
+            return;
+        }
 
         IsShown = true;
+        _isHiding = false;
         TimeRemaining = 30;
+        await JSRuntime.InvokeVoidAsync("console.log", $"[VIIDII] Engagement prompt shown. TimeRemaining={TimeRemaining}");
 
-        // Show modal
-        await JSRuntime.InvokeVoidAsync("eval", @"
-            const modal = bootstrap.Modal.getInstance(document.getElementById('engagementModal'));
-            if (modal) modal.show();
-        ");
-
-        // Start countdown timer
         _timer?.Dispose();
         _timer = new System.Threading.Timer(async _ =>
         {
@@ -93,26 +88,25 @@
             }
             else
             {
-                // Auto-dismiss after timeout
-                await AutoDismiss();
+                await InvokeAsync(AutoDismiss);
             }
         }, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
 
-        StateHasChanged();
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task ConfirmActive()
     {
-        if (HubConnection == null) return;
+        if (HubConnection == null)
+        {
+            return;
+        }
 
         try
         {
-            // Send confirmation to SignalR
+            await JSRuntime.InvokeVoidAsync("console.log", "[VIIDII] Engagement prompt confirmed by student.");
             await HubConnection.SendAsync("ConfirmActive");
-
-            // Hide modal
             await Hide();
-
             Console.WriteLine("Engagement confirmed");
         }
         catch (Exception ex)
@@ -123,47 +117,38 @@
 
     private async Task AutoDismiss()
     {
-        // Student didn't respond - mark as inactive
         Console.WriteLine("Engagement timeout - student did not respond");
+        await JSRuntime.InvokeVoidAsync("console.log", "[VIIDII] Engagement prompt timed out without confirmation.");
         await Hide();
     }
 
     private async Task Hide()
     {
+        if (_isHiding || !IsShown)
+        {
+            return;
+        }
+
+        _isHiding = true;
         _timer?.Dispose();
         _timer = null;
         IsShown = false;
         TimeRemaining = 0;
+        await JSRuntime.InvokeVoidAsync("console.log", "[VIIDII] Engagement prompt hidden.");
 
-        await JSRuntime.InvokeVoidAsync("eval", @"
-            const modal = bootstrap.Modal.getInstance(document.getElementById('engagementModal'));
-            if (modal) modal.hide();
-        ");
+        if (OnHidden.HasDelegate)
+        {
+            await OnHidden.InvokeAsync();
+        }
 
-        // Notify parent
-        await OnHidden.InvokeAsync();
-
-        StateHasChanged();
+        await InvokeAsync(StateHasChanged);
+        _isHiding = false;
     }
 
     public async ValueTask DisposeAsync()
     {
         _timer?.Dispose();
-        
-        // Cleanup modal
-        if (_modalInstance != null)
-        {
-            try
-            {
-                await JSRuntime.InvokeVoidAsync("eval", @"
-                    const modal = bootstrap.Modal.getInstance(document.getElementById('engagementModal'));
-                    if (modal) modal.dispose();
-                ");
-            }
-            catch
-            {
-                // Ignore errors during disposal
-            }
-        }
+        _timer = null;
+        await Task.CompletedTask;
     }
 }

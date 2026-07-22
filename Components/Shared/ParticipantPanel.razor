@@ -1,5 +1,7 @@
 @using VIIDII.Models
 @using Microsoft.AspNetCore.SignalR.Client
+@using Microsoft.JSInterop
+@inject IJSRuntime JSRuntime
 
 <div class="participant-panel">
     <div class="panel-header">
@@ -108,6 +110,7 @@
 
         try
         {
+            await JSRuntime.InvokeVoidAsync("console.log", $"[VIIDII] Lecturer Prompt All clicked. session={SessionId}, participants={ParticipantCount}");
             await HubConnection.SendAsync("PromptEngagement", SessionId);
             Console.WriteLine("Engagement prompt sent to all students");
         }
