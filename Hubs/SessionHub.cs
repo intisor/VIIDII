@@ -14,6 +14,7 @@ namespace VIIDII.Hubs
         private readonly SessionService _sessionService;
         private readonly UserService _userService;
         private static readonly ConcurrentDictionary<string, DateTime> _lastSeen = new();
+        private static readonly ConcurrentDictionary<string, DateTime> _pendingEngagementPrompts = new();
 
         public SessionHub(MessageService messageService, SessionService sessionService, UserService userService)
         {
@@ -310,6 +311,7 @@ namespace VIIDII.Hubs
             var session = await _sessionService.GetSessionByParticipantAsync(matricNo);
             if (session is not null && !await IsSessionLecturerAsync(session.SessionId, matricNo) && session.IsSessionStarted)
             {
+                _pendingEngagementPrompts.TryRemove(matricNo, out _);
                 _lastSeen[matricNo] = DateTime.UtcNow;
                 if (_sessionService.UpdateParticipantStatus(session.SessionId, matricNo, Session.StudentStatus.Active))
                 {
@@ -359,6 +361,15 @@ namespace VIIDII.Hubs
         }
         public static bool TryGetLastSeen(string participantId, out DateTime lastSeen) =>
             _lastSeen.TryGetValue(participantId, out lastSeen);
+
+        public static void RegisterEngagementPrompt(string participantId, DateTime promptedAt) =>
+            _pendingEngagementPrompts[participantId] = promptedAt;
+
+        public static bool TryGetPendingEngagementPrompt(string participantId, out DateTime promptedAt) =>
+            _pendingEngagementPrompts.TryGetValue(participantId, out promptedAt);
+
+        public static void ClearPendingEngagementPrompt(string participantId) =>
+            _pendingEngagementPrompts.TryRemove(participantId, out _);
 
         // Messaging - Reaction Methods
         public async Task AddReaction(string sessionId, string messageId, string emoji)

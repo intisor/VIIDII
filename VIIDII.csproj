@@ -15,6 +15,7 @@
 
   <ItemGroup>
     <None Include=".github\agents\chief mhi.agent.md" />
+    <None Include=".github\copilot-instructions.md" />
     <None Include="VIIDII.Tests\VIIDII.Tests.csproj" />
   </ItemGroup>
 	

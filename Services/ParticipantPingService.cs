@@ -38,12 +38,17 @@ namespace VIIDII.Services
                         {
                             if(session.ParticipantConnectionIds.TryGetValue(participantId, out var connectionId))
                             {
+                                SessionHub.RegisterEngagementPrompt(participantId, DateTime.UtcNow);
                                 await _hubContext.Clients.Client(connectionId).SendAsync("AreYouThere");
                             }
-                            if(SessionHub.TryGetLastSeen(participantId, out var last) &&
-                            DateTime.UtcNow - last > Timeout)
+
+                            if (SessionHub.TryGetPendingEngagementPrompt(participantId, out var promptedAt) &&
+                                DateTime.UtcNow - promptedAt > Timeout)
                             {
-                                if (session.ParticipantStatuses[participantId] != Session.StudentStatus.InActive)
+                                SessionHub.ClearPendingEngagementPrompt(participantId);
+
+                                if (session.ParticipantStatuses.TryGetValue(participantId, out var currentStatus) &&
+                                    currentStatus != Session.StudentStatus.InActive)
                                 {
                                     _sessionService.UpdateParticipantStatus(session.SessionId, participantId, Session.StudentStatus.InActive);
                                     if (!string.IsNullOrEmpty(session.LecturerConnectionId))
