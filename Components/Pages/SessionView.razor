@@ -5,6 +5,7 @@
 @inject AuthService AuthService
 @inject SessionService SessionService
 @inject ISessionJsInterop SessionJsInterop
+@inject UserService UserLookupService
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
 @using VIIDII.Models
@@ -42,7 +43,7 @@ else
                 }
                 else
                 {
-                    <span class="status-badge">@CurrentSession.Status</span>
+                    <span class="status-badge">@State.Status</span>
                 }
             </div>
             <div class="session-header-right">
@@ -194,14 +195,6 @@ else
                             </button>
                         </div>
                     }
-                    else if (State.IsLecturer && !State.IsSessionStarted)
-                    {
-                        <div class="video-controls">
-                            <button class="btn btn-success btn-lg" @onclick="StartSession" disabled="@State.IsLoading">
-                                <i class="fas fa-play"></i> Start Session
-                            </button>
-                        </div>
-                    }
                 </div>
                 </div> <!-- /video-panel -->
 
@@ -225,46 +218,24 @@ else
                             </div>
 
                             <!-- Tab Content -->
-                            @if (State.IsLecturer)
-                            {
-                                <div class="tab-content lecturer-side-panel">
-                                    <div class="lecturer-panel-section lecturer-messages-section">
-                                        <MessagingPanel SessionId="@SessionId"
-                                                       IsLecturer="@State.IsLecturer"
-                                                       HubConnection="@_hubConnection"
-                                                       CurrentUserId="@(State.CurrentUser?.MatricNo ?? "")" />
-                                    </div>
-                                    <div class="lecturer-panel-section lecturer-participants-section">
-                                        <ParticipantPanel @key="@_participantPanelVersion"
-                                                          Participants="@State.Participants"
-                                                          ParticipantStatuses="@State.ParticipantStatuses"
-                                                          HubConnection="@_hubConnection"
-                                                          SessionId="@SessionId"
-                                                          IsLecturer="@State.IsLecturer" />
-                                    </div>
-                                </div>
-                            }
-                            else
-                            {
-                                <div class="tab-content">
-                                    @if (State.ActiveTab == "messages")
-                                    {
-                                        <MessagingPanel SessionId="@SessionId"
-                                                       IsLecturer="@State.IsLecturer"
-                                                       HubConnection="@_hubConnection"
-                                                       CurrentUserId="@(State.CurrentUser?.MatricNo ?? "")" />
-                                    }
-                                    else
-                                    {
-                                        <ParticipantPanel @key="@_participantPanelVersion"
-                                                          Participants="@State.Participants"
-                                                          ParticipantStatuses="@State.ParticipantStatuses"
-                                                          HubConnection="@_hubConnection"
-                                                          SessionId="@SessionId"
-                                                          IsLecturer="@State.IsLecturer" />
-                                    }
-                                </div>
-                            }
+                            <div class="tab-content">
+                                @if (State.ActiveTab == "messages")
+                                {
+                                    <MessagingPanel SessionId="@SessionId"
+                                                   IsLecturer="@State.IsLecturer"
+                                                   HubConnection="@_hubConnection"
+                                                   CurrentUserId="@(State.CurrentUser?.MatricNo ?? "")" />
+                                }
+                                else
+                                {
+                                    <ParticipantPanel @key="@_participantPanelVersion"
+                                                      Participants="@EffectiveParticipants"
+                                                      ParticipantStatuses="@State.ParticipantStatuses"
+                                                      HubConnection="@_hubConnection"
+                                                      SessionId="@SessionId"
+                                                      IsLecturer="@State.IsLecturer" />
+                                }
+                            </div>
                         </div>
 
                         <!-- Issue flags (student only, inside side panel) -->
@@ -303,6 +274,32 @@ else
     private bool IsLecturer => State.IsLecturer;
     private bool _pendingStudentPeerSetup = false;
     private int _participantPanelVersion = 0;
+    private Dictionary<string, string> EffectiveParticipants
+    {
+        get
+        {
+            if (State.Participants.Count > 0)
+            {
+                return State.Participants;
+            }
+
+            var participants = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var connectedStudent in State.ConnectedStudents)
+            {
+                participants[connectedStudent.Key] = connectedStudent.Value;
+            }
+
+            foreach (var peerId in State.StudentPeerIds)
+            {
+                if (!participants.ContainsKey(peerId))
+                {
+                    participants[peerId] = peerId;
+                }
+            }
+
+            return participants;
+        }
+    }
 
     // Lifecycle Methods
     protected override async Task OnInitializedAsync()
@@ -341,6 +338,11 @@ else
             State.Status = CurrentSession.Status;
             State.IsSessionStarted = CurrentSession.IsSessionStarted;
             State.IsLecturer = CurrentSession.LecturerMatricNo == State.CurrentUser.MatricNo;
+
+            if (State.IsLecturer)
+            {
+                await RefreshParticipantsFromSessionAsync(CurrentSession);
+            }
 
             Console.WriteLine($"[SessionView C#] Session initialized: IsLecturer={State.IsLecturer}, IsSessionStarted={State.IsSessionStarted}");
 
@@ -436,6 +438,15 @@ else
             await _hubConnection.SendAsync("JoinSession", SessionId);
 
             Console.WriteLine($"[SessionView C#] SignalR joined session: {SessionId}");
+
+            if (State.IsLecturer)
+            {
+                var refreshedSession = await SessionService.GetSessionByIdAsync(SessionId);
+                if (refreshedSession != null)
+                {
+                    await RefreshParticipantsFromSessionAsync(refreshedSession);
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -809,6 +820,14 @@ else
             {
                 Console.WriteLine($"[SessionView C#] [Student] Session started by lecturer. Activating peer connection.");
                 State.IsSessionStarted = true;
+                State.Status = SessionStatus.Started;
+
+                if (CurrentSession != null)
+                {
+                    CurrentSession.IsSessionStarted = true;
+                    CurrentSession.Status = SessionStatus.Started;
+                }
+
                 _pendingStudentPeerSetup = true;
                 StateHasChanged();
             });
@@ -896,7 +915,7 @@ else
 
     private async Task OnReceiveParticipants(Dictionary<string, string> participants)
     {
-        Console.WriteLine($"[SessionView C#] SignalR: OnReceiveParticipants. Count: {participants.Count}");
+        Console.WriteLine($"[SessionView C#] SignalR: OnReceiveParticipants. Count: {participants.Count}. Payload: {string.Join(", ", participants.Select(p => $"{p.Key}={p.Value}"))}");
 
         await InvokeAsync(() =>
         {
@@ -905,6 +924,8 @@ else
             {
                 State.AddParticipant(participant.Key, participant.Value);
             }
+
+            Console.WriteLine($"[SessionView C#] Updated State.Participants. Count: {State.Participants.Count}. Entries: {string.Join(", ", State.Participants.Select(p => $"{p.Key}={p.Value}"))}");
 
             _participantPanelVersion++;
             StateHasChanged();
@@ -926,6 +947,29 @@ else
             _participantPanelVersion++;
             StateHasChanged();
         });
+    }
+
+    private async Task RefreshParticipantsFromSessionAsync(Session session)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+
+        var participants = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var participantId in session.ParticipantIds.OrderBy(id => id, StringComparer.OrdinalIgnoreCase))
+        {
+            var user = await UserLookupService.GetUserByMatricNoAsync(participantId);
+            participants[participantId] = user?.Name ?? participantId;
+        }
+
+        Console.WriteLine($"[SessionView C#] RefreshParticipantsFromSessionAsync. Count: {participants.Count}. Entries: {string.Join(", ", participants.Select(p => $"{p.Key}={p.Value}"))}");
+
+        State.Participants.Clear();
+        foreach (var participant in participants)
+        {
+            State.AddParticipant(participant.Key, participant.Value);
+        }
+
+        _participantPanelVersion++;
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task OnAreYouThere()
@@ -970,15 +1014,29 @@ else
     }
 
     [JSInvokable]
-    public void OnStudentConnected(string peerId)
+    public async Task OnStudentConnected(string peerId)
     {
         Console.WriteLine($"[SessionView C#] [JSInvokable] OnStudentConnected: Student PeerId={peerId}. Registering/updating student connection in state.");
         State.AddStudentPeer(peerId);
         if (State.IsLecturer)
         {
+            var participantId = State.ConnectedStudents
+                .FirstOrDefault(p => string.Equals(p.Key, peerId, StringComparison.OrdinalIgnoreCase)).Value;
+
+            if (string.IsNullOrWhiteSpace(participantId))
+            {
+                participantId = State.StudentPeerIds.FirstOrDefault(id => string.Equals(id, peerId, StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (!string.IsNullOrWhiteSpace(participantId))
+            {
+                var user = await UserLookupService.GetUserByMatricNoAsync(participantId);
+                State.AddParticipant(participantId, user?.Name ?? participantId);
+            }
+
             _participantPanelVersion++;
         }
-        StateHasChanged();
+        await InvokeAsync(StateHasChanged);
     }
 
     [JSInvokable]
@@ -1015,9 +1073,9 @@ else
         State.MyPeerId = peerId;
 
         // Send peer ID to SignalR so lecturer can connect
-        if (_hubConnection != null)
+        if (_hubConnection != null && State.CurrentUser != null)
         {
-            await _hubConnection.SendAsync("SendPeerId", SessionId, peerId);
+            await _hubConnection.SendAsync("SendPeerId", SessionId, State.CurrentUser.MatricNo, peerId);
         }
 
         StateHasChanged();

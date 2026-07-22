@@ -73,6 +73,7 @@ namespace VIIDII.Hubs
         public async Task JoinSession(string sessionId)
         {
             var matricNo = Context.GetHttpContext()?.Session.GetString("MatricNo");
+            Console.WriteLine($"[SessionHub] JoinSession called. SessionId={sessionId}, MatricNo={matricNo}, ConnectionId={Context.ConnectionId}");
             var session = await _sessionService.GetSessionByIdAsync(sessionId);
             if (session == null || session.Status == SessionStatus.Ended)
             {
@@ -108,8 +109,14 @@ namespace VIIDII.Hubs
                     var user = await _userService.GetUserByMatricNoAsync(id);
                     participants[id] = user?.Name ?? id;
                 }
+
+                Console.WriteLine($"[SessionHub] Sending ReceiveParticipants to lecturer connection {session.LecturerConnectionId} for session {sessionId}. Payload: {string.Join(", ", participants.Select(p => $"{p.Key}={p.Value}"))}");
                 await Clients.Client(session.LecturerConnectionId).SendAsync("ReceiveParticipants", participants);
                 Console.WriteLine($"Sent participants to lecturer: {string.Join(", ", participants.Keys)}");
+            }
+            else
+            {
+                Console.WriteLine($"[SessionHub] No lecturer connection registered for session {sessionId}; ReceiveParticipants not sent.");
             }
         }
 
@@ -176,10 +183,8 @@ namespace VIIDII.Hubs
             }
         }
         public Task SendMessage(string user, string message) => Clients.Others.SendAsync("ReceiveMessage", user, message);
-        public async Task SendPeerId(string sessionId, string peerId)
+        public async Task SendPeerId(string sessionId, string userId, string peerId)
         {
-            var userId = Context.GetHttpContext()?.Session.GetString("MatricNo");
-
             await Clients.Group(sessionId).SendAsync("ReceivePeerId", userId, peerId);
         }
 
