@@ -35,6 +35,68 @@ window.sessionInterop = (function () {
     }
 
     /**
+ * ICE server configuration.
+ *
+ * Loaded from the server at runtime so switching from public relays to a
+ * self-hosted coturn is a configuration change, not a code change and rebuild.
+ *
+ * Supply via, in order of preference:
+ *   1. window.VIIDII_ICE_SERVERS  (injected by the host page)
+ *   2. GET /api/config/ice
+ *   3. built-in public relays (DEVELOPMENT ONLY - rate limited, will fail under load)
+ *
+ * Production requires a self-hosted TURN server. See docs/TURN_AND_MEDIA.md.
+ */
+    let iceServersCache = null;
+
+    const PUBLIC_FALLBACK_ICE = [
+        { urls: "stun:stun.l.google.com:19302" },
+        { urls: "stun:freestun.net:3478" },
+        {
+            urls: ["turn:openrelay.metered.ca:80", "turn:openrelay.metered.ca:443"],
+            username: "openrelayproject",
+            credential: "openrelayproject"
+        },
+        {
+            urls: "turn:freestun.net:3478",
+            username: "free",
+            credential: "free"
+        }
+    ];
+
+    async function getIceServers() {
+        if (iceServersCache) return iceServersCache;
+
+        if (window.VIIDII_ICE_SERVERS && Array.isArray(window.VIIDII_ICE_SERVERS)) {
+            iceServersCache = window.VIIDII_ICE_SERVERS;
+            return iceServersCache;
+        }
+
+        try {
+            const response = await fetch("/api/config/ice", {
+                credentials: "same-origin",
+                cache: "no-store"
+            });
+            if (response.ok) {
+                const payload = await response.json();
+                if (Array.isArray(payload.iceServers) && payload.iceServers.length > 0) {
+                    iceServersCache = payload.iceServers;
+                    return iceServersCache;
+                }
+            }
+        } catch (err) {
+            console.warn("[sessionInterop JS] Could not load ICE config from server; using public relays.", err);
+        }
+
+        console.warn(
+            "[sessionInterop JS] Falling back to PUBLIC relay servers. These are rate limited " +
+            "and WILL fail with real student traffic. Configure TURN_Servers for production."
+        );
+        iceServersCache = PUBLIC_FALLBACK_ICE;
+        return iceServersCache;
+    }
+
+    /**
      * Polls the DOM until an element with the given id appears.
      * @param {string} elementId
      * @param {number} attempts
@@ -82,22 +144,13 @@ window.sessionInterop = (function () {
 
             // Initialize PeerJS as lecturer (using sessionId as peer ID)
             console.log("[sessionInterop JS] [Lecturer] Initializing PeerJS with ID:", sessionId);
+            const iceServers = await getIceServers();
             peer = new Peer(sessionId, {
                 config: {
-                    iceServers: [
-                        { urls: "stun:stun.l.google.com:19302" },
-                        { urls: "stun:freestun.net:3478" },
-                        {
-                            urls: ["turn:openrelay.metered.ca:80", "turn:openrelay.metered.ca:443"],
-                            username: "openrelayproject",
-                            credential: "openrelayproject"
-                        },
-                        {
-                            urls: "turn:freestun.net:3478",
-                            username: "free",
-                            credential: "free"
-                        }
-                    ]
+                    iceServers: iceServers,
+                    // "all" keeps host candidates alive so relay candidates remain
+                    // reachable behind symmetric NAT — required on Nigerian mobile networks.
+                    iceTransportPolicy: "all"
                 }
             });
 
@@ -296,22 +349,11 @@ window.sessionInterop = (function () {
         }
 
         console.log("[sessionInterop JS] [Student] Creating PeerJS instance for student...");
+        const studentIceServers = await getIceServers();
         peer = new Peer({
             config: {
-                iceServers: [
-                    { urls: "stun:stun.l.google.com:19302" },
-                    { urls: "stun:freestun.net:3478" },
-                    {
-                        urls: ["turn:openrelay.metered.ca:80", "turn:openrelay.metered.ca:443"],
-                        username: "openrelayproject",
-                        credential: "openrelayproject"
-                    },
-                    {
-                        urls: "turn:freestun.net:3478",
-                        username: "free",
-                        credential: "free"
-                    }
-                ]
+                iceServers: studentIceServers,
+                iceTransportPolicy: "all"
             }
         });
 

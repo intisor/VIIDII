@@ -222,6 +222,72 @@ app.MapHub<SessionHub>("/sessionHub", options =>
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 
+// ---------------------------------------------------------------------------
+// ICE / TURN configuration for the browser.
+//
+// Credentials are issued per-session rather than hardcoded, so switching from
+// public relays to a self-hosted coturn is a configuration change only.
+// Uses the TURN REST API shared-secret scheme, which is the supported way to
+// hand out time-limited TURN credentials.
+// ---------------------------------------------------------------------------
+
+app.MapGet("/api/config/ice", (IConfiguration config, IWebHostEnvironment env) =>
+{
+    var section = config.GetSection("TurnServers");
+    var servers = section.GetSection("Servers").Get<List<TurnServerOptions>>()
+                  ?? new List<TurnServerOptions>();
+
+    var usingPublicFallback = servers.Count == 0;
+    if (usingPublicFallback && !env.IsDevelopment())
+    {
+        // Loud, actionable warning — do not fail the request. Lecturers can still run
+        // sessions on a good network; they will just fail on poor ones.
+        app.Logger.LogError(
+            "No TurnServers configured in a non-Development environment. " +
+            "WebRTC relay is unavailable and sessions will fail on restrictive NATs. " +
+            "Configure TurnServers (see docs/TURN_AND_MEDIA.md).");
+    }
+
+    var result = new List<IceServerDto>();
+    var turnSecret = section["SharedSecret"];
+
+    foreach (var server in servers)
+    {
+        if (server.Urls.Count == 0)
+        {
+            continue;
+        }
+
+        if (!string.IsNullOrWhiteSpace(server.Username) && !string.IsNullOrWhiteSpace(server.Credential))
+        {
+            result.Add(new IceServerDto { Urls = server.Urls, Username = server.Username, Credential = server.Credential });
+            continue;
+        }
+
+        // Time-limited HMAC credentials via the TURN REST API (RFC draft "turn-rest").
+        if (!string.IsNullOrWhiteSpace(turnSecret) && !string.IsNullOrWhiteSpace(server.Url))
+        {
+            var ttl = TimeSpan.FromHours(server.CredentialTtlHours <= 0 ? 12 : server.CredentialTtlHours);
+            var (username, credential) = TurnCredentialGenerator.Generate(turnSecret, ttl);
+            result.Add(new IceServerDto
+            {
+                Urls = server.Urls,
+                Username = username,
+                Credential = credential
+            });
+        }
+    }
+
+    return Results.Ok(new
+    {
+        iceServers = result,
+        usingPublicFallback,
+        message = usingPublicFallback
+            ? "Public relay servers in use. Rate limited; will fail under real load."
+            : null
+    });
+});
+
 app.Run();
 
 static string DashboardPathFor(Role role) => role switch
