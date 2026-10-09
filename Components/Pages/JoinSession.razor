@@ -1,4 +1,5 @@
 @page "/join-session"
+@attribute [Authorize]
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inject AuthService AuthService
 @inject SessionService SessionService

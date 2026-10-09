@@ -1,7 +1,5 @@
 @page "/login"
-@rendermode @(new InteractiveServerRenderMode(prerender: false))
-@inject AuthService AuthService
-@inject NavigationManager Navigation
+@using Microsoft.AspNetCore.Components.Authorization
 
 <PageTitle>Sign in — VIIDII</PageTitle>
 
@@ -9,39 +7,48 @@
     <div class="login-card">
         <div class="login-brand">VIIDII</div>
         <h1 class="login-heading">Sign in</h1>
-        <p class="login-sub">Select your account to continue.</p>
+        <p class="login-sub">Use your matric number to continue.</p>
 
         @if (!string.IsNullOrEmpty(ErrorMessage))
         {
-            <div class="login-error">
+            <div class="login-error" role="alert">
                 <i class="fas fa-exclamation-circle"></i>
                 @ErrorMessage
             </div>
         }
 
-        <EditForm Model="@LoginModel" OnValidSubmit="@HandleLogin" FormName="LoginForm">
-            <DataAnnotationsValidator />
+        @* Static SSR form: posts to /auth/login so the auth cookie is issued in a
+           normal HTTP response. An interactive EditForm cannot set cookies. *@
+        <form method="post" action="/auth/login">
+            <AntiforgeryToken />
 
             <div class="form-group">
-                <label class="form-label" for="user-select">Account</label>
-                <InputSelect id="user-select" class="form-control" @bind-value="LoginModel.MatricNo" @bind-value:after="OnUserSelected">
-                    <option value="">— Choose an account —</option>
-                    @foreach (var user in AvailableUsers)
-                    {
-                        <option value="@user.MatricNo">@user.Name · @user.Role</option>
-                    }
-                </InputSelect>
+                <label class="form-label" for="matric-input">Matric number</label>
+                <input id="matric-input"
+                       name="matricNo"
+                       type="text"
+                       class="form-control"
+                       autocomplete="username"
+                       required
+                       maxlength="50"
+                       value="@MatricNo" />
             </div>
 
             <div class="form-group">
                 <label class="form-label" for="password-input">Password</label>
-                <InputText id="password-input" type="password" class="form-control" @bind-value="LoginModel.Password" placeholder="Password" />
+                <input id="password-input"
+                       name="password"
+                       type="password"
+                       class="form-control"
+                       autocomplete="current-password"
+                       required
+                       maxlength="256" />
             </div>
 
-            <button id="login-submit" type="submit" class="login-btn" disabled="@IsLoading">
-                @if (IsLoading) { <span>Signing in…</span> } else { <span>Sign in</span> }
+            <button id="login-submit" type="submit" class="login-btn">
+                <span>Sign in</span>
             </button>
-        </EditForm>
+        </form>
     </div>
 </div>
 
@@ -112,59 +119,20 @@
         font-family: inherit;
         margin-top: 0.5rem;
     }
-    .login-btn:hover:not(:disabled) { background: var(--accent-hover); }
-    .login-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .login-btn:hover { background: var(--accent-hover); }
 </style>
 
 @code {
-    private LoginRequest LoginModel = new();
-    private string? ErrorMessage;
-    private bool IsLoading = false;
-    private List<UserInfo> AvailableUsers = new();
+    [SupplyParameterFromQuery(Name = "error")]
+    private string? ErrorCode { get; set; }
 
-    protected override void OnInitialized()
+    [SupplyParameterFromQuery(Name = "matricNo")]
+    private string? MatricNo { get; set; }
+
+    private string? ErrorMessage => ErrorCode switch
     {
-        AvailableUsers = new List<UserInfo>
-        {
-            new UserInfo("Intisor",   "123456", "Student"),
-            new UserInfo("Goodluck",  "654321", "Student"),
-            new UserInfo("Ade",       "789012", "Student"),
-            new UserInfo("Umar",      "383012", "Student"),
-            new UserInfo("Alice",     "100001", "Student"),
-            new UserInfo("Brian",     "100002", "Student"),
-            new UserInfo("Cynthia",   "100003", "Student"),
-            new UserInfo("John Doe",  "Lec001", "Lecturer"),
-            new UserInfo("Dr. Brown", "Lec002", "Lecturer"),
-            new UserInfo("Admin",     "Admin",  "Admin")
-        };
-    }
-
-    private void OnUserSelected()
-    {
-        if (!string.IsNullOrEmpty(LoginModel.MatricNo))
-            LoginModel.Password = "studpass1";
-    }
-
-    private async Task HandleLogin()
-    {
-        IsLoading = true;
-        ErrorMessage = null;
-
-        var (success, message, user) = await AuthService.LoginAsync(LoginModel.MatricNo, LoginModel.Password);
-
-        if (success && user != null)
-            Navigation.NavigateTo("/dashboard");
-        else
-            ErrorMessage = message ?? "Login failed";
-
-        IsLoading = false;
-    }
-
-    public class LoginRequest
-    {
-        public string MatricNo { get; set; } = string.Empty;
-        public string Password { get; set; } = string.Empty;
-    }
-
-    public record UserInfo(string Name, string MatricNo, string Role);
+        "invalid" => "Invalid matric number or password.",
+        "antiforgery" => "Your session expired. Please try again.",
+        _ => null
+    };
 }

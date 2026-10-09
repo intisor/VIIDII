@@ -23,9 +23,41 @@ namespace VIIDII.Hubs
             _userService = userService;
         }
 
+        /// <summary>
+        /// Resolves the authenticated matric number from the auth cookie claims.
+        /// Falls back to the legacy session value during migration.
+        /// IMPORTANT: identity must never be accepted from a client-supplied parameter.
+        /// </summary>
+        private string? CurrentMatricNo()
+        {
+            var fromClaims = Context.User?.FindFirst(ViidiiClaims.MatricNo)?.Value;
+            if (!string.IsNullOrWhiteSpace(fromClaims))
+            {
+                return fromClaims;
+            }
+
+            return Context.GetHttpContext()?.Session.GetString("MatricNo");
+        }
+
+        /// <summary>
+        /// Guards a hub method: rejects the call when the caller is anonymous.
+        /// Returns false (after notifying the caller) when authentication is missing.
+        /// </summary>
+        private async Task<bool> RequireAuthAsync()
+        {
+            if (!string.IsNullOrWhiteSpace(CurrentMatricNo()))
+            {
+                return true;
+            }
+
+            await Clients.Caller.SendAsync("Error", "You are not signed in. Please sign in and try again.");
+            Context.Abort();
+            return false;
+        }
+
         public async Task StartSession(string sessionId)
         {
-            var matricNo = Context.GetHttpContext()?.Session.GetString("MatricNo");
+            var matricNo = CurrentMatricNo();
             await Groups.AddToGroupAsync(Context.ConnectionId, sessionId);
             await Clients.Group(sessionId).SendAsync("StartSession", sessionId);
             var session = await _sessionService.GetSessionByIdAsync(sessionId);
@@ -73,7 +105,7 @@ namespace VIIDII.Hubs
 
         public async Task JoinSession(string sessionId)
         {
-            var matricNo = Context.GetHttpContext()?.Session.GetString("MatricNo");
+            var matricNo = CurrentMatricNo();
             Console.WriteLine($"[SessionHub] JoinSession called. SessionId={sessionId}, MatricNo={matricNo}, ConnectionId={Context.ConnectionId}");
             var session = await _sessionService.GetSessionByIdAsync(sessionId);
             if (session == null || session.Status == SessionStatus.Ended)
@@ -123,7 +155,7 @@ namespace VIIDII.Hubs
 
         public async Task EndSession(string sessionId)
         {
-            var matricNo = Context.GetHttpContext()?.Session.GetString("MatricNo");
+            var matricNo = CurrentMatricNo();
             var session = await _sessionService.GetSessionByIdAsync(sessionId);
 
             if (session != null && await IsSessionLecturerAsync(sessionId, matricNo))
@@ -172,7 +204,7 @@ namespace VIIDII.Hubs
         }
         public async Task NotifyStreamChange(string sessionId, string streamType)
         {
-            var matricNo = Context.GetHttpContext()?.Session.GetString("MatricNo");
+            var matricNo = CurrentMatricNo();
             if (await IsSessionLecturerAsync(sessionId, matricNo))
             {
                 await Clients.Group(sessionId).SendAsync("ReceiveStreamChange", streamType);
@@ -193,12 +225,11 @@ namespace VIIDII.Hubs
         {
             try
             {
-                var httpContext = Context.GetHttpContext();
-                var matricNo = httpContext?.Session.GetString("MatricNo");
-                
+                var matricNo = CurrentMatricNo();
+
                 if (string.IsNullOrEmpty(matricNo))
                 {
-                    await Clients.Caller.SendAsync("Error", "Session not found. Please log in again.");
+                    await Clients.Caller.SendAsync("Error", "You are not signed in.");
                     return;
                 }
 
@@ -220,12 +251,11 @@ namespace VIIDII.Hubs
         {
             try
             {
-                var httpContext = Context.GetHttpContext();
-                var matricNo = httpContext?.Session.GetString("MatricNo");
-                
+                var matricNo = CurrentMatricNo();
+
                 if (string.IsNullOrEmpty(matricNo))
                 {
-                    await Clients.Caller.SendAsync("Error", "Session not found. Please log in again.");
+                    await Clients.Caller.SendAsync("Error", "You are not signed in.");
                     return;
                 }
 
@@ -261,7 +291,7 @@ namespace VIIDII.Hubs
 
         public async Task UpdateTabStatus(bool isActive)
         {
-            var matricNo = Context.GetHttpContext()?.Session.GetString("MatricNo");
+            var matricNo = CurrentMatricNo();
             var session = await _sessionService.GetSessionByParticipantAsync(matricNo);
             if (session is not null && !await IsSessionLecturerAsync(session.SessionId, matricNo) && session.IsSessionStarted)
             {
@@ -284,7 +314,7 @@ namespace VIIDII.Hubs
 
         public async Task FlagIssue(string issue)
         {
-            var matricNo = Context.GetHttpContext()?.Session.GetString("MatricNo");
+            var matricNo = CurrentMatricNo();
             var session = await _sessionService.GetSessionByParticipantAsync(matricNo);
             if (session is not null && !await IsSessionLecturerAsync(session.SessionId, matricNo) && session.IsSessionStarted)
             {
@@ -307,7 +337,7 @@ namespace VIIDII.Hubs
 
         public async Task ConfirmActive()
         {
-            var matricNo = Context.GetHttpContext()?.Session.GetString("MatricNo");
+            var matricNo = CurrentMatricNo();
             var session = await _sessionService.GetSessionByParticipantAsync(matricNo);
             if (session is not null && !await IsSessionLecturerAsync(session.SessionId, matricNo) && session.IsSessionStarted)
             {
@@ -332,7 +362,7 @@ namespace VIIDII.Hubs
 
         public override async Task OnDisconnectedAsync(Exception? exception)
         {
-            var matricNo = Context.GetHttpContext()?.Session.GetString("MatricNo");
+            var matricNo = CurrentMatricNo();
             if (!string.IsNullOrEmpty(matricNo))
             {
                 var session = await _sessionService.GetSessionByParticipantAsync(matricNo);
@@ -374,7 +404,7 @@ namespace VIIDII.Hubs
         // Messaging - Reaction Methods
         public async Task AddReaction(string sessionId, string messageId, string emoji)
         {
-            var matricNo = Context.GetHttpContext()?.Session.GetString("MatricNo");
+            var matricNo = CurrentMatricNo();
             if (string.IsNullOrEmpty(matricNo)) return;
 
             var success = await _messageService.AddReactionAsync(sessionId, messageId, matricNo, emoji);
@@ -388,7 +418,7 @@ namespace VIIDII.Hubs
 
         public async Task RemoveReaction(string sessionId, string messageId, string emoji)
         {
-            var matricNo = Context.GetHttpContext()?.Session.GetString("MatricNo");
+            var matricNo = CurrentMatricNo();
             if (string.IsNullOrEmpty(matricNo)) return;
 
             var success = await _messageService.RemoveReactionAsync(sessionId, messageId, matricNo, emoji);
@@ -403,7 +433,7 @@ namespace VIIDII.Hubs
         // Engagement - Prompt Methods
         public async Task PromptEngagement(string sessionId)
         {
-            var matricNo = Context.GetHttpContext()?.Session.GetString("MatricNo");
+            var matricNo = CurrentMatricNo();
             var session = await _sessionService.GetSessionByIdAsync(sessionId);
 
             // Only lecturer can prompt engagement

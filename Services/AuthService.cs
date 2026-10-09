@@ -1,144 +1,87 @@
-using VIIDII.Models;
 using Microsoft.AspNetCore.Identity;
-using System.Security.Cryptography;
-using System.Text;
+using VIIDII.Models;
 
 namespace VIIDII.Services;
 
 /// <summary>
-/// Authentication service for managing user login and session state in Blazor
+/// Authentication service for VIIDII.
+///
+/// IMPORTANT: this class validates credentials and builds claims. It does NOT
+/// issue the authentication cookie — that happens in the /auth/login endpoint
+/// where an HttpContext is guaranteed to be available. Cookie writes are not
+/// possible from inside an established Blazor Server circuit.
 /// </summary>
 public class AuthService
 {
     private readonly UserService _userService;
     private readonly PasswordHasher<User> _passwordHasher;
-    private readonly IHttpContextAccessor _httpContextAccessor;
-    private User? _currentUser;
+    private readonly CurrentUserAccessor _currentUser;
 
-    public AuthService(UserService userService, PasswordHasher<User> passwordHasher, IHttpContextAccessor httpContextAccessor)
+    public AuthService(
+        UserService userService,
+        PasswordHasher<User> passwordHasher,
+        CurrentUserAccessor currentUser)
     {
         _userService = userService;
         _passwordHasher = passwordHasher;
-        _httpContextAccessor = httpContextAccessor;
+        _currentUser = currentUser;
     }
 
-    public async Task<(bool Success, string? Message, User? User)> LoginAsync(string matricNo, string password)
+    /// <summary>
+    /// Validates credentials against the database. Does not mutate any auth state.
+    /// </summary>
+    public async Task<(bool Success, string? Message, User? User)> ValidateCredentialsAsync(
+        string matricNo,
+        string password)
     {
-        try
+        if (string.IsNullOrWhiteSpace(matricNo) || string.IsNullOrWhiteSpace(password))
         {
-            // Debug logging
-            Console.WriteLine($"[AuthService] Login attempt for MatricNo: {matricNo}");
-            
-            if (string.IsNullOrWhiteSpace(matricNo) || string.IsNullOrWhiteSpace(password))
-            {
-                Console.WriteLine($"[AuthService] Empty credentials provided");
-                return (false, "Matric No and Password are required", null);
-            }
-            
-            var user = await _userService.GetUserByMatricNoAsync(matricNo);
-
-            if (user == null)
-            {
-                Console.WriteLine($"[AuthService] User not found with MatricNo: {matricNo}");
-                return (false, "User not found", null);
-            }
-
-            Console.WriteLine($"[AuthService] User found: {user.Name} with role {user.Role}");
-            
-            var verificationResult = _passwordHasher.VerifyHashedPassword(user, user.PasswordHash, password);
-            if (verificationResult == PasswordVerificationResult.Failed)
-            {
-                Console.WriteLine($"[AuthService] Password verification failed for {matricNo}");
-                return (false, "Invalid password", null);
-            }
-
-            Console.WriteLine($"[AuthService] Password verified successfully");
-            
-            // Store user in memory for Blazor (not in session during interactive render)
-            _currentUser = user;
-            Console.WriteLine($"[AuthService] User stored in memory for {matricNo}");
-
-            // Set session for SSR and other middleware compatibility
-            var httpContext = _httpContextAccessor.HttpContext;
-            if (httpContext?.Session != null)
-            {
-                try
-                {
-                    httpContext.Session.SetString("MatricNo", matricNo);
-                    Console.WriteLine($"[AuthService] Session set with MatricNo: {matricNo}");
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"[AuthService] Warning: Failed to set session: {ex.Message}. Falling back to in-memory login state.");
-                }
-            }
-            
-            // Return user; state is kept in-memory for the Blazor circuit
-            return (true, null, user);
+            return (false, "Matric number and password are required.", null);
         }
-        catch (Exception ex)
+
+        var user = await _userService.GetUserByMatricNoAsync(matricNo);
+
+        // Uniform error message: do not reveal whether the account exists.
+        if (user is null)
         {
-            Console.WriteLine($"[AuthService] Login error: {ex.Message} - {ex.StackTrace}");
-            return (false, $"Login error: {ex.Message}", null);
+            return (false, "Invalid credentials.", null);
         }
+
+        var verificationResult = _passwordHasher.VerifyHashedPassword(user, user.PasswordHash, password);
+        if (verificationResult == PasswordVerificationResult.Failed)
+        {
+            return (false, "Invalid credentials.", null);
+        }
+
+        // A successful rehash is returned by VerifyHashedPassword; persist it so the
+        // stored hash uses the current algorithm parameters.
+        if (verificationResult == PasswordVerificationResult.SuccessRehashNeeded)
+        {
+            user.PasswordHash = _passwordHasher.HashPassword(user, password);
+            await _userService.UpdatePasswordHashAsync(user);
+        }
+
+        return (true, null, user);
     }
 
+    /// <summary>
+    /// Returns the authenticated user for the current request, or null when anonymous.
+    /// </summary>
     public async Task<User?> GetCurrentUserAsync()
     {
-        Console.WriteLine($"[AuthService.GetCurrentUserAsync] Checking current user. _currentUser is: {(_currentUser?.Name ?? "NULL")}");
-        
-        // First check in-memory user (for Blazor interactive)
-        if (_currentUser != null)
+        if (!_currentUser.IsAuthenticated)
         {
-            Console.WriteLine($"[AuthService.GetCurrentUserAsync] Returning stored user: {_currentUser.Name}");
-            return _currentUser;
+            return null;
         }
 
-        // If in-memory is null, try to load from HttpContext session (for SSR/enhanced navigation)
-        var httpContext = _httpContextAccessor.HttpContext;
-        if (httpContext?.Session != null)
-        {
-            var matricNo = httpContext.Session.GetString("MatricNo");
-            if (!string.IsNullOrEmpty(matricNo))
-            {
-                Console.WriteLine($"[AuthService.GetCurrentUserAsync] Found MatricNo in session: {matricNo}. Loading user...");
-                _currentUser = await _userService.GetUserByMatricNoAsync(matricNo);
-                if (_currentUser != null)
-                {
-                    return _currentUser;
-                }
-            }
-        }
-        
-        Console.WriteLine($"[AuthService.GetCurrentUserAsync] No user found, returning null");
-        return null;
+        return await _currentUser.GetUserAsync();
     }
 
-    public async Task LogoutAsync()
-    {
-        // Clear in-memory user
-        _currentUser = null;
-        
-        // Clear session if available
-        var httpContext = _httpContextAccessor.HttpContext;
-        if (httpContext?.Session != null)
-        {
-            try
-            {
-                httpContext.Session.Clear();
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[AuthService] Could not clear session: {ex.Message}");
-            }
-        }
-    }
+    public bool IsAuthenticated() => _currentUser.IsAuthenticated;
 
-    public bool IsAuthenticated()
-    {
-        var httpContext = _httpContextAccessor.HttpContext;
-        return httpContext?.Session.GetString("MatricNo") != null;
-    }
+    public string? CurrentMatricNo() => _currentUser.MatricNo;
+
+    public Role? CurrentRole() => _currentUser.Role;
 
     public async Task<List<User>> GetAllUsersAsync()
     {

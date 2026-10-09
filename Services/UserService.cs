@@ -43,6 +43,15 @@ namespace VIIDII.Services
             return await _context.Users.FindAsync(id);
         }
 
+        /// <summary>
+        /// Persists an updated password hash. Used by the rehash path during login.
+        /// </summary>
+        public async Task UpdatePasswordHashAsync(User user)
+        {
+            _context.Users.Update(user);
+            await _context.SaveChangesAsync();
+        }
+
         public async Task<Dictionary<TKey, List<User>>> GroupUsersByAsync<TKey>(Func<User, TKey> keySelector)
             where TKey : notnull
         {

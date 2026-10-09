@@ -1,9 +1,34 @@
+@using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Components.Routing
 @using VIIDII.Components.Layout
 
 <Router AppAssembly="@typeof(Program).Assembly">
     <Found Context="routeData">
-        <RouteView RouteData="@routeData" DefaultLayout="@typeof(Layout.MainLayout)" />
+        @* AuthorizeRouteView enforces [Authorize] / policy attributes on pages.
+           Unauthenticated users are redirected to /login by the cookie handler. *@
+        <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(Layout.MainLayout)">
+            <NotAuthorized>
+                @if (context.User.Identity?.IsAuthenticated != true)
+                {
+                    <LayoutView Layout="@typeof(Layout.MainLayout)">
+                        <div class="alert alert-warning" role="alert">
+                            <p><strong>Sign in required.</strong> Please sign in to continue.</p>
+                        </div>
+                    </LayoutView>
+                }
+                else
+                {
+                    <LayoutView Layout="@typeof(Layout.MainLayout)">
+                        <div class="alert alert-danger" role="alert">
+                            <p><strong>Access denied.</strong> Your account does not have permission to view this page.</p>
+                        </div>
+                    </LayoutView>
+                }
+            </NotAuthorized>
+            <Authorizing>
+                <div class="p-4 text-muted">Checking access…</div>
+            </Authorizing>
+        </AuthorizeRouteView>
         <FocusOnNavigate RouteData="@routeData" Selector="h1" />
     </Found>
     <NotFound>

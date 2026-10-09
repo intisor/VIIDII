@@ -42,7 +42,10 @@
                     <span class="nav-user-role">@CurrentUser.Role</span>
                     <span class="nav-user-name">@CurrentUser.Name</span>
                 </div>
-                <button class="nav-logout" @onclick="Logout">Sign out</button>
+                <form method="post" action="/auth/logout" class="nav-logout-form">
+                    <AntiforgeryToken />
+                    <button type="submit" class="nav-logout">Sign out</button>
+                </form>
             }
             else
             {
@@ -67,11 +70,5 @@
     protected override async Task OnInitializedAsync()
     {
         CurrentUser = await AuthService.GetCurrentUserAsync();
-    }
-
-    private async Task Logout()
-    {
-        await AuthService.LogoutAsync();
-        Navigation.NavigateTo("/login", forceLoad: true);
     }
 }
