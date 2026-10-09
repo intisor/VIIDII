@@ -59,14 +59,18 @@ namespace VIIDII.Hubs
         {
             var matricNo = CurrentMatricNo();
             await Groups.AddToGroupAsync(Context.ConnectionId, sessionId);
-            await Clients.Group(sessionId).SendAsync("StartSession", sessionId);
             var session = await _sessionService.GetSessionByIdAsync(sessionId);
             if(session != null)
             {
                 if (await IsSessionLecturerAsync(sessionId,matricNo))
                 {
+                    // CRITICAL: set LecturerConnectionId BEFORE broadcasting.
+                    // Broadcasting first races students who need the lecturer's
+                    // connection ID to negotiate their peer connection.
                     session.LecturerConnectionId = Context.ConnectionId;
                     Console.WriteLine($"Lecturer {matricNo} set LecturerConnectionId: {session.LecturerConnectionId}");
+
+                    await Clients.Group(sessionId).SendAsync("StartSession", sessionId);
 
                     // If session is already started, send current scores and statuses to lecturer
                     if (session.Status == SessionStatus.Started)
@@ -218,7 +222,10 @@ namespace VIIDII.Hubs
         public Task SendMessage(string user, string message) => Clients.Others.SendAsync("ReceiveMessage", user, message);
         public async Task SendPeerId(string sessionId, string userId, string peerId)
         {
-            await Clients.Group(sessionId).SendAsync("ReceivePeerId", userId, peerId);
+            // MUST be OthersInGroup, not Group: a client that receives its own peer ID
+            // attempts to negotiate a WebRTC connection with itself, which fails and
+            // can stall the whole mesh handshake for that student.
+            await Clients.OthersInGroup(sessionId).SendAsync("ReceivePeerId", userId, peerId);
         }
 
         public async Task CreatePost(string sessionId, string content, bool isFile)

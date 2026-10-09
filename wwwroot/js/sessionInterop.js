@@ -34,19 +34,37 @@ window.sessionInterop = (function () {
         return true;
     }
 
+    /**
+     * Polls the DOM until an element with the given id appears.
+     * @param {string} elementId
+     * @param {number} attempts
+     * @param {number} delayMs
+     * @returns {Promise<HTMLElement|null>}
+     */
+    async function waitForVideoElement(elementId, attempts, delayMs) {
+        for (let i = 0; i < attempts; i++) {
+            const el = document.getElementById(elementId);
+            if (el) return el;
+            console.log(`[sessionInterop JS] Waiting for #${elementId} (attempt ${i + 1}/${attempts})...`);
+            await new Promise(resolve => setTimeout(resolve, delayMs));
+        }
+        return null;
+    }
+
     // Start webcam for lecturer
     async function startWebcam(sessionId) {
         console.log("[sessionInterop JS] [Lecturer] startWebcam requested for session:", sessionId);
-        
-        let video = document.getElementById("sessionVideo");
+
+        // The <video> element may not exist yet: Blazor renders asynchronously, so the
+        // element can land after this call fires. Poll briefly instead of throwing —
+        // a thrown error surfaces to the user as a broken camera with no cause.
+        const video = await waitForVideoElement("sessionVideo", 5, 200);
         if (!video) {
-            console.log("[sessionInterop JS] [Lecturer] #sessionVideo element not found on first check. Waiting 100ms...");
-            await new Promise(resolve => setTimeout(resolve, 100));
-            video = document.getElementById("sessionVideo");
-        }
-        if (!video) {
-            console.error("[sessionInterop JS] [Lecturer] Critical: Video element #sessionVideo not found");
-            throw new Error("Video element #sessionVideo not found");
+            console.error("[sessionInterop JS] [Lecturer] #sessionVideo never appeared");
+            return {
+                success: false,
+                error: "Video element unavailable. Reload the page and try again."
+            };
         }
 
         try {

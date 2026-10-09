@@ -25,7 +25,11 @@
   </ItemGroup>
 
   <ItemGroup>
-	<Compile Include="**\*.cs" />
+	<!-- Exclude build output. A bare **\*.cs glob picks up bin/ and obj/, which
+	     compiles generated files into the assembly and corrupts the content
+	     copy paths (nested bin\bin\bin). -->
+	<Compile Include="**\*.cs"
+			 Exclude="bin\**\*.cs;obj\**\*.cs" />
   </ItemGroup>
 
 </Project>
