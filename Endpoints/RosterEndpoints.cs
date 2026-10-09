@@ -65,6 +65,9 @@ public static class RosterEndpoints
         });
 
         // Import a roster for a session.
+        //
+        // Accepts either a JSON envelope { content, mapping } (used by the upload
+        // screen) or a raw text/csv body (used by scripts and integrations).
         group.MapPost("/sessions/{sessionId:int}/import", async (
             int sessionId,
             HttpContext http,
@@ -77,10 +80,27 @@ public static class RosterEndpoints
                 return Results.Forbid();
             }
 
-            // The lecturer may confirm or override the automatic column pick.
-            var mapping = await http.Request.ReadFromJsonAsync<RosterColumnMapping>();
+            ImportRosterRequest? request = null;
+            string content;
 
-            var content = await ReadBodyAsync(http);
+            if (http.Request.HasJsonContentType())
+            {
+                request = await http.Request.ReadFromJsonAsync<ImportRosterRequest>();
+                if (request is null || string.IsNullOrWhiteSpace(request.Content))
+                {
+                    return Results.BadRequest(new { error = "A 'content' field is required." });
+                }
+
+                content = request.Content;
+            }
+            else
+            {
+                content = await ReadBodyAsync(http);
+            }
+
+            var mapping = request?.Mapping;
+
+            // An explicit mapping always wins over the automatic column pick.
             var result = await rosterService.ImportAsync(sessionId, content, mapping: mapping);
 
             if (result.Errors.Count > 0 && result.Imported == 0)
@@ -94,12 +114,21 @@ public static class RosterEndpoints
 
             // Persist the confirmed mapping so the student join screen can prompt
             // with the right label rather than a generic request.
-            if (mapping is not null && result.Imported > 0)
+            if (result.Imported > 0)
             {
+                var prompt = mapping?.IdentifierPrompt
+                             ?? (mapping is not null
+                                 ? $"Enter your {mapping.IdentifierHeader?.ToLowerInvariant()}"
+                                 : $"Enter your {result.IdentifierHeader?.ToLowerInvariant()}");
+
                 await rosterService.SetColumnMappingAsync(
                     sessionId,
-                    mapping,
-                    mapping.IdentifierPrompt ?? $"Enter your {mapping.IdentifierHeader}");
+                    mapping ?? new RosterColumnMapping
+                    {
+                        IdentifierHeader = result.IdentifierHeader,
+                        NameHeader = result.NameHeader
+                    },
+                    prompt);
             }
 
             return Results.Ok(new
@@ -310,4 +339,17 @@ public static class RosterEndpoints
             };
 
     private sealed record FetchRosterRequest(string? Url, string? BearerToken);
+
+    /// <summary>
+    /// JSON envelope used by the upload screen. Plain text bodies are also accepted.
+    /// </summary>
+    private sealed class ImportRosterRequest
+    {
+        public string? Content { get; set; }
+
+        /// <summary>
+        /// Lecturer's confirmed column mapping. When null the automatic pick is used.
+        /// </summary>
+        public RosterColumnMapping? Mapping { get; set; }
+    }
 }

@@ -47,6 +47,13 @@ public class AuthService
             return (false, "Invalid credentials.", null);
         }
 
+        // Accounts provisioned from a roster have no password hash by design: they
+        // join with a passcode issued at import time.
+        if (string.IsNullOrWhiteSpace(user.PasswordHash))
+        {
+            return (false, "This account joins with a code from your lecturer. Use that instead.", null);
+        }
+
         var verificationResult = _passwordHasher.VerifyHashedPassword(user, user.PasswordHash, password);
         if (verificationResult == PasswordVerificationResult.Failed)
         {

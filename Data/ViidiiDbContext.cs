@@ -44,7 +44,9 @@ namespace VIIDII.Data
                 entity.HasIndex(e => e.MatricNo).IsUnique();
                 entity.Property(e => e.MatricNo).HasMaxLength(20).IsRequired();
                 entity.Property(e => e.Name).HasMaxLength(100).IsRequired();
-                entity.Property(e => e.PasswordHash).IsRequired();
+                // Nullable: roster-provisioned accounts authenticate by passcode and
+                // deliberately have no password hash.
+                entity.Property(e => e.PasswordHash).HasMaxLength(500);
                 entity.Property(e => e.CreatedAt).HasDefaultValueSql("GETUTCDATE()");
             });
 

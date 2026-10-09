@@ -5,7 +5,14 @@
         public int Id { get; set; }
         public required string MatricNo { get; set; }
         public required string Name { get; set; }
-        public required string PasswordHash { get; set; }
+
+        /// <summary>
+        /// Password hash. Null for accounts provisioned from a roster: those students
+        /// authenticate with a join passcode, not a password, and PBKDF2 hashing costs
+        /// ~164ms each. Hashing 1000 placeholder passwords added ~164 seconds to a
+        /// single roster import for a credential nobody would ever use.
+        /// </summary>
+        public string? PasswordHash { get; set; }
         public Role Role { get; set; }
         public Departments? Department { get; set; }
         public Levels? Level { get; set; }

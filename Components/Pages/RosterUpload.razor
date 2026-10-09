@@ -1,0 +1,774 @@
+@page "/session/{SessionId}/roster"
+@attribute [Authorize(Policy = ViidiiPolicies.LecturerOnly)]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject AuthService AuthService
+@inject SessionService SessionService
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@using System.Net.Http.Json
+@using System.Text.Json
+@using Microsoft.JSInterop
+@implements IDisposable
+
+<PageTitle>Attendee List - VIIDII</PageTitle>
+
+<div class="roster-container">
+    <div class="roster-header">
+        <a href="/session/@SessionId" class="back-link">&larr; Back to session</a>
+        <h1>Attendee list</h1>
+        <p class="roster-sub">
+            Upload the class list so VIIDII knows who is expected. Every attendee gets a
+            join code, and attendance is recorded against their verified identity.
+        </p>
+    </div>
+
+    @* ---------------- Step 1: upload ---------------- *@
+    @if (_step == Step.Upload)
+    {
+        <div class="form-card">
+            <h2>1. Upload the list</h2>
+            <p class="hint">CSV, Excel-exported text, or JSON. Nothing is saved until you confirm.</p>
+
+            <div class="form-group">
+                <label class="form-label" for="roster-file">Choose a file</label>
+                <InputFile id="roster-file" OnChange="OnFileSelected" accept=".csv,.tsv,.txt,.json" />
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="roster-paste">Or paste the data</label>
+                <textarea id="roster-paste"
+                          class="form-control paste-area"
+                          rows="7"
+                          placeholder="Matric Number,Full Name&#10;CSC/2021/001,Aisha Bello&#10;CSC/2021/002,Babatunde Cole"
+                          @bind="_pastedContent"
+                          @bind:event="oninput"></textarea>
+            </div>
+
+            <button class="primary-btn" disabled="@IsBusy" @onclick="AnalyseAsync">
+                @if (IsBusy) { <span>Reading&hellip;</span> } else { <span>Analyse the list</span> }
+            </button>
+
+            @if (_error is not null)
+            {
+                <div class="alert alert-danger" role="alert">@_error</div>
+            }
+        </div>
+    }
+    else
+    {
+        @* ---------------- Step 2: confirm columns ---------------- *@
+        <div class="form-card">
+            <div class="step-head">
+                <h2>2. Confirm the columns</h2>
+                <span class="badge">@_rowCount students detected</span>
+            </div>
+
+            @if (_needsConfirmation.Count > 0)
+            {
+                <div class="alert alert-warning" role="alert">
+                    <strong>Please check these.</strong>
+                    <ul>
+                        @foreach (var note in _needsConfirmation)
+                        {
+                            <li>@note</li>
+                        }
+                    </ul>
+                </div>
+            }
+
+            <div class="mapping-grid">
+                <div class="mapping-row">
+                    <label class="form-label" for="map-identifier">Students will join using</label>
+                    <select id="map-identifier" class="form-control" @bind="_identifierHeader">
+                        @foreach (var column in _headers)
+                        {
+                            <option value="@column">@column</option>
+                        }
+                    </select>
+                    <span class="mapping-hint">
+                        This becomes the code they type. It must be unique for every student.
+                    </span>
+                </div>
+
+                <div class="mapping-row">
+                    <label class="form-label" for="map-name">Shown as their name</label>
+                    <select id="map-name" class="form-control" @bind="_nameHeader">
+                        @foreach (var column in _headers)
+                        {
+                            <option value="@column">@column</option>
+                        }
+                    </select>
+                </div>
+
+                <div class="mapping-row">
+                    <label class="form-label" for="map-email">Email (optional)</label>
+                    <select id="map-email" class="form-control" @bind="_emailHeader">
+                        <option value="">(not included)</option>
+                        @foreach (var column in _headers)
+                        {
+                            <option value="@column">@column</option>
+                        }
+                    </select>
+                    <span class="mapping-hint">Used to follow up on absentees.</span>
+                </div>
+
+                <div class="mapping-row">
+                    <label class="form-label" for="map-phone">Phone (optional)</label>
+                    <select id="map-phone" class="form-control" @bind="_phoneHeader">
+                        <option value="">(not included)</option>
+                        @foreach (var column in _headers)
+                        {
+                            <option value="@column">@column</option>
+                        }
+                    </select>
+                    <span class="mapping-hint">Used for WhatsApp reminders.</span>
+                </div>
+            </div>
+
+            @if (_promptEnabled)
+            {
+                <div class="form-group">
+                    <label class="form-label" for="map-prompt">What students see when they join</label>
+                    <input id="map-prompt" class="form-control" @bind="_identifierPrompt" />
+                </div>
+            }
+
+            <details class="preview">
+                <summary>Show the detected columns (@_headers.Count)</summary>
+                <table class="preview-table">
+                    <thead>
+                        <tr>
+                            <th>Column</th>
+                            <th>Unique</th>
+                            <th>Reads as ID</th>
+                            <th>Reads as name</th>
+                            <th>Sample</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var column in _columns)
+                        {
+                            <tr>
+                                <td>@column.Name</td>
+                                <td>@Percent(column.Uniqueness)</td>
+                                <td>@Percent(column.IdentifierScore)</td>
+                                <td>@Percent(column.PersonNameScore)</td>
+                                <td class="sample">@column.Samples.FirstOrDefault()</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </details>
+
+            <div class="actions">
+                <button class="ghost-btn" @onclick="BackToUpload">Start over</button>
+                <button class="primary-btn" disabled="@IsBusy" @onclick="ImportAsync">
+                    @if (IsBusy) { <span>Saving&hellip;</span> } else { <span>Import @_rowCount students</span> }
+                </button>
+            </div>
+
+            @if (_error is not null)
+            {
+                <div class="alert alert-danger" role="alert">@_error</div>
+            }
+        </div>
+    }
+
+    @* ---------------- Step 3: done ---------------- *@
+    @if (_step == Step.Done)
+    {
+        <div class="form-card">
+            <h2>List imported</h2>
+
+            <div class="summary">
+                <div class="summary-stat">
+                    <span class="summary-value">@_imported</span>
+                    <span class="summary-label">students added</span>
+                </div>
+                <div class="summary-stat">
+                    <span class="summary-value">@_created</span>
+                    <span class="summary-label">new accounts</span>
+                </div>
+                <div class="summary-stat">
+                    <span class="summary-value">@_linked</span>
+                    <span class="summary-label">already existed</span>
+                </div>
+            </div>
+
+            @if (_skipped > 0)
+            {
+                <div class="alert alert-warning" role="alert">@_skipped rows were skipped.</div>
+            }
+
+            @if (_importErrors.Count > 0)
+            {
+                <div class="alert alert-danger" role="alert">
+                    <strong>Some rows could not be imported:</strong>
+                    <ul>
+                        @foreach (var message in _importErrors.Take(10))
+                        {
+                            <li>@message</li>
+                        }
+                    </ul>
+                </div>
+            }
+
+            <div class="alert alert-info" role="alert">
+                <strong>Join codes are shown once.</strong>
+                Download them now &mdash; they are not stored in a readable form.
+            </div>
+
+            @if (_passcodes.Count > 0)
+            {
+                <button class="primary-btn" @onclick="DownloadPasscodesAsync">
+                    Download join codes (.csv)
+                </button>
+
+                <details class="passcode-preview">
+                    <summary>Preview (@_passcodes.Count codes)</summary>
+                    <table class="preview-table">
+                        <thead>
+                            <tr>
+                                <th>Join code</th>
+                                <th>Student</th>
+                                <th>Identifier</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in _passcodes.Take(15))
+                            {
+                                <tr>
+                                    <td><code>@row.Passcode</code></td>
+                                    <td>@row.DisplayName</td>
+                                    <td class="sample">@row.Identifier</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                    @if (_passcodes.Count > 15)
+                    {
+                        <p class="hint">Showing 15 of @_passcodes.Count. Download for the full list.</p>
+                    }
+                </details>
+            }
+
+            <div class="actions">
+                <button class="ghost-btn" @onclick="BackToUpload">Upload a different list</button>
+                <a class="primary-btn" href="/session/@SessionId">Back to the session</a>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private enum Step { Upload, Confirm, Done }
+
+    [Parameter] public string SessionId { get; set; } = string.Empty;
+
+    private Step _step = Step.Upload;
+    private bool IsBusy;
+    private string? _error;
+
+    private string _pastedContent = string.Empty;
+    private string _rawContent = string.Empty;
+
+    private int _sessionPk;
+    private List<string> _headers = new();
+    private List<ColumnSummary> _columns = new();
+    private int _rowCount;
+    private List<string> _needsConfirmation = new();
+
+    private string? _identifierHeader;
+    private string? _nameHeader;
+    private string? _emailHeader;
+    private string? _phoneHeader;
+    private string _identifierPrompt = string.Empty;
+    private bool _promptEnabled;
+
+    private int _imported;
+    private int _skipped;
+    private int _created;
+    private int _linked;
+    private List<string> _importErrors = new();
+    private List<PasscodeRow> _passcodes = new();
+
+    private readonly HttpClient _http;
+
+    public RosterUpload()
+    {
+        _http = new HttpClient { BaseAddress = new Uri("/") };
+    }
+
+    private static string Percent(double value) => $"{value * 100:0}%";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = await AuthService.GetCurrentUserAsync();
+        if (user is null)
+        {
+            Navigation.NavigateTo("/login");
+            return;
+        }
+
+        var session = await SessionService.GetSessionByIdAsync(SessionId);
+        if (session is null)
+        {
+            _error = "That session could not be found.";
+            return;
+        }
+
+        _sessionPk = session.Id;
+    }
+
+    private async Task OnFileSelected(InputFileChangeEventArgs args)
+    {
+        var file = args.File;
+        if (file is null) return;
+
+        // Cap the read so a mistakenly selected huge file cannot exhaust memory.
+        const long maxBytes = 5 * 1024 * 1024;
+        if (file.Size > maxBytes)
+        {
+            _error = "That file is larger than 5 MB. Split the list and try again.";
+            return;
+        }
+
+        try
+        {
+            using var stream = file.OpenReadStream(maxBytes);
+            using var reader = new StreamReader(stream);
+            _pastedContent = await reader.ReadToEndAsync();
+            _error = null;
+        }
+        catch (Exception ex)
+        {
+            _error = $"Could not read that file: {ex.Message}";
+        }
+    }
+
+    private async Task AnalyseAsync()
+    {
+        var content = _pastedContent;
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            _error = "Choose a file or paste some data first.";
+            return;
+        }
+
+        IsBusy = true;
+        _error = null;
+
+        try
+        {
+            using var response = await _http.PostAsync(
+                "api/roster/analyze",
+                new StringContent(content, System.Text.Encoding.UTF8, "text/plain"));
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _error = $"The list could not be read ({(int)response.StatusCode}).";
+                return;
+            }
+
+            var result = await response.Content.ReadFromJsonAsync<AnalyzeResponse>();
+
+            _rawContent = content;
+            _headers = result?.Headers ?? new List<string>();
+            _rowCount = result?.RowCount ?? 0;
+            _columns = result?.Columns ?? new List<ColumnSummary>();
+            _needsConfirmation = result?.NeedsConfirmation ?? new List<string>();
+
+            _identifierHeader = result?.IdentifierColumn?.Name ?? _headers.FirstOrDefault();
+            _nameHeader = result?.NameColumn?.Name ?? _headers.Skip(1).FirstOrDefault();
+            _emailHeader = result?.EmailColumn?.Name;
+            _phoneHeader = result?.PhoneColumn?.Name;
+
+            _promptEnabled = true;
+            _identifierPrompt = BuildPrompt(_identifierHeader);
+
+            if (!result?.IsUsable ?? true)
+            {
+                _error = "No unique identifier column was found. Check the first row is a header row.";
+                return;
+            }
+
+            _step = Step.Confirm;
+        }
+        catch (Exception ex)
+        {
+            _error = $"Could not analyse that list: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private static string BuildPrompt(string? header) =>
+        string.IsNullOrWhiteSpace(header)
+            ? "Enter your details to join"
+            : $"Enter your {header.ToLowerInvariant()}";
+
+    private async Task ImportAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_identifierHeader) || string.IsNullOrWhiteSpace(_nameHeader))
+        {
+            _error = "Choose which column students use to join, and which shows their name.";
+            return;
+        }
+
+        IsBusy = true;
+        _error = null;
+
+        try
+        {
+            var mapping = new RosterColumnMapping
+            {
+                IdentifierHeader = _identifierHeader,
+                NameHeader = _nameHeader,
+                EmailHeader = string.IsNullOrWhiteSpace(_emailHeader) ? null : _emailHeader,
+                PhoneHeader = string.IsNullOrWhiteSpace(_phoneHeader) ? null : _phoneHeader,
+                IdentifierPrompt = _promptEnabled ? _identifierPrompt : null
+            };
+
+            var payload = new ImportPayload
+            {
+                Content = _rawContent,
+                Mapping = mapping
+            };
+
+            using var response = await _http.PostAsJsonAsync(
+                $"api/roster/sessions/{_sessionPk}/import",
+                payload);
+
+            var body = await response.Content.ReadAsStringAsync();
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _error = "The list could not be imported.";
+                return;
+            }
+
+            var result = JsonSerializer.Deserialize<ImportResponse>(body,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+            if (result is null)
+            {
+                _error = "The import did not return a result.";
+                return;
+            }
+
+            _imported = result.Imported;
+            _skipped = result.Skipped;
+            _created = result.UserAccountsCreated;
+            _linked = result.LinkedToExistingUser;
+            _importErrors = result.Errors?.ToList() ?? new List<string>();
+            _passcodes = result.Passcodes?.ToList() ?? new List<PasscodeRow>();
+
+            _step = Step.Done;
+        }
+        catch (Exception ex)
+        {
+            _error = $"The import failed: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task DownloadPasscodesAsync()
+    {
+        var csv = "join_code,identifier,name\n";
+        foreach (var code in _passcodes)
+        {
+            csv += $"{code.Passcode},{Escape(code.Identifier)},{Escape(code.DisplayName)}\n";
+        }
+
+        var fileName = $"viidii-join-codes-{SessionId}.csv";
+
+        try
+        {
+            await JS.InvokeVoidAsync("downloadTextFile", fileName, csv, "text/csv");
+        }
+        catch (Exception)
+        {
+            // The download helper lives in wwwroot. Without it the preview table
+            // above is the only way to read the codes.
+            _error = "Download is unavailable in this environment. Copy the codes from the table below.";
+        }
+    }
+
+    private static string Escape(string value) =>
+        value.Contains(',') || value.Contains('"')
+            ? $"\"{value.Replace("\"", "\"\"")}\""
+            : value;
+
+    private void BackToUpload()
+    {
+        _step = Step.Upload;
+        _error = null;
+        _passcodes = new List<PasscodeRow>();
+        _importErrors = new List<string>();
+    }
+
+    public void Dispose() => _http.Dispose();
+
+    private sealed class AnalyzeResponse
+    {
+        public List<string> Headers { get; set; } = new();
+        public int RowCount { get; set; }
+        public bool IsUsable { get; set; }
+        public ColumnRef? IdentifierColumn { get; set; }
+        public ColumnRef? NameColumn { get; set; }
+        public ColumnRef? EmailColumn { get; set; }
+        public ColumnRef? PhoneColumn { get; set; }
+        public List<string> NeedsConfirmation { get; set; } = new();
+        public List<ColumnSummary> Columns { get; set; } = new();
+    }
+
+    private sealed class ColumnRef
+    {
+        public string? Name { get; set; }
+    }
+
+    private sealed class ColumnSummary
+    {
+        public string Name { get; set; } = string.Empty;
+        public double Uniqueness { get; set; }
+        public double IdentifierScore { get; set; }
+        public double PersonNameScore { get; set; }
+        public List<string> Samples { get; set; } = new();
+    }
+
+    private sealed class ImportPayload
+    {
+        public string Content { get; set; } = string.Empty;
+        public RosterColumnMapping Mapping { get; set; } = new();
+    }
+
+    private sealed class ImportResponse
+    {
+        public int Imported { get; set; }
+        public int Skipped { get; set; }
+        public int UserAccountsCreated { get; set; }
+        public int LinkedToExistingUser { get; set; }
+        public List<string>? Errors { get; set; }
+        public List<PasscodeRow>? Passcodes { get; set; }
+    }
+
+    private sealed class PasscodeRow
+    {
+        public string Identifier { get; set; } = string.Empty;
+        public string DisplayName { get; set; } = string.Empty;
+        public string Passcode { get; set; } = string.Empty;
+    }
+}
+
+<style>
+    .roster-container {
+        max-width: 780px;
+        margin: 2rem auto;
+        padding: 0 1.5rem;
+        display: flex;
+        flex-direction: column;
+        gap: 1.125rem;
+    }
+
+    .roster-header {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--r-lg);
+        padding: 1.75rem;
+    }
+
+    .roster-header h1 {
+        font-size: 1.5rem;
+        font-weight: 700;
+        margin: 0.5rem 0 0.5rem;
+        color: var(--text);
+    }
+
+    .roster-sub {
+        font-size: 0.9375rem;
+        color: var(--text-mid);
+        margin: 0;
+        line-height: 1.55;
+    }
+
+    .back-link {
+        font-size: 0.8125rem;
+        color: var(--text-mid);
+        text-decoration: none;
+    }
+
+    .back-link:hover { color: var(--accent); }
+
+    .form-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--r-lg);
+        padding: 1.75rem;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .form-card h2 {
+        font-size: 1.0625rem;
+        font-weight: 700;
+        color: var(--text);
+        margin: 0;
+    }
+
+    .step-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        flex-wrap: wrap;
+    }
+
+    .badge {
+        background: var(--surface-up);
+        border: 1px solid var(--border-mid);
+        border-radius: 999px;
+        padding: 0.25rem 0.7rem;
+        font-size: 0.75rem;
+        color: var(--text-mid);
+        white-space: nowrap;
+    }
+
+    .hint {
+        font-size: 0.8125rem;
+        color: var(--text-mid);
+        margin: 0;
+    }
+
+    .paste-area {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.8125rem;
+    }
+
+    .mapping-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 1.125rem;
+    }
+
+    .mapping-row {
+        display: flex;
+        flex-direction: column;
+        gap: 0.375rem;
+    }
+
+    .mapping-hint {
+        font-size: 0.75rem;
+        color: var(--text-mid);
+    }
+
+    .preview, .passcode-preview {
+        border-top: 1px solid var(--border-mid);
+        padding-top: 0.875rem;
+    }
+
+    .preview summary, .passcode-preview summary {
+        cursor: pointer;
+        font-size: 0.8125rem;
+        color: var(--text-mid);
+        margin-bottom: 0.75rem;
+    }
+
+    .preview-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.8125rem;
+    }
+
+    .preview-table th, .preview-table td {
+        text-align: left;
+        padding: 0.5rem 0.625rem;
+        border-bottom: 1px solid var(--border-mid);
+        color: var(--text-mid);
+    }
+
+    .preview-table th {
+        font-weight: 600;
+        color: var(--text);
+    }
+
+    .preview-table .sample {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.75rem;
+        color: var(--text-mid);
+    }
+
+    .preview-table code {
+        background: var(--surface-up);
+        padding: 0.125rem 0.375rem;
+        border-radius: var(--r-sm);
+        font-size: 0.8125rem;
+        color: var(--accent);
+    }
+
+    .summary {
+        display: flex;
+        gap: 1.5rem;
+        flex-wrap: wrap;
+    }
+
+    .summary-stat {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .summary-value {
+        font-size: 1.75rem;
+        font-weight: 700;
+        color: var(--text);
+        line-height: 1.1;
+    }
+
+    .summary-label {
+        font-size: 0.8125rem;
+        color: var(--text-mid);
+    }
+
+    .actions {
+        display: flex;
+        gap: 0.625rem;
+        flex-wrap: wrap;
+        align-items: center;
+    }
+
+    .primary-btn {
+        display: inline-block;
+        padding: 0.625rem 1.125rem;
+        background: var(--accent);
+        color: #fff;
+        border: none;
+        border-radius: var(--r);
+        font-size: 0.875rem;
+        font-weight: 600;
+        cursor: pointer;
+        font-family: inherit;
+        text-decoration: none;
+    }
+
+    .primary-btn:hover:not(:disabled) { background: var(--accent-hover); }
+    .primary-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+    .ghost-btn {
+        padding: 0.625rem 1.125rem;
+        background: transparent;
+        color: var(--text-mid);
+        border: 1px solid var(--border-mid);
+        border-radius: var(--r);
+        font-size: 0.875rem;
+        font-weight: 600;
+        cursor: pointer;
+        font-family: inherit;
+    }
+
+    .ghost-btn:hover { color: var(--text); border-color: var(--border); }
+</style>

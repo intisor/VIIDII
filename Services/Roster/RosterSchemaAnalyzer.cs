@@ -33,6 +33,17 @@ public class ColumnProfile
     /// </summary>
     public double IdentifierShapeScore { get; init; }
 
+    /// <summary>
+    /// True when the values form a consecutive run of integers (1,2,3… or
+    /// 101,102,103…). That is a definitive row-number signature and disqualifies
+    /// the column as a join key.
+    ///
+    /// Needed because a shape-only gate is not enough: past row 99 a single digit
+    /// serial reaches three characters and starts matching identifier patterns, so
+    /// a 1000-row "S/N" column scored 0.62 and was offered to lecturers.
+    /// </summary>
+    public bool LooksLikeSerialSequence { get; init; }
+
     /// <summary>0.0 – 1.0. How strongly this looks like an email address.</summary>
     public double EmailScore { get; init; }
 
@@ -55,7 +66,10 @@ public class ColumnProfile
     /// offered as a join key — forcing students to type row numbers.
     /// </summary>
     public bool IsLikelyIdentifier =>
-        IdentifierScore >= 0.5 && Uniqueness >= 0.95 && IdentifierShapeScore >= 0.5;
+        IdentifierScore >= 0.5
+        && Uniqueness >= 0.95
+        && IdentifierShapeScore >= 0.5
+        && !LooksLikeSerialSequence;
 
     /// <summary>True when this column reads as a person's name.</summary>
     public bool IsLikelyPersonName => PersonNameScore >= 0.5 && Uniqueness >= 0.95;
@@ -215,6 +229,7 @@ public static partial class RosterSchemaAnalyzer
                 PersonNameScore = ScorePersonName(header, values),
                 IdentifierScore = ScoreIdentifier(header, values),
                 IdentifierShapeScore = identifierShapeScore,
+                LooksLikeSerialSequence = LooksLikeSerialSequence(values),
                 EmailScore = ScoreByShape(header, values, EmailShape(), EmailHeaderHints),
                 PhoneScore = ScoreByShape(header, values, PhoneShape(), PhoneHeaderHints),
                 GroupingScore = ScoreByHeader(header, GroupingHeaderHints),
@@ -457,6 +472,46 @@ public static partial class RosterSchemaAnalyzer
 
         if (headerScore == 0) return shapeScore >= 0.8 ? 0.45 : 0;
         return (headerScore * 0.6) + (shapeScore * 0.4);
+    }
+
+    /**
+     * Detects a row-number column: every value parses as an integer, and the set
+     * is exactly consecutive (count == max - min + 1).
+     *
+     * A shape gate alone is not sufficient. Below row 100 a serial column fails
+     * identifier shape, but from row 100 onwards three-digit values match and the
+     * column scores well enough to be offered to a lecturer as a join key.
+     */
+    private static bool LooksLikeSerialSequence(List<string> values)
+    {
+        if (values.Count < 3)
+        {
+            return false;
+        }
+
+        var numbers = new List<long>(values.Count);
+        foreach (var value in values)
+        {
+            if (!long.TryParse(value, System.Globalization.NumberStyles.Integer,
+                    System.Globalization.CultureInfo.InvariantCulture, out var parsed))
+            {
+                return false;
+            }
+
+            numbers.Add(parsed);
+        }
+
+        var distinct = numbers.Distinct().Count();
+        if (distinct != numbers.Count)
+        {
+            return false;
+        }
+
+        var min = numbers.Min();
+        var max = numbers.Max();
+
+        // Exactly consecutive and no gaps.
+        return (max - min + 1) == numbers.Count;
     }
 
     private static string Normalise(string value) =>

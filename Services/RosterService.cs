@@ -122,7 +122,37 @@ public class RosterService
 
         var newEntries = new List<RosterEntry>();
         var newUsers = new List<User>();
-        var touchedUsers = new List<User>();
+
+        // Preload every existing user we might link to.
+        //
+        // A per-row lookup cost ~157ms per student (157s for 1000 students).
+        // Replacing it with a single unbounded `Contains` was worse still
+        // (522s): EF inlines the list as SQL parameters, and 1000 literals blows
+        // past the parameter limits (SQL Server caps at 2100, older SQLite at
+        // 999). Batching keeps the query count small while staying inside them.
+        const int parameterBatchSize = 400;
+
+        var candidateIdentifiers = parsed.Rows
+            .Select(r => NormaliseIdentifier(CellAt(r, identifierIndex)))
+            .Where(i => i.Length > 0)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        var existingByMatricNo = new Dictionary<string, User>(StringComparer.Ordinal);
+
+        for (var offset = 0; offset < candidateIdentifiers.Count; offset += parameterBatchSize)
+        {
+            var batch = candidateIdentifiers.Skip(offset).Take(parameterBatchSize).ToList();
+
+            var existingUsers = await _context.Users
+                .Where(u => batch.Contains(u.MatricNo))
+                .ToListAsync();
+
+            foreach (var existing in existingUsers)
+            {
+                existingByMatricNo[existing.MatricNo] = existing;
+            }
+        }
 
         foreach (var row in parsed.Rows)
         {
@@ -161,8 +191,7 @@ public class RosterService
             var phone = phoneIndex >= 0 ? Truncate(CellAt(row, phoneIndex).Trim(), 40) : null;
             var grouping = groupingIndex >= 0 ? Truncate(CellAt(row, groupingIndex).Trim(), 120) : null;
 
-            var existingUser = await _context.Users
-                .FirstOrDefaultAsync(u => u.MatricNo == identifier);
+            var existingUser = existingByMatricNo.GetValueOrDefault(identifier);
 
             if (existingUser is null)
             {
@@ -170,42 +199,33 @@ public class RosterService
                 {
                     MatricNo = identifier,
                     Name = name,
-                    // Provisional password hash. The join passcode is the real
-                    // credential path for roster-gated attendance; this only exists
-                    // because User.PasswordHash is required.
-                    PasswordHash = _passwordHasher.HashPassword(null!, Guid.NewGuid().ToString("N")),
+
+                    // No password hash. These accounts join with a passcode, and
+                    // PBKDF2 costs ~164ms per hash — 164 seconds for a 1000-student
+                    // import, to protect a credential that is never used.
+                    PasswordHash = null,
                     Role = Role.Student,
                     CreatedAt = DateTime.UtcNow
                 };
 
                 newUsers.Add(user);
-                newEntries.Add(BuildEntry(sessionId, identifier, name, email, phone, grouping, parsed.Format.ToString().ToLowerInvariant()));
-
-                if (generatePasscodes)
-                {
-                    passcodes.Add(new GeneratedPasscode
-                    {
-                        Identifier = identifier,
-                        DisplayName = name,
-                        Passcode = PasscodeGenerator.Generate(passcodeLength)
-                    });
-                }
+                existingByMatricNo[identifier] = user;
             }
             else
             {
-                touchedUsers.Add(existingUser);
-                newEntries.Add(BuildEntry(sessionId, identifier, name, email, phone, grouping, parsed.Format.ToString().ToLowerInvariant()));
                 linked++;
+            }
 
-                if (generatePasscodes)
+            newEntries.Add(BuildEntry(sessionId, identifier, name, email, phone, grouping, parsed.Format.ToString().ToLowerInvariant()));
+
+            if (generatePasscodes)
+            {
+                passcodes.Add(new GeneratedPasscode
                 {
-                    passcodes.Add(new GeneratedPasscode
-                    {
-                        Identifier = identifier,
-                        DisplayName = name,
-                        Passcode = PasscodeGenerator.Generate(passcodeLength)
-                    });
-                }
+                    Identifier = identifier,
+                    DisplayName = name,
+                    Passcode = PasscodeGenerator.Generate(passcodeLength)
+                });
             }
 
             imported++;
@@ -245,14 +265,6 @@ public class RosterService
     {
         var session = await _context.Sessions.FindAsync(sessionId)
                       ?? throw new InvalidOperationException($"Session {sessionId} was not found.");
-
-        var entries = await _context.RosterEntries.Where(r => r.SessionId == sessionId).ToListAsync();
-        var headers = new List<string>();
-
-        // Recover the source headers from the stored entries so the mapping can be
-        // validated against what was actually imported.
-        headers.Add(mapping.IdentifierHeader ?? string.Empty);
-        headers.Add(mapping.NameHeader ?? string.Empty);
 
         mapping.IdentifierPrompt = identifierPrompt;
         session.RosterMappingJson = System.Text.Json.JsonSerializer.Serialize(mapping);

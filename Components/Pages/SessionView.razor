@@ -76,6 +76,24 @@ else
             </div>
         }
 
+        <!-- Attendee list (Lecturer Only, Before Session Starts) -->
+        @if (State.IsLecturer && !State.IsSessionStarted)
+        {
+            <div class="roster-entry-card">
+                <div class="roster-entry-text">
+                    <h3>Attendee list</h3>
+                    <p>
+                        Upload the class list so VIIDII knows who is expected. Each student gets a
+                        join code, and attendance is recorded against their verified identity.
+                    </p>
+                </div>
+                <a class="btn-control" href="/session/@SessionId/roster">
+                    <i class="fas fa-users"></i>
+                    <span class="control-label">Manage list</span>
+                </a>
+            </div>
+        }
+
         <!-- Setup configuration section (Lecturer Only, Before Session Starts) -->
         @if (State.IsLecturer && !State.IsSessionStarted && State.ShowTestCameraSection)
         {
