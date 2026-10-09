@@ -22,10 +22,10 @@ public static class RosterEndpoints
         var group = app.MapGroup("/api/roster").RequireAuthorization();
 
         // Analyse an upload without persisting. Lets a lecturer see which columns
-        // were detected before committing to an import.
+        // were detected, the ranked alternatives, and any cases needing confirmation.
         group.MapPost("/analyze", async (HttpContext http, RosterService rosterService) =>
         {
-            var (parsed, analysis) = await Task.FromResult(rosterService.Preview(await ReadBodyAsync(http)));
+            var (parsed, analysis) = rosterService.Preview(await ReadBodyAsync(http));
 
             return Results.Ok(new
             {
@@ -33,11 +33,21 @@ public static class RosterEndpoints
                 headers = parsed.Headers,
                 rowCount = analysis.RowCount,
                 isUsable = analysis.IsUsable,
+
+                // Automatic picks.
                 identifierColumn = Describe(analysis.IdentifierColumn),
                 nameColumn = Describe(analysis.NameColumn),
                 emailColumn = Describe(analysis.EmailColumn),
                 phoneColumn = Describe(analysis.PhoneColumn),
                 groupingColumn = Describe(analysis.GroupingColumn),
+
+                // Ranked alternatives, so the lecturer can override.
+                rankedIdentifiers = analysis.RankedIdentifiers.Select(Describe),
+                rankedNames = analysis.RankedNames.Select(Describe),
+
+                // Cases where the automatic pick is probably wrong.
+                needsConfirmation = analysis.NeedsConfirmation,
+
                 columns = analysis.Columns.Select(c => new
                 {
                     c.Name,
@@ -67,8 +77,11 @@ public static class RosterEndpoints
                 return Results.Forbid();
             }
 
+            // The lecturer may confirm or override the automatic column pick.
+            var mapping = await http.Request.ReadFromJsonAsync<RosterColumnMapping>();
+
             var content = await ReadBodyAsync(http);
-            var result = await rosterService.ImportAsync(sessionId, content);
+            var result = await rosterService.ImportAsync(sessionId, content, mapping: mapping);
 
             if (result.Errors.Count > 0 && result.Imported == 0)
             {
@@ -79,6 +92,16 @@ public static class RosterEndpoints
                 });
             }
 
+            // Persist the confirmed mapping so the student join screen can prompt
+            // with the right label rather than a generic request.
+            if (mapping is not null && result.Imported > 0)
+            {
+                await rosterService.SetColumnMappingAsync(
+                    sessionId,
+                    mapping,
+                    mapping.IdentifierPrompt ?? $"Enter your {mapping.IdentifierHeader}");
+            }
+
             return Results.Ok(new
             {
                 result.Imported,
@@ -87,9 +110,39 @@ public static class RosterEndpoints
                 result.UserAccountsCreated,
                 result.Warnings,
                 result.Errors,
+                result.IdentifierHeader,
+                result.NameHeader,
 
                 // Passcodes are returned once and never stored in clear text.
                 result.Passcodes
+            });
+        });
+
+        // The prompt a student sees on the join screen. Deliberately returns only
+        // the label — never the roster itself, which would expose every attendee's
+        // name and identifier to anyone holding the link.
+        group.MapGet("/sessions/{sessionId:int}/join-prompt", async (
+            int sessionId,
+            ViidiiDbContext context) =>
+        {
+            var session = await context.Sessions
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Id == sessionId);
+
+            if (session is null)
+            {
+                return Results.NotFound(new { error = "Session not found." });
+            }
+
+            return Results.Ok(new
+            {
+                sessionId = session.SessionId,
+                title = session.Title,
+                prompt = string.IsNullOrWhiteSpace(session.RosterIdentifierPrompt)
+                    ? "Enter your details to join"
+                    : session.RosterIdentifierPrompt,
+                hasRoster = session.RosterMappingJson is not null,
+                started = session.Status == SessionStatus.Started
             });
         });
 

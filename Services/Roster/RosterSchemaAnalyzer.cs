@@ -26,6 +26,13 @@ public class ColumnProfile
     /// <summary>0.0 – 1.0. How strongly this looks like a machine-issued identifier.</summary>
     public double IdentifierScore { get; init; }
 
+    /// <summary>
+    /// Raw shape match rate, independent of header hints. Separate from
+    /// IdentifierScore because a serial-number column can score well on header
+    /// and length consistency while matching no identifier shape at all.
+    /// </summary>
+    public double IdentifierShapeScore { get; init; }
+
     /// <summary>0.0 – 1.0. How strongly this looks like an email address.</summary>
     public double EmailScore { get; init; }
 
@@ -39,8 +46,16 @@ public class ColumnProfile
 
     public IReadOnlyList<string> Samples { get; init; } = Array.Empty<string>();
 
-    /// <summary>True when the header and value shape together read as an institutional identifier.</summary>
-    public bool IsLikelyIdentifier => IdentifierScore >= 0.5 && Uniqueness >= 0.95;
+    /// <summary>
+    /// True when the header and value shape together read as an institutional
+    /// identifier.
+    ///
+    /// The shape gate is essential. Without it a "S/N" or "Index" column scores
+    /// 0.55 purely from its header hint plus length consistency, and would be
+    /// offered as a join key — forcing students to type row numbers.
+    /// </summary>
+    public bool IsLikelyIdentifier =>
+        IdentifierScore >= 0.5 && Uniqueness >= 0.95 && IdentifierShapeScore >= 0.5;
 
     /// <summary>True when this column reads as a person's name.</summary>
     public bool IsLikelyPersonName => PersonNameScore >= 0.5 && Uniqueness >= 0.95;
@@ -69,6 +84,22 @@ public class RosterAnalysis
     public ColumnProfile? PhoneColumn { get; init; }
 
     public ColumnProfile? GroupingColumn { get; init; }
+
+    /// <summary>
+    /// Ranked alternatives for the identifier role, best first.
+    /// Surfaced so a lecturer can override the automatic pick — institutional
+    /// exports are inconsistent enough that the top guess is sometimes wrong.
+    /// </summary>
+    public IReadOnlyList<ColumnProfile> RankedIdentifiers { get; init; } = Array.Empty<ColumnProfile>();
+
+    /// <summary>Ranked alternatives for the display-name role, best first.</summary>
+    public IReadOnlyList<ColumnProfile> RankedNames { get; init; } = Array.Empty<ColumnProfile>();
+
+    /// <summary>
+    /// Roles where the automatic choice is weak, so a lecturer should confirm.
+    /// Empty when detection is unambiguous.
+    /// </summary>
+    public IReadOnlyList<string> NeedsConfirmation { get; init; } = Array.Empty<string>();
 
     /// <summary>Human-readable reasons the chosen columns were selected.</summary>
     public IReadOnlyList<string> Notes { get; init; } = Array.Empty<string>();
@@ -113,7 +144,11 @@ public static partial class RosterSchemaAnalyzer
 
     private static readonly string[] PhoneHeaderHints =
     {
-        "phone", "mobile", "tel", "telephone", "number", "contact", "whatsapp", "msisdn"
+        // NOTE: "number" is deliberately absent. It appears in "Matric Number",
+        // "Roll Number" and "Registration Number", so including it made every
+        // identifier column score as a phone column.
+        "phone", "mobile", "telephone", "contact", "whatsapp", "msisdn",
+        "phone number", "mobile number", "contact number", "tel"
     };
 
     private static readonly string[] GroupingHeaderHints =
@@ -166,6 +201,10 @@ public static partial class RosterSchemaAnalyzer
             var distinct = values.Distinct(StringComparer.OrdinalIgnoreCase).Count();
             var uniqueness = values.Count == 0 ? 0d : (double)distinct / values.Count;
 
+            var identifierShapeScore = values.Count == 0
+                ? 0d
+                : (double)values.Count(v => IdentifierShape().IsMatch(v)) / values.Count;
+
             columns.Add(new ColumnProfile
             {
                 Name = header,
@@ -175,6 +214,7 @@ public static partial class RosterSchemaAnalyzer
                 Uniqueness = uniqueness,
                 PersonNameScore = ScorePersonName(header, values),
                 IdentifierScore = ScoreIdentifier(header, values),
+                IdentifierShapeScore = identifierShapeScore,
                 EmailScore = ScoreByShape(header, values, EmailShape(), EmailHeaderHints),
                 PhoneScore = ScoreByShape(header, values, PhoneShape(), PhoneHeaderHints),
                 GroupingScore = ScoreByHeader(header, GroupingHeaderHints),
@@ -186,12 +226,17 @@ public static partial class RosterSchemaAnalyzer
         // An identifier must be unique across the cohort. Without this rule a
         // duplicated "Registration No" column would be chosen and students would
         // collide on the same identifier.
-        var identifier = columns
-            .Where(c => c.IsLikelyIdentifier)
-            .OrderByDescending(c => c.IdentifierScore)
-            .ThenByDescending(c => c.Uniqueness)
-            .ThenBy(c => c.AverageLength)
-            .FirstOrDefault();
+        var rankedIdentifiers = Rank(columns.Where(c => c.IsLikelyIdentifier), c => c.IdentifierScore)
+            .Take(5)
+            .ToList();
+
+        var rankedNames = Rank(
+                columns.Where(c => c.Uniqueness >= 0.95),
+                c => c.PersonNameScore)
+            .Take(5)
+            .ToList();
+
+        var identifier = rankedIdentifiers.FirstOrDefault();
 
         if (identifier is null)
         {
@@ -205,10 +250,8 @@ public static partial class RosterSchemaAnalyzer
         }
 
         // Prefer a name column that is not the identifier column.
-        var name = columns
-            .Where(c => c.IsLikelyPersonName && c.Index != identifier?.Index)
-            .OrderByDescending(c => c.PersonNameScore)
-            .ThenBy(c => c.AverageLength)
+        var name = rankedNames
+            .Where(c => c.Index != identifier?.Index && c.PersonNameScore >= 0.5)
             .FirstOrDefault();
 
         if (name is null)
@@ -248,6 +291,8 @@ public static partial class RosterSchemaAnalyzer
             notes.Add("No data rows were found below the header.");
         }
 
+        var needsConfirmation = BuildConfirmationPrompts(identifier, name, rankedIdentifiers, rankedNames);
+
         return new RosterAnalysis
         {
             Columns = columns,
@@ -257,9 +302,87 @@ public static partial class RosterSchemaAnalyzer
             EmailColumn = email,
             PhoneColumn = phone,
             GroupingColumn = grouping,
+            RankedIdentifiers = rankedIdentifiers,
+            RankedNames = rankedNames,
+            NeedsConfirmation = needsConfirmation,
             Notes = notes
         };
     }
+
+    /// <summary>
+    /// Flags the cases where the automatic pick is likely to be wrong, so the
+    /// upload screen can ask a lecturer to confirm instead of silently guessing.
+    ///
+    /// These are the observed failure modes, not hypotheticals:
+    ///  - A phone-number column scores 0.70 as an identifier because digits are
+    ///    alphanumeric and phone numbers have consistent length. It only loses to
+    ///    a real ID column by a small margin.
+    ///  - "Surname, Firstname" stores a whole person in one cell and can outrank
+    ///    a separate surname column.
+    ///  - A close runner-up means the ordering is fragile across exports.
+    /// </summary>
+    private static List<string> BuildConfirmationPrompts(
+        ColumnProfile? identifier,
+        ColumnProfile? name,
+        List<ColumnProfile> rankedIdentifiers,
+        List<ColumnProfile> rankedNames)
+    {
+        var prompts = new List<string>();
+
+        if (identifier is not null)
+        {
+            if (identifier.PhoneScore >= 0.5)
+            {
+                prompts.Add(
+                    $"'{identifier.Name}' looks like a phone number rather than a student ID. " +
+                    "A phone number works as a join key but changes if a student changes number.");
+            }
+
+            if (rankedIdentifiers.Count > 1 &&
+                identifier.IdentifierScore - rankedIdentifiers[1].IdentifierScore < 0.15)
+            {
+                prompts.Add(
+                    $"'{identifier.Name}' only narrowly beat '{rankedIdentifiers[1].Name}'. " +
+                    "Confirm which column students should type to join.");
+            }
+
+            if (identifier.Uniqueness < 1.0)
+            {
+                prompts.Add(
+                    $"'{identifier.Name}' contains duplicate values, so two attendees may share it.");
+            }
+        }
+
+        if (name is not null)
+        {
+            if (name.Name.Contains(',', StringComparison.Ordinal))
+            {
+                prompts.Add(
+                    $"'{name.Name}' appears to store a surname and forename in one column.");
+            }
+
+            if (rankedNames.Count > 1 &&
+                name.PersonNameScore - rankedNames[1].PersonNameScore < 0.15)
+            {
+                prompts.Add(
+                    $"'{name.Name}' only narrowly beat '{rankedNames[1].Name}' for the display name.");
+            }
+        }
+
+        return prompts;
+    }
+
+    /// <summary>
+    /// Orders columns for a role: highest score, then most unique, then shortest
+    /// values (shorter identifiers are less error-prone to type on a phone).
+    /// </summary>
+    private static IEnumerable<ColumnProfile> Rank(
+        IEnumerable<ColumnProfile> candidates,
+        Func<ColumnProfile, double> score) =>
+        candidates
+            .OrderByDescending(score)
+            .ThenByDescending(c => c.Uniqueness)
+            .ThenBy(c => c.AverageLength);
 
     private static double ScoreByHeader(string header, string[] hints)
     {
@@ -311,6 +434,14 @@ public static partial class RosterSchemaAnalyzer
         if (nameShape > 0.5)
         {
             combined *= 0.35;
+        }
+
+        // A header hint plus uniform length must not be enough on their own. A pure
+        // serial column ("S/N", "Index") matches no identifier shape, and allowing it
+        // to pass would make students type row numbers to join.
+        if (shapeScore < 0.5)
+        {
+            combined *= 0.4;
         }
 
         return Math.Clamp(combined, 0, 1);

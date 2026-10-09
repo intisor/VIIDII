@@ -15,6 +15,12 @@ public class RosterImportResult
     public IReadOnlyList<string> Warnings { get; init; } = Array.Empty<string>();
     public IReadOnlyList<string> Errors { get; init; } = Array.Empty<string>();
     public IReadOnlyList<GeneratedPasscode> Passcodes { get; init; } = Array.Empty<GeneratedPasscode>();
+
+    /// <summary>Human-readable label for the identifier column actually used.</summary>
+    public string? IdentifierHeader { get; init; }
+
+    /// <summary>Human-readable label for the display-name column actually used.</summary>
+    public string? NameHeader { get; init; }
 }
 
 /// <summary>A generated join passcode, returned once and never persisted in plain text.</summary>
@@ -68,7 +74,8 @@ public class RosterService
         int sessionId,
         string content,
         int passcodeLength = 8,
-        bool generatePasscodes = true)
+        bool generatePasscodes = true,
+        RosterColumnMapping? mapping = null)
     {
         ArgumentNullException.ThrowIfNull(content);
 
@@ -94,18 +101,15 @@ public class RosterService
         var (parsed, analysis) = Preview(content);
         warnings.AddRange(parsed.Warnings);
 
-        if (!analysis.IsUsable)
+        // A lecturer's explicit choice always wins over the automatic pick.
+        // This is the escape hatch for exports where the header names mislead.
+        var (identifierIndex, nameIndex, emailIndex, phoneIndex, groupingIndex) =
+            ResolveColumnIndices(parsed.Headers, analysis, mapping, errors);
+
+        if (errors.Count > 0)
         {
-            errors.Add("Could not identify both an identifier column and a name column.");
-            errors.AddRange(analysis.Notes);
             return new RosterImportResult { Errors = errors, Warnings = warnings };
         }
-
-        var identifierIndex = analysis.IdentifierColumn!.Index;
-        var nameIndex = analysis.NameColumn!.Index;
-        var emailIndex = analysis.EmailColumn?.Index ?? -1;
-        var phoneIndex = analysis.PhoneColumn?.Index ?? -1;
-        var groupingIndex = analysis.GroupingColumn?.Index ?? -1;
 
         var imported = 0;
         var skipped = 0;
@@ -227,9 +231,38 @@ public class RosterService
             UserAccountsCreated = newUsers.Count,
             Warnings = warnings.Distinct().ToList(),
             Errors = errors,
-            Passcodes = passcodes
+            Passcodes = passcodes,
+            IdentifierHeader = HeaderAt(parsed.Headers, identifierIndex),
+            NameHeader = HeaderAt(parsed.Headers, nameIndex)
         };
     }
+
+    /// <summary>
+    /// Persists the confirmed column mapping on the session so the student join
+    /// screen can say "enter your matric number" instead of a generic prompt.
+    /// </summary>
+    public async Task SetColumnMappingAsync(int sessionId, RosterColumnMapping mapping, string identifierPrompt)
+    {
+        var session = await _context.Sessions.FindAsync(sessionId)
+                      ?? throw new InvalidOperationException($"Session {sessionId} was not found.");
+
+        var entries = await _context.RosterEntries.Where(r => r.SessionId == sessionId).ToListAsync();
+        var headers = new List<string>();
+
+        // Recover the source headers from the stored entries so the mapping can be
+        // validated against what was actually imported.
+        headers.Add(mapping.IdentifierHeader ?? string.Empty);
+        headers.Add(mapping.NameHeader ?? string.Empty);
+
+        mapping.IdentifierPrompt = identifierPrompt;
+        session.RosterMappingJson = System.Text.Json.JsonSerializer.Serialize(mapping);
+        session.RosterIdentifierPrompt = identifierPrompt;
+
+        await _context.SaveChangesAsync();
+    }
+
+    private static string? HeaderAt(IReadOnlyList<string> headers, int index) =>
+        index >= 0 && index < headers.Count ? headers[index] : null;
 
     /// <summary>Returns the roster for a session, ordered for display.</summary>
     public async Task<List<RosterEntry>> GetForSessionAsync(int sessionId) =>
@@ -257,6 +290,51 @@ public class RosterService
         entry.ClaimToken = claimToken;
         await _context.SaveChangesAsync();
         return true;
+    }
+
+    /// <summary>
+    /// Works out which column index serves each role.
+    ///
+    /// Uses the lecturer's explicit mapping when supplied; otherwise falls back to
+    /// the analyser's ranked pick. Returns -1 indices when a role is optional and
+    /// undetected, which callers treat as "this column is absent".
+    /// </summary>
+    private static (int Identifier, int Name, int Email, int Phone, int Grouping) ResolveColumnIndices(
+        IReadOnlyList<string> headers,
+        RosterAnalysis analysis,
+        RosterColumnMapping? mapping,
+        List<string> errors)
+    {
+        if (mapping is not null)
+        {
+            var validationError = mapping.Validate(headers);
+            if (validationError is not null)
+            {
+                errors.Add(validationError);
+                return (-1, -1, -1, -1, -1);
+            }
+
+            return (
+                mapping.IndexOf(headers, mapping.IdentifierHeader),
+                mapping.IndexOf(headers, mapping.NameHeader),
+                mapping.IndexOf(headers, mapping.EmailHeader),
+                mapping.IndexOf(headers, mapping.PhoneHeader),
+                mapping.IndexOf(headers, mapping.GroupingHeader));
+        }
+
+        if (!analysis.IsUsable)
+        {
+            errors.Add("Could not identify both an identifier column and a name column.");
+            errors.AddRange(analysis.Notes);
+            return (-1, -1, -1, -1, -1);
+        }
+
+        return (
+            analysis.IdentifierColumn!.Index,
+            analysis.NameColumn!.Index,
+            analysis.EmailColumn?.Index ?? -1,
+            analysis.PhoneColumn?.Index ?? -1,
+            analysis.GroupingColumn?.Index ?? -1);
     }
 
     private static RosterEntry BuildEntry(

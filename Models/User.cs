@@ -69,6 +69,21 @@
         [System.Text.Json.Serialization.JsonIgnore]
         public Dictionary<string, string> ParticipantConnectionIds { get; set; } = new Dictionary<string, string>();
 
+        /// <summary>
+        /// Confirmed roster column mapping as JSON. Records which columns the lecturer
+        /// chose as the join identifier and display name, so the student join screen
+        /// can prompt for the right thing instead of guessing.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonIgnore]
+        public string? RosterMappingJson { get; set; }
+
+        /// <summary>
+        /// Prompt shown to students on the join screen, e.g. "Enter your matric number".
+        /// Set when the lecturer confirms the mapping during roster import.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonIgnore]
+        public string? RosterIdentifierPrompt { get; set; }
+
         // Navigation properties (EF Core)
         [System.Text.Json.Serialization.JsonIgnore]
         public User Lecturer { get; set; } = null!;

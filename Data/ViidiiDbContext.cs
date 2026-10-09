@@ -56,6 +56,8 @@ namespace VIIDII.Data
                 entity.Property(e => e.SessionId).HasMaxLength(20).IsRequired();
                 entity.Property(e => e.Title).HasMaxLength(200).IsRequired();
                 entity.Property(e => e.LecturerConnectionId).HasMaxLength(500);
+                entity.Property(e => e.RosterMappingJson).HasMaxLength(2000);
+                entity.Property(e => e.RosterIdentifierPrompt).HasMaxLength(120);
                 entity.Property(e => e.CreatedAt).HasDefaultValueSql("GETUTCDATE()");
 
                 // Store JSON arrays for Departments and Levels

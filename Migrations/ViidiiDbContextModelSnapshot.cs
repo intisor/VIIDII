@@ -247,6 +247,14 @@ namespace VIIDII.Migrations
                     b.Property<string>("LecturerMatricNo")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("RosterIdentifierPrompt")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<string>("RosterMappingJson")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
                     b.Property<string>("SessionId")
                         .IsRequired()
                         .HasMaxLength(20)
