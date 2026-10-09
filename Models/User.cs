@@ -81,6 +81,10 @@
         [System.Text.Json.Serialization.JsonIgnore]
         public ICollection<FileMetadata> Files { get; set; } = new List<FileMetadata>();
 
+        /// <summary>Expected attendees for this session. Sole owner of the RosterEntry FK —
+        /// a second navigation path here would make EF create a duplicate relationship.</summary>
+        public ICollection<RosterEntry> Roster { get; set; } = new List<RosterEntry>();
+
         public enum StudentStatus { Active, InActive, BatteryLow, DataFinished, Disconnected }
     }
 

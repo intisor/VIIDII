@@ -1,0 +1,333 @@
+using System.Globalization;
+using System.Text.RegularExpressions;
+
+namespace VIIDII.Services.Roster;
+
+/// <summary>
+/// A column discovered in an imported roster.
+/// </summary>
+public class ColumnProfile
+{
+    public string Name { get; init; } = string.Empty;
+    public int Index { get; init; }
+
+    /// <summary>Distinct non-empty values across all rows.</summary>
+    public int DistinctCount { get; init; }
+
+    /// <summary>Total non-empty values. Rows with a blank cell are ignored.</summary>
+    public int PopulatedCount { get; init; }
+
+    /// <summary>0.0 – 1.0. Ratio of distinct values to populated values.</summary>
+    public double Uniqueness { get; init; }
+
+    /// <summary>0.0 – 1.0. How strongly the header and value shape look like a personal name.</summary>
+    public double PersonNameScore { get; init; }
+
+    /// <summary>0.0 – 1.0. How strongly this looks like a machine-issued identifier.</summary>
+    public double IdentifierScore { get; init; }
+
+    /// <summary>0.0 – 1.0. How strongly this looks like an email address.</summary>
+    public double EmailScore { get; init; }
+
+    /// <summary>0.0 – 1.0. How strongly this looks like a phone number.</summary>
+    public double PhoneScore { get; init; }
+
+    /// <summary>0.0 – 1.0. How strongly this looks like a department, level or unit.</summary>
+    public double GroupingScore { get; init; }
+
+    public double AverageLength { get; init; }
+
+    public IReadOnlyList<string> Samples { get; init; } = Array.Empty<string>();
+
+    /// <summary>True when the header and value shape together read as an institutional identifier.</summary>
+    public bool IsLikelyIdentifier => IdentifierScore >= 0.5 && Uniqueness >= 0.95;
+
+    /// <summary>True when this column reads as a person's name.</summary>
+    public bool IsLikelyPersonName => PersonNameScore >= 0.5 && Uniqueness >= 0.95;
+
+    public override string ToString() =>
+        $"{Name} (uniq {Uniqueness:P0}, id {IdentifierScore:P0}, name {PersonNameScore:P0})";
+}
+
+/// <summary>
+/// The result of analysing an imported dataset.
+/// </summary>
+public class RosterAnalysis
+{
+    public IReadOnlyList<ColumnProfile> Columns { get; init; } = Array.Empty<ColumnProfile>();
+
+    public int RowCount { get; init; }
+
+    /// <summary>Best candidate for the attendee's join identifier.</summary>
+    public ColumnProfile? IdentifierColumn { get; init; }
+
+    /// <summary>Best candidate for the attendee's display name.</summary>
+    public ColumnProfile? NameColumn { get; init; }
+
+    public ColumnProfile? EmailColumn { get; init; }
+
+    public ColumnProfile? PhoneColumn { get; init; }
+
+    public ColumnProfile? GroupingColumn { get; init; }
+
+    /// <summary>Human-readable reasons the chosen columns were selected.</summary>
+    public IReadOnlyList<string> Notes { get; init; } = Array.Empty<string>();
+
+    /// <summary>True when both an identifier and a name could be resolved.</summary>
+    public bool IsUsable => IdentifierColumn is not null && NameColumn is not null;
+}
+
+/// <summary>
+/// Inspects an arbitrary tabular roster and works out which column is the
+/// identifier and which is the person's name.
+///
+/// Deliberately deterministic heuristics, not a model: the same input always
+/// produces the same answer, results are explainable to a lecturer, and it runs
+/// with no network call and no cost.
+///
+/// Scanning rules, in priority order:
+///   1. Header keyword match (matric, reg, index, staff id, code …) — strongest signal
+///   2. Value shape (compact alphanumeric, no spaces, consistent length)
+///   3. Uniqueness — an identifier is useless if it repeats
+/// </summary>
+public static partial class RosterSchemaAnalyzer
+{
+    private static readonly string[] IdentifierHeaderHints =
+    {
+        "matric", "mat no", "matnumber", "reg no", "regnumber", "registration",
+        "registration no", "index", "student id", "studentid", "staff id", "staffid",
+        "id no", "idnumber", "code", "adm no", "admission", "account", "tag",
+        "enrol", "enroll", "roll no", "serial", "number", "no"
+    };
+
+    private static readonly string[] NameHeaderHints =
+    {
+        "fullname", "full name", "name", "surname", "lastname", "last name",
+        "firstname", "first name", "surname,", "student name", "participant"
+    };
+
+    private static readonly string[] EmailHeaderHints =
+    {
+        "email", "e-mail", "mail", "emailaddress", "email address"
+    };
+
+    private static readonly string[] PhoneHeaderHints =
+    {
+        "phone", "mobile", "tel", "telephone", "number", "contact", "whatsapp", "msisdn"
+    };
+
+    private static readonly string[] GroupingHeaderHints =
+    {
+        "department", "dept", "faculty", "level", "programme", "program",
+        "course", "unit", "departmentname", "class", "cohort", "group"
+    };
+
+    [GeneratedRegex(@"^[\p{L}]+(\s+[\p{L}'\-]+){1,3}$", RegexOptions.None, 200)]
+    private static partial Regex PersonNameShape();
+
+    [GeneratedRegex(@"^[A-Za-z0-9][A-Za-z0-9/\-_]{2,19}$", RegexOptions.None, 200)]
+    private static partial Regex IdentifierShape();
+
+    [GeneratedRegex(@"^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$", RegexOptions.None, 200)]
+    private static partial Regex EmailShape();
+
+    [GeneratedRegex(@"^[+()\-.\s\d]{7,20}$", RegexOptions.None, 200)]
+    private static partial Regex PhoneShape();
+
+    /// <summary>
+    /// Analyses rows and returns a ranked column profile with the best
+    /// identifier/name/email/phone/column selections.
+    /// </summary>
+    /// <param name="headers">Column headers in source order.</param>
+    /// <param name="rows">Data rows, each matching the header count.</param>
+    public static RosterAnalysis Analyze(IReadOnlyList<string> headers, IReadOnlyList<IReadOnlyList<string>> rows)
+    {
+        ArgumentNullException.ThrowIfNull(headers);
+        ArgumentNullException.ThrowIfNull(rows);
+
+        var notes = new List<string>();
+
+        if (headers.Count == 0)
+        {
+            return new RosterAnalysis { RowCount = rows.Count, Notes = ["No headers found."] };
+        }
+
+        var columns = new List<ColumnProfile>(headers.Count);
+
+        for (var i = 0; i < headers.Count; i++)
+        {
+            var values = rows
+                .Where(r => i < r.Count)
+                .Select(r => (r[i] ?? string.Empty).Trim())
+                .Where(v => v.Length > 0)
+                .ToList();
+
+            var header = (headers[i] ?? string.Empty).Trim();
+            var distinct = values.Distinct(StringComparer.OrdinalIgnoreCase).Count();
+            var uniqueness = values.Count == 0 ? 0d : (double)distinct / values.Count;
+
+            columns.Add(new ColumnProfile
+            {
+                Name = header,
+                Index = i,
+                DistinctCount = distinct,
+                PopulatedCount = values.Count,
+                Uniqueness = uniqueness,
+                PersonNameScore = ScorePersonName(header, values),
+                IdentifierScore = ScoreIdentifier(header, values),
+                EmailScore = ScoreByShape(header, values, EmailShape(), EmailHeaderHints),
+                PhoneScore = ScoreByShape(header, values, PhoneShape(), PhoneHeaderHints),
+                GroupingScore = ScoreByHeader(header, GroupingHeaderHints),
+                AverageLength = values.Count == 0 ? 0 : values.Average(v => (double)v.Length),
+                Samples = values.Take(3).ToList()
+            });
+        }
+
+        // An identifier must be unique across the cohort. Without this rule a
+        // duplicated "Registration No" column would be chosen and students would
+        // collide on the same identifier.
+        var identifier = columns
+            .Where(c => c.IsLikelyIdentifier)
+            .OrderByDescending(c => c.IdentifierScore)
+            .ThenByDescending(c => c.Uniqueness)
+            .ThenBy(c => c.AverageLength)
+            .FirstOrDefault();
+
+        if (identifier is null)
+        {
+            notes.Add(
+                "No column was unique enough to use as a join identifier. " +
+                "Add a matric or registration number column, or remove duplicate rows.");
+        }
+        else
+        {
+            notes.Add($"Identifier: '{identifier.Name}' (header match + shape + {identifier.Uniqueness:P0} unique).");
+        }
+
+        // Prefer a name column that is not the identifier column.
+        var name = columns
+            .Where(c => c.IsLikelyPersonName && c.Index != identifier?.Index)
+            .OrderByDescending(c => c.PersonNameScore)
+            .ThenBy(c => c.AverageLength)
+            .FirstOrDefault();
+
+        if (name is null)
+        {
+            notes.Add("No column looked like a person's name. A display name is required.");
+        }
+        else
+        {
+            notes.Add($"Display name: '{name.Name}'.");
+        }
+
+        var email = columns
+            .Where(c => c.Index != identifier?.Index)
+            .Where(c => c.EmailScore >= 0.5)
+            .OrderByDescending(c => c.EmailScore)
+            .FirstOrDefault();
+
+        var phone = columns
+            .Where(c => c.Index != identifier?.Index && c.Index != email?.Index)
+            .Where(c => c.PhoneScore >= 0.5)
+            .OrderByDescending(c => c.PhoneScore)
+            .FirstOrDefault();
+
+        if (email is not null) notes.Add($"Email: '{email.Name}'.");
+        if (phone is not null) notes.Add($"Phone: '{phone.Name}'.");
+
+        var grouping = columns
+            .Where(c => c.Index != identifier?.Index && c.Index != name?.Index)
+            .Where(c => c.GroupingScore >= 0.5)
+            .OrderByDescending(c => c.GroupingScore)
+            .FirstOrDefault();
+
+        if (grouping is not null) notes.Add($"Department/level: '{grouping.Name}'.");
+
+        if (rows.Count == 0)
+        {
+            notes.Add("No data rows were found below the header.");
+        }
+
+        return new RosterAnalysis
+        {
+            Columns = columns,
+            RowCount = rows.Count,
+            IdentifierColumn = identifier,
+            NameColumn = name,
+            EmailColumn = email,
+            PhoneColumn = phone,
+            GroupingColumn = grouping,
+            Notes = notes
+        };
+    }
+
+    private static double ScoreByHeader(string header, string[] hints)
+    {
+        var normalised = Normalise(header);
+        if (normalised.Length == 0) return 0;
+
+        foreach (var hint in hints)
+        {
+            if (normalised == hint) return 1.0;
+        }
+
+        foreach (var hint in hints.OrderByDescending(h => h.Length))
+        {
+            if (normalised.Contains(hint, StringComparison.Ordinal)) return 0.85;
+        }
+
+        return 0;
+    }
+
+    private static double ScoreByShape(string header, List<string> values, Regex shape, string[] hints)
+    {
+        var headerScore = ScoreByHeader(header, hints);
+        if (values.Count == 0) return headerScore;
+
+        var matches = values.Count(v => shape.IsMatch(v));
+        var shapeScore = (double)matches / values.Count;
+
+        // Header and shape must agree; a column called "name" full of numbers is not a name.
+        if (headerScore == 0) return shapeScore >= 0.9 ? 0.4 : 0;
+        return (headerScore * 0.6) + (shapeScore * 0.4);
+    }
+
+    private static double ScoreIdentifier(string header, List<string> values)
+    {
+        var headerScore = ScoreByHeader(header, IdentifierHeaderHints);
+        if (values.Count == 0) return headerScore;
+
+        var shapeMatches = values.Count(v => IdentifierShape().IsMatch(v));
+        var shapeScore = (double)shapeMatches / values.Count;
+
+        // Identifiers have consistent length; names do not.
+        var lengths = values.Select(v => v.Length).ToList();
+        var consistentLength = lengths.Count == 0 ? 0 : 1.0 - ((lengths.Max() - lengths.Min()) / 20.0);
+
+        var combined = (shapeScore * 0.45) + (Math.Max(0, consistentLength) * 0.25) + (headerScore * 0.30);
+
+        // Reject obvious person names even if the header said "number".
+        var nameShape = values.Count(v => PersonNameShape().IsMatch(v)) / (double)values.Count;
+        if (nameShape > 0.5)
+        {
+            combined *= 0.35;
+        }
+
+        return Math.Clamp(combined, 0, 1);
+    }
+
+    private static double ScorePersonName(string header, List<string> values)
+    {
+        var headerScore = ScoreByHeader(header, NameHeaderHints);
+        if (values.Count == 0) return headerScore;
+
+        var shapeMatches = values.Count(v => PersonNameShape().IsMatch(v));
+        var shapeScore = (double)shapeMatches / values.Count;
+
+        if (headerScore == 0) return shapeScore >= 0.8 ? 0.45 : 0;
+        return (headerScore * 0.6) + (shapeScore * 0.4);
+    }
+
+    private static string Normalise(string value) =>
+        new string(value.Where(c => char.IsLetterOrDigit(c) || c == ' ').ToArray()).ToLowerInvariant().Trim();
+}

@@ -17,6 +17,7 @@ namespace VIIDII.Data
         public DbSet<Message> Messages { get; set; } = null!;
         public DbSet<AttendanceLog> AttendanceLogs { get; set; } = null!;
         public DbSet<FileMetadata> Files { get; set; } = null!;
+        public DbSet<RosterEntry> RosterEntries { get; set; } = null!;
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -159,6 +160,28 @@ namespace VIIDII.Data
                     .WithMany(u => u.UploadedFiles)
                     .HasForeignKey(e => e.UploadedByUserId)
                     .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            // RosterEntry configuration.
+            // Unique per session: a duplicated identifier would let two attendees
+            // share one join code, making attendance unprovable.
+            modelBuilder.Entity<RosterEntry>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.HasIndex(e => new { e.SessionId, e.Identifier }).IsUnique();
+                entity.Property(e => e.Identifier).HasMaxLength(64).IsRequired();
+                entity.Property(e => e.DisplayName).HasMaxLength(200).IsRequired();
+                entity.Property(e => e.Email).HasMaxLength(200);
+                entity.Property(e => e.Phone).HasMaxLength(40);
+                entity.Property(e => e.Grouping).HasMaxLength(120);
+                entity.Property(e => e.Source).HasMaxLength(20);
+                entity.Property(e => e.ClaimToken).HasMaxLength(128);
+                entity.Property(e => e.ImportedAtUtc).HasDefaultValueSql("GETUTCDATE()");
+
+                entity.HasOne(e => e.Session)
+                    .WithMany(s => s.Roster)
+                    .HasForeignKey(e => e.SessionId)
+                    .OnDelete(DeleteBehavior.Cascade);
             });
         }
     }

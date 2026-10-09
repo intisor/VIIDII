@@ -142,6 +142,70 @@ namespace VIIDII.Migrations
                     b.ToTable("Messages");
                 });
 
+            modelBuilder.Entity("VIIDII.Models.RosterEntry", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("ClaimToken")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<DateTime?>("ClaimedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Grouping")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<bool>("HasClaimed")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Identifier")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime>("ImportedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<string>("Phone")
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<int>("Role")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SessionId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SessionId", "Identifier")
+                        .IsUnique();
+
+                    b.ToTable("RosterEntries");
+                });
+
             modelBuilder.Entity("VIIDII.Models.Session", b =>
                 {
                     b.Property<int>("Id")
@@ -340,6 +404,17 @@ namespace VIIDII.Migrations
                     b.Navigation("Session");
                 });
 
+            modelBuilder.Entity("VIIDII.Models.RosterEntry", b =>
+                {
+                    b.HasOne("VIIDII.Models.Session", "Session")
+                        .WithMany("Roster")
+                        .HasForeignKey("SessionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Session");
+                });
+
             modelBuilder.Entity("VIIDII.Models.Session", b =>
                 {
                     b.HasOne("VIIDII.Models.User", "Lecturer")
@@ -384,6 +459,8 @@ namespace VIIDII.Migrations
                     b.Navigation("Messages");
 
                     b.Navigation("Participants");
+
+                    b.Navigation("Roster");
                 });
 
             modelBuilder.Entity("VIIDII.Models.User", b =>

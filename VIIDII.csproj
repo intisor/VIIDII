@@ -7,6 +7,10 @@
     <AssemblyName>VIIDII</AssemblyName>
     <InvariantGlobalization>false</InvariantGlobalization>
     <NoWarn>$(NoWarn);CS8602;CS8603;CS8604;CS8618;CS8619;CS8629;CS8714</NoWarn>
+    <!-- The Web SDK globs the whole tree as content. Without this it picks up the
+         nested test project's bin/ output and copies it with nested relative paths
+         (bin\Debug\net10.0\VIIDII.Tests\bin\Debug\...), producing MSB3030 failures. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);VIIDII.Tests\**;docs\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>

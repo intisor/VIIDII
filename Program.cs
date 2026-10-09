@@ -1,5 +1,6 @@
 using VIIDII.Components;
 using VIIDII.Data;
+using VIIDII.Endpoints;
 using VIIDII.Hubs;
 using VIIDII.Models;
 using VIIDII.Services;
@@ -40,6 +41,7 @@ builder.Services.AddScoped<SessionService>();
 builder.Services.AddScoped<MessageService>();
 builder.Services.AddSingleton<PasswordHasher<User>>();
 builder.Services.AddScoped<AuthService>();
+builder.Services.AddScoped<RosterService>();
 builder.Services.AddScoped<ISessionJsInterop, SessionJsInterop>();
 
 // Add hosted service for participant ping
@@ -221,6 +223,8 @@ app.MapHub<SessionHub>("/sessionHub", options =>
 });
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
+
+app.MapRosterEndpoints();
 
 // ---------------------------------------------------------------------------
 // ICE / TURN configuration for the browser.
