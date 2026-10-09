@@ -130,6 +130,9 @@
                 <div class="form-group">
                     <label class="form-label" for="map-prompt">What students see when they join</label>
                     <input id="map-prompt" class="form-control" @bind="_identifierPrompt" />
+                    <span class="mapping-hint">
+                        Students enter this, plus their name. There is no password.
+                    </span>
                 </div>
             }
 
@@ -214,43 +217,9 @@
             }
 
             <div class="alert alert-info" role="alert">
-                <strong>Join codes are shown once.</strong>
-                Download them now &mdash; they are not stored in a readable form.
+                <strong>Students join with their @_identifierHeader and their name.</strong>
+                No passwords are created. Share the join link and the field name shown above.
             </div>
-
-            @if (_passcodes.Count > 0)
-            {
-                <button class="primary-btn" @onclick="DownloadPasscodesAsync">
-                    Download join codes (.csv)
-                </button>
-
-                <details class="passcode-preview">
-                    <summary>Preview (@_passcodes.Count codes)</summary>
-                    <table class="preview-table">
-                        <thead>
-                            <tr>
-                                <th>Join code</th>
-                                <th>Student</th>
-                                <th>Identifier</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var row in _passcodes.Take(15))
-                            {
-                                <tr>
-                                    <td><code>@row.Passcode</code></td>
-                                    <td>@row.DisplayName</td>
-                                    <td class="sample">@row.Identifier</td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
-                    @if (_passcodes.Count > 15)
-                    {
-                        <p class="hint">Showing 15 of @_passcodes.Count. Download for the full list.</p>
-                    }
-                </details>
-            }
 
             <div class="actions">
                 <button class="ghost-btn" @onclick="BackToUpload">Upload a different list</button>
@@ -290,7 +259,6 @@
     private int _created;
     private int _linked;
     private List<string> _importErrors = new();
-    private List<PasscodeRow> _passcodes = new();
 
     private readonly HttpClient _http;
 
@@ -463,7 +431,6 @@
             _created = result.UserAccountsCreated;
             _linked = result.LinkedToExistingUser;
             _importErrors = result.Errors?.ToList() ?? new List<string>();
-            _passcodes = result.Passcodes?.ToList() ?? new List<PasscodeRow>();
 
             _step = Step.Done;
         }
@@ -477,38 +444,10 @@
         }
     }
 
-    private async Task DownloadPasscodesAsync()
-    {
-        var csv = "join_code,identifier,name\n";
-        foreach (var code in _passcodes)
-        {
-            csv += $"{code.Passcode},{Escape(code.Identifier)},{Escape(code.DisplayName)}\n";
-        }
-
-        var fileName = $"viidii-join-codes-{SessionId}.csv";
-
-        try
-        {
-            await JS.InvokeVoidAsync("downloadTextFile", fileName, csv, "text/csv");
-        }
-        catch (Exception)
-        {
-            // The download helper lives in wwwroot. Without it the preview table
-            // above is the only way to read the codes.
-            _error = "Download is unavailable in this environment. Copy the codes from the table below.";
-        }
-    }
-
-    private static string Escape(string value) =>
-        value.Contains(',') || value.Contains('"')
-            ? $"\"{value.Replace("\"", "\"\"")}\""
-            : value;
-
     private void BackToUpload()
     {
         _step = Step.Upload;
         _error = null;
-        _passcodes = new List<PasscodeRow>();
         _importErrors = new List<string>();
     }
 
@@ -554,14 +493,6 @@
         public int UserAccountsCreated { get; set; }
         public int LinkedToExistingUser { get; set; }
         public List<string>? Errors { get; set; }
-        public List<PasscodeRow>? Passcodes { get; set; }
-    }
-
-    private sealed class PasscodeRow
-    {
-        public string Identifier { get; set; } = string.Empty;
-        public string DisplayName { get; set; } = string.Empty;
-        public string Passcode { get; set; } = string.Empty;
     }
 }
 

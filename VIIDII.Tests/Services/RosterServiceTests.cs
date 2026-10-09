@@ -71,7 +71,7 @@ public class RosterServiceTests : IDisposable
         Assert.Empty(result.Errors);
         Assert.Equal(3, result.Imported);
         Assert.Equal(3, result.UserAccountsCreated);
-        Assert.Equal(3, result.Passcodes.Count);
+        // No passcodes are generated: students join with matric number and name.
 
         var entries = await service.GetForSessionAsync(session.Id);
         Assert.Equal(3, entries.Count);
@@ -194,7 +194,67 @@ public class RosterServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task ClaimSeat_BlocksSecondDeviceFromReusingAPasscode()
+    public async Task ResolveAttendee_MatchesOnMatricNumberAndName()
+    {
+        var session = await SeedSessionAsync();
+        using var context = _factory.CreateDbContext();
+        var service = CreateService(context);
+
+        await service.ImportAsync(session.Id,
+            "Matric Number,Full Name\nCSC/001,Aisha Bello\nCSC/002,Babatunde Cole");
+
+        var match = await service.ResolveAttendeeAsync(session.Id, "CSC/001", "Aisha Bello");
+
+        Assert.NotNull(match);
+        Assert.Equal("Aisha Bello", match!.DisplayName);
+    }
+
+    [Fact]
+    public async Task ResolveAttendee_RejectsAWhenTheNameDoesNotMatch()
+    {
+        var session = await SeedSessionAsync();
+        using var context = _factory.CreateDbContext();
+        var service = CreateService(context);
+
+        await service.ImportAsync(session.Id,
+            "Matric Number,Full Name\nCSC/001,Aisha Bello\nCSC/002,Babatunde Cole");
+
+        // Right matric number, wrong name. Both fields must agree.
+        Assert.Null(await service.ResolveAttendeeAsync(session.Id, "CSC/001", "Babatunde Cole"));
+    }
+
+    [Theory]
+    [InlineData("csc/001", "aisha bello")]
+    [InlineData("CSC/001", "AISHA BELLO")]
+    [InlineData(" CSC/001 ", "Aisha  Bello")]
+    public async Task ResolveAttendee_ToleratesCaseAndSpacing(string identifier, string name)
+    {
+        var session = await SeedSessionAsync();
+        using var context = _factory.CreateDbContext();
+        var service = CreateService(context);
+
+        await service.ImportAsync(session.Id, "Matric Number,Full Name\nCSC/001,Aisha Bello");
+
+        var match = await service.ResolveAttendeeAsync(session.Id, identifier, name);
+
+        Assert.NotNull(match);
+    }
+
+    [Fact]
+    public async Task ResolveAttendee_ReturnsNullForUnknownDetails()
+    {
+        var session = await SeedSessionAsync();
+        using var context = _factory.CreateDbContext();
+        var service = CreateService(context);
+
+        await service.ImportAsync(session.Id, "Matric Number,Full Name\nCSC/001,Aisha Bello");
+
+        Assert.Null(await service.ResolveAttendeeAsync(session.Id, "CSC/999", "Nobody Here"));
+        Assert.Null(await service.ResolveAttendeeAsync(session.Id, "", ""));
+    }
+
+    [Fact]
+    public async Task ClaimSeat_BlocksSecondDeviceFromHoldingTheSameSeat()
     {
         var session = await SeedSessionAsync();
         using var context = _factory.CreateDbContext();
@@ -209,7 +269,7 @@ public class RosterServiceTests : IDisposable
         // Same device reconnecting is fine.
         Assert.True(await service.ClaimSeatAsync(entry.Id, "device-token-a"));
 
-        // A different device presenting the same passcode is refused.
+        // A different device holding the same seat is refused.
         Assert.False(await service.ClaimSeatAsync(entry.Id, "device-token-b"));
     }
 

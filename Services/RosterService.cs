@@ -14,21 +14,12 @@ public class RosterImportResult
     public int UserAccountsCreated { get; init; }
     public IReadOnlyList<string> Warnings { get; init; } = Array.Empty<string>();
     public IReadOnlyList<string> Errors { get; init; } = Array.Empty<string>();
-    public IReadOnlyList<GeneratedPasscode> Passcodes { get; init; } = Array.Empty<GeneratedPasscode>();
 
     /// <summary>Human-readable label for the identifier column actually used.</summary>
     public string? IdentifierHeader { get; init; }
 
     /// <summary>Human-readable label for the display-name column actually used.</summary>
     public string? NameHeader { get; init; }
-}
-
-/// <summary>A generated join passcode, returned once and never persisted in plain text.</summary>
-public class GeneratedPasscode
-{
-    public required string Identifier { get; init; }
-    public required string DisplayName { get; init; }
-    public required string Passcode { get; init; }
 }
 
 /// <summary>
@@ -73,21 +64,12 @@ public class RosterService
     public async Task<RosterImportResult> ImportAsync(
         int sessionId,
         string content,
-        int passcodeLength = 8,
-        bool generatePasscodes = true,
         RosterColumnMapping? mapping = null)
     {
         ArgumentNullException.ThrowIfNull(content);
 
-        if (passcodeLength < 6 || passcodeLength > 32)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(passcodeLength), passcodeLength, "Passcode length must be between 6 and 32.");
-        }
-
         var errors = new List<string>();
         var warnings = new List<string>();
-        var passcodes = new List<GeneratedPasscode>();
 
         var session = await _context.Sessions.FindAsync(sessionId);
         if (session is null)
@@ -218,16 +200,6 @@ public class RosterService
 
             newEntries.Add(BuildEntry(sessionId, identifier, name, email, phone, grouping, parsed.Format.ToString().ToLowerInvariant()));
 
-            if (generatePasscodes)
-            {
-                passcodes.Add(new GeneratedPasscode
-                {
-                    Identifier = identifier,
-                    DisplayName = name,
-                    Passcode = PasscodeGenerator.Generate(passcodeLength)
-                });
-            }
-
             imported++;
         }
 
@@ -251,7 +223,6 @@ public class RosterService
             UserAccountsCreated = newUsers.Count,
             Warnings = warnings.Distinct().ToList(),
             Errors = errors,
-            Passcodes = passcodes,
             IdentifierHeader = HeaderAt(parsed.Headers, identifierIndex),
             NameHeader = HeaderAt(parsed.Headers, nameIndex)
         };
@@ -284,8 +255,12 @@ public class RosterService
             .ToListAsync();
 
     /// <summary>
-    /// Marks a seat as claimed. Returns false when already claimed by someone
-    /// else, which prevents a shared passcode being used on a second device.
+    /// Marks a seat as claimed. Returns false when the seat is already held from a
+    /// different device, so one student cannot occupy two seats and inflate their
+    /// own attendance percentage.
+    ///
+    /// Note this is NOT identity proof. A student who knows another student's
+    /// matric number and name can still join as them — see <see cref="ResolveAttendee"/>.
     /// </summary>
     public async Task<bool> ClaimSeatAsync(int rosterEntryId, string? claimToken)
     {
@@ -302,6 +277,87 @@ public class RosterService
         entry.ClaimToken = claimToken;
         await _context.SaveChangesAsync();
         return true;
+    }
+
+    /// <summary>
+    /// Finds a roster entry from the two fields a student types: their identifier
+    /// and their name. No password.
+    ///
+    /// Identity is therefore self-asserted. Anyone who knows a classmate's matric
+    /// number and name can join as them, which means the resulting attendance record
+    /// proves "someone with these details attended", not "this specific person
+    /// attended". That is acceptable for participation tracking and not acceptable
+    /// for accreditation-grade certification.
+    /// </summary>
+    public async Task<RosterEntry?> ResolveAttendeeAsync(int sessionId, string identifier, string name)
+    {
+        if (string.IsNullOrWhiteSpace(identifier) || string.IsNullOrWhiteSpace(name))
+        {
+            return null;
+        }
+
+        var normalisedIdentifier = identifier.Trim();
+
+        // Case-insensitive on purpose. Import already treats "ABC123" and "abc123"
+        // as the same attendee (seenIdentifiers uses OrdinalIgnoreCase), so the
+        // lookup must agree — otherwise a student who types their matric number in
+        // lowercase is locked out of their own session.
+        //
+        // The query filters on SessionId only and compares in memory: an indexable
+        // case-insensitive match would need ToUpper() on the column, which discards
+        // the index. A session roster is bounded, and this runs once per join.
+        var candidates = await _context.RosterEntries
+            .Where(r => r.SessionId == sessionId)
+            .ToListAsync();
+
+        var targetIdentifier = normalisedIdentifier;
+        var target = NormaliseForComparison(name);
+
+        return candidates.FirstOrDefault(r =>
+            string.Equals(r.Identifier.Trim(), targetIdentifier, StringComparison.OrdinalIgnoreCase)
+            && NormaliseForComparison(r.DisplayName) == target);
+    }
+
+    /// <summary>
+    /// Collapses case and repeated whitespace so "Aisha  Bello" matches
+    /// "aisha bello". Also folds the common Nigerian surname-forename comma split,
+    /// so "Bello, Aisha" matches "Aisha Bello".
+    /// </summary>
+    internal static string NormaliseForComparison(string value)
+    {
+        var trimmed = value.Trim();
+
+        if (trimmed.Contains(','))
+        {
+            var parts = trimmed.Split(',', 2);
+            if (parts.Length == 2 && parts[0].Trim().Length > 0 && parts[1].Trim().Length > 0)
+            {
+                trimmed = $"{parts[1].Trim()} {parts[0].Trim()}";
+            }
+        }
+
+        var builder = new System.Text.StringBuilder(trimmed.Length);
+        var previousWasSpace = false;
+
+        foreach (var character in trimmed)
+        {
+            if (char.IsWhiteSpace(character))
+            {
+                if (!previousWasSpace)
+                {
+                    builder.Append(' ');
+                }
+
+                previousWasSpace = true;
+            }
+            else
+            {
+                builder.Append(char.ToLowerInvariant(character));
+                previousWasSpace = false;
+            }
+        }
+
+        return builder.ToString();
     }
 
     /// <summary>
@@ -371,37 +427,10 @@ public class RosterService
         string.IsNullOrEmpty(value) ? string.Empty : value.Length <= max ? value : value[..max];
 
     /// <summary>
-    /// Normalises an identifier for consistent matching. Case is preserved because
-    /// institutions treat "ABC123" and "abc123" as different students, but
-    /// surrounding whitespace from spreadsheet exports is stripped.
+    /// Normalises an identifier for consistent matching. Surrounding whitespace from
+    /// spreadsheet exports is stripped. Case is preserved here because the stored
+    /// value is the institution's own record, but every comparison against it is
+    /// case-insensitive.
     /// </summary>
     internal static string NormaliseIdentifier(string value) => value.Trim();
-}
-
-/// <summary>
-/// Generates human-typeable passcodes.
-///
-/// Excludes visually ambiguous characters (0/O, 1/I/L) because passcodes get read
-/// aloud and typed on phones. Uses a cryptographic RNG, not Random.
-/// </summary>
-public static class PasscodeGenerator
-{
-    private const string Alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
-
-    public static string Generate(int length = 8)
-    {
-        if (length < 6 || length > 32)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(length), length, "Passcode length must be between 6 and 32.");
-        }
-
-        var chars = new char[length];
-        for (var i = 0; i < length; i++)
-        {
-            chars[i] = Alphabet[System.Security.Cryptography.RandomNumberGenerator.GetInt32(Alphabet.Length)];
-        }
-
-        return new string(chars);
-    }
 }

@@ -167,44 +167,32 @@ public class RosterParserTests
 }
 
 /// <summary>
-/// Tests for passcode generation.
+/// Tests for the two-field identity match used at student join.
 /// </summary>
-public class PasscodeGeneratorTests
+public class NormaliseForComparisonTests
 {
-    [Fact]
-    public void GeneratesRequestedLength()
+    [Theory]
+    [InlineData("Aisha Bello", "aisha bello")]
+    [InlineData("AISHA BELLO", "aisha bello")]
+    [InlineData("  Aisha   Bello  ", "aisha bello")]
+    [InlineData("Aisha\tBello", "aisha bello")]
+    [InlineData("Bello, Aisha", "aisha bello")]
+    [InlineData("BELLO , AISHA", "aisha bello")]
+    public void FoldsCaseSpacingAndSurnameForenameOrder(string input, string expected)
     {
-        Assert.Equal(8, PasscodeGenerator.Generate(8).Length);
-        Assert.Equal(12, PasscodeGenerator.Generate(12).Length);
+        Assert.Equal(expected, RosterService.NormaliseForComparison(input));
     }
 
     [Fact]
-    public void ExcludesVisuallyAmbiguousCharacters()
+    public void LeavesAnOrdinaryNameUnchangedApartFromCase()
     {
-        // Passcodes get read aloud and typed on phones: 0/O and 1/I/L are the
-        // most common transcription failures.
-        var allowed = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
-        for (var i = 0; i < 400; i++)
-        {
-            var code = PasscodeGenerator.Generate(10);
-            Assert.All(code, c => Assert.Contains(c, allowed));
-        }
+        Assert.Equal("babatunde cole", RosterService.NormaliseForComparison("Babatunde Cole"));
     }
 
     [Fact]
-    public void RejectsLengthsOutsideSafeRange()
+    public void DoesNotReorderWhenTheCommaIsInsideAName()
     {
-        Assert.Throws<ArgumentOutOfRangeException>(() => PasscodeGenerator.Generate(5));
-        Assert.Throws<ArgumentOutOfRangeException>(() => PasscodeGenerator.Generate(33));
-    }
-
-    [Fact]
-    public void DoesNotRepeatWithinAShortWindow()
-    {
-        // A collision would give two students the same join code.
-        var codes = Enumerable.Range(0, 500).Select(_ => PasscodeGenerator.Generate(8)).ToList();
-        var distinct = codes.Distinct(StringComparer.Ordinal).Count();
-
-        Assert.True(distinct > 495, $"Expected few collisions at 500 draws, got {500 - distinct}.");
+        // "Bello, Aisha" is surname-first. "Bello A. Junior" is not.
+        Assert.Equal("junior bello", RosterService.NormaliseForComparison("Bello, Junior"));
     }
 }

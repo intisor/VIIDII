@@ -140,10 +140,7 @@ public static class RosterEndpoints
                 result.Warnings,
                 result.Errors,
                 result.IdentifierHeader,
-                result.NameHeader,
-
-                // Passcodes are returned once and never stored in clear text.
-                result.Passcodes
+                result.NameHeader
             });
         });
 
@@ -291,8 +288,42 @@ public static class RosterEndpoints
                 result.Skipped,
                 result.UserAccountsCreated,
                 result.Warnings,
-                result.Errors,
-                result.Passcodes
+                result.Errors
+            });
+        });
+
+        // The student's join check: two fields, no password.
+        //
+        // Identity is self-asserted. This proves "someone with these details is on
+        // the roster", not "this specific person attended" — see the warning in
+        // RosterService.ResolveAttendeeAsync. Adequate for participation tracking;
+        // not adequate for accreditation-grade certification.
+        group.MapPost("/sessions/{sessionId:int}/resolve", async (
+            int sessionId,
+            ResolveAttendeeRequest request,
+            RosterService rosterService) =>
+        {
+            var entry = await rosterService.ResolveAttendeeAsync(
+                sessionId,
+                request.Identifier ?? string.Empty,
+                request.Name ?? string.Empty);
+
+            if (entry is null)
+            {
+                // Deliberately vague: confirming that the identifier exists would
+                // let anyone enumerate a class roster.
+                return Results.NotFound(new
+                {
+                    error = "Those details were not found on the attendee list. Check them and try again."
+                });
+            }
+
+            return Results.Ok(new
+            {
+                entry.Id,
+                entry.Identifier,
+                entry.DisplayName,
+                entry.HasClaimed
             });
         });
     }
@@ -339,6 +370,13 @@ public static class RosterEndpoints
             };
 
     private sealed record FetchRosterRequest(string? Url, string? BearerToken);
+
+    /// <summary>Student-supplied identity: matric number plus name. No password.</summary>
+    private sealed class ResolveAttendeeRequest
+    {
+        public string? Identifier { get; set; }
+        public string? Name { get; set; }
+    }
 
     /// <summary>
     /// JSON envelope used by the upload screen. Plain text bodies are also accepted.
