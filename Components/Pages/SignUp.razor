@@ -1,0 +1,87 @@
+@page "/signup"
+@using VIIDII.Components.Shared
+
+<PageTitle>Create an account - VIIDII</PageTitle>
+
+<AuthShell Title="Create your account"
+           Subtitle="No approval needed. You are ready to run a class as soon as you finish."
+           Error="@ErrorMessage">
+
+    @* Server rendered on purpose: this posts to /auth/register, which creates
+       the account and issues the cookie in one HTTP response. *@
+    <form method="post" action="/auth/register">
+        <AntiforgeryToken />
+
+        <div class="auth-field">
+            <label class="auth-label" for="name-input">Full name</label>
+            <input id="name-input"
+                   name="name"
+                   type="text"
+                   class="auth-input"
+                   autocomplete="name"
+                   required
+                   autofocus
+                   maxlength="100"
+                   placeholder="e.g. Dr. Aisha Bello"
+                   value="@Name" />
+        </div>
+
+        <div class="auth-field">
+            <label class="auth-label" for="matric-input">Staff or matric number</label>
+            <input id="matric-input"
+                   name="matricNo"
+                   type="text"
+                   class="auth-input"
+                   autocomplete="username"
+                   autocapitalize="characters"
+                   spellcheck="false"
+                   required
+                   maxlength="20"
+                   placeholder="e.g. LEC/2019/041"
+                   value="@MatricNo" />
+            <p class="auth-hint">
+                Used to sign in. Your students never need one.
+            </p>
+        </div>
+
+        <div class="auth-field">
+            <label class="auth-label" for="password-input">Password</label>
+            <input id="password-input"
+                   name="password"
+                   type="password"
+                   class="auth-input"
+                   autocomplete="new-password"
+                   required
+                   minlength="8"
+                   maxlength="256" />
+            <p class="auth-hint">At least 8 characters.</p>
+        </div>
+
+        <button id="signup-submit" type="submit" class="auth-btn">Create account</button>
+    </form>
+
+    <p class="auth-alt">
+        Already have an account? <a href="/login">Sign in</a>
+    </p>
+</AuthShell>
+
+@code {
+    [SupplyParameterFromQuery(Name = "error")]
+    private string? ErrorCode { get; set; }
+
+    [SupplyParameterFromQuery(Name = "name")]
+    private string? Name { get; set; }
+
+    [SupplyParameterFromQuery(Name = "matricNo")]
+    private string? MatricNo { get; set; }
+
+    private string? ErrorMessage => ErrorCode switch
+    {
+        "name" => "Enter your full name.",
+        "matric" => "Enter a staff or matric number between 3 and 20 characters.",
+        "password" => "Passwords need to be at least 8 characters.",
+        "duplicate" => "That number is already registered. Try signing in instead.",
+        "antiforgery" => "This page sat open too long. Please try again.",
+        _ => null
+    };
+}

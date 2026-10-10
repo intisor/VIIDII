@@ -1,126 +1,56 @@
 @page "/login"
-@using Microsoft.AspNetCore.Components.Authorization
+@using VIIDII.Components.Shared
 
-<PageTitle>Sign in — VIIDII</PageTitle>
+<PageTitle>Sign in - VIIDII</PageTitle>
 
-<div class="login-wrap">
-    <div class="login-card">
-        <div class="login-brand">VIIDII</div>
-        <h1 class="login-heading">Sign in</h1>
-        <p class="login-sub">Use your matric number to continue.</p>
+<AuthShell Title="Sign in"
+           Subtitle="Use the staff or matric number on your records."
+           Error="@ErrorMessage">
 
-        @if (!string.IsNullOrEmpty(ErrorMessage))
-        {
-            <div class="login-error" role="alert">
-                <i class="fas fa-exclamation-circle"></i>
-                @ErrorMessage
-            </div>
-        }
+    @* Server rendered on purpose: this posts to /auth/login, which issues the
+       authentication cookie in a normal HTTP response. An interactive EditForm
+       runs over a websocket and cannot set a cookie. *@
+    <form method="post" action="/auth/login">
+        <AntiforgeryToken />
 
-        @* Static SSR form: posts to /auth/login so the auth cookie is issued in a
-           normal HTTP response. An interactive EditForm cannot set cookies. *@
-        <form method="post" action="/auth/login">
-            <AntiforgeryToken />
+        <input type="hidden" name="returnUrl" value="@ReturnUrl" />
 
-            <div class="form-group">
-                <label class="form-label" for="matric-input">Matric number</label>
-                <input id="matric-input"
-                       name="matricNo"
-                       type="text"
-                       class="form-control"
-                       autocomplete="username"
-                       required
-                       maxlength="50"
-                       value="@MatricNo" />
-            </div>
+        <div class="auth-field">
+            <label class="auth-label" for="matric-input">Staff or matric number</label>
+            <input id="matric-input"
+                   name="matricNo"
+                   type="text"
+                   class="auth-input"
+                   autocomplete="username"
+                   autocapitalize="characters"
+                   spellcheck="false"
+                   required
+                   autofocus
+                   maxlength="20"
+                   placeholder="e.g. LEC/2019/041"
+                   value="@MatricNo" />
+        </div>
 
-            <div class="form-group">
-                <label class="form-label" for="password-input">Password</label>
-                <input id="password-input"
-                       name="password"
-                       type="password"
-                       class="form-control"
-                       autocomplete="current-password"
-                       required
-                       maxlength="256" />
-            </div>
+        <div class="auth-field">
+            <label class="auth-label" for="password-input">Password</label>
+            <input id="password-input"
+                   name="password"
+                   type="password"
+                   class="auth-input"
+                   autocomplete="current-password"
+                   required
+                   maxlength="256" />
+        </div>
 
-            <button id="login-submit" type="submit" class="login-btn">
-                <span>Sign in</span>
-            </button>
-        </form>
-    </div>
-</div>
+        <button id="login-submit" type="submit" class="auth-btn">Sign in</button>
+    </form>
 
-<style>
-    .login-wrap {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        min-height: 100vh;
-        padding: 2rem 1rem;
-        background: var(--bg);
-    }
+    <p class="auth-alt">
+        New here? <a href="/signup">Create an account</a>
+    </p>
 
-    .login-card {
-        width: 100%;
-        max-width: 380px;
-        background: var(--surface);
-        border: 1px solid var(--border-mid);
-        border-radius: var(--r-lg);
-        padding: 2.25rem;
-    }
-
-    .login-brand {
-        font-size: 0.8125rem;
-        font-weight: 700;
-        color: var(--text-mid);
-        letter-spacing: -0.01em;
-        margin-bottom: 1.75rem;
-    }
-
-    .login-heading {
-        font-size: 1.375rem;
-        font-weight: 700;
-        color: var(--text);
-        margin-bottom: 0.375rem;
-    }
-
-    .login-sub {
-        font-size: 0.875rem;
-        color: var(--text-mid);
-        margin-bottom: 1.75rem;
-    }
-
-    .login-error {
-        background: var(--danger-dim);
-        color: var(--danger);
-        border: 1px solid rgba(239, 68, 68, 0.2);
-        padding: 0.625rem 0.875rem;
-        border-radius: var(--r-sm);
-        margin-bottom: 1.25rem;
-        font-size: 0.8125rem;
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-    }
-
-    .login-btn {
-        width: 100%;
-        padding: 0.7rem;
-        background: var(--accent);
-        color: white;
-        border: none;
-        border-radius: var(--r);
-        font-size: 0.9375rem;
-        font-weight: 600;
-        cursor: pointer;
-        transition: background var(--t);
-        font-family: inherit;
-        margin-top: 0.5rem;
-    }
-    .login-btn:hover { background: var(--accent-hover); }
-</style>
+    <a class="auth-back" href="/">Back to home</a>
+</AuthShell>
 
 @code {
     [SupplyParameterFromQuery(Name = "error")]
@@ -129,10 +59,14 @@
     [SupplyParameterFromQuery(Name = "matricNo")]
     private string? MatricNo { get; set; }
 
+    [SupplyParameterFromQuery(Name = "returnUrl")]
+    private string? ReturnUrl { get; set; }
+
     private string? ErrorMessage => ErrorCode switch
     {
-        "invalid" => "Invalid matric number or password.",
-        "antiforgery" => "Your session expired. Please try again.",
+        "invalid" => "That number and password do not match an account.",
+        "locked" => "This account is not available. Contact support.",
+        "antiforgery" => "This page sat open too long. Please try again.",
         _ => null
     };
 }

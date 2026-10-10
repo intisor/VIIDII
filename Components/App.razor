@@ -5,14 +5,27 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>VIIDII</title>
     <base href="/" />
     <link rel="stylesheet" href="lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="css/site.css" />
+    <link rel="stylesheet" href="css/auth.css" />
     <link rel="stylesheet" href="VIIDII.styles.css" />
     <link rel="icon" type="image/x-icon" href="favicon.ico" />
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700&display=swap" rel="stylesheet">
+    @* HeadOutlet carries each page's <PageTitle>, so it must come first: a browser
+       uses the FIRST <title> in the document.
+
+       The literal title below it is only a fallback, and its position matters for
+       the same reason. Pages that disable prerendering (prerender:false, such as
+       Index and LecturerHome) render no title at all on the server, because
+       nothing is server rendered for HeadOutlet to pick up. Without this
+       fallback they were left with an empty tab title, showing the raw URL to a
+       lecturer juggling several tabs.
+
+       When such a page's circuit starts, Blazor replaces document.title with the
+       page's own, so the fallback is only ever visible for an instant. *@
     <HeadOutlet />
+    <title>VIIDII</title>
 </head>
 <body>
     <Routes />

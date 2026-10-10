@@ -68,7 +68,7 @@ public static class RosterEndpoints
         //
         // Accepts either a JSON envelope { content, mapping } (used by the upload
         // screen) or a raw text/csv body (used by scripts and integrations).
-        group.MapPost("/classes/{ClassId:int}/import", async (
+        group.MapPost("/classes/{classId:int}/import", async (
             int ClassId,
             HttpContext http,
             RosterService rosterService,
@@ -146,7 +146,7 @@ public static class RosterEndpoints
         // What a student sees before typing anything. Deliberately returns only labels,
         // never the class list, which would expose every attendee's name and
         // identifier to anyone holding the link.
-        group.MapGet("/classes/{ClassId:int}/join-prompt", async (
+        group.MapGet("/classes/{classId:int}/join-prompt", async (
             int ClassId,
             ViidiiDbContext context) =>
         {
@@ -170,7 +170,7 @@ public static class RosterEndpoints
             });
         });
 
-        group.MapGet("/classes/{ClassId:int}", async (
+        group.MapGet("/classes/{classId:int}", async (
             int ClassId,
             RosterService rosterService,
             CurrentUserAccessor currentUser,
@@ -199,7 +199,7 @@ public static class RosterEndpoints
 
         // Fetch a class list from an institutional API, then analyse and import it.
         // Basic auth via Authorization header; the URL must be explicitly allowed.
-        group.MapPost("/classes/{ClassId:int}/fetch", async (
+        group.MapPost("/classes/{classId:int}/fetch", async (
             int ClassId,
             HttpContext http,
             RosterService rosterService,
@@ -296,7 +296,7 @@ public static class RosterEndpoints
         // the roster", not "this specific person attended" — see the warning in
         // RosterService.ResolveAttendeeAsync. Adequate for participation tracking;
         // not adequate for accreditation-grade certification.
-        group.MapPost("/classes/{ClassId:int}/resolve", async (
+        group.MapPost("/classes/{classId:int}/resolve", async (
             int ClassId,
             ResolveAttendeeRequest request,
             RosterService rosterService) =>

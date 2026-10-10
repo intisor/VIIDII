@@ -1,6 +1,7 @@
 @page "/"
 @inject NavigationManager Navigation
 @inject AuthService AuthService
+@using VIIDII.Models
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 
 <PageTitle>VIIDII — Live Classroom Platform</PageTitle>
@@ -17,12 +18,12 @@
         <div class="hero-actions">
             @if (IsAuthenticated)
             {
-                <button id="go-dashboard" class="btn-hero-primary" @onclick="GoDashboard">Go to Dashboard</button>
+                <button id="go-dashboard" class="btn-hero-primary" @onclick="GoDashboard">Go to my classes</button>
             }
             else
             {
-                <button id="go-login"  class="btn-hero-primary"   @onclick="GoLogin">Sign in</button>
-                <button id="go-about" class="btn-hero-secondary"  @onclick="GoAbout">Learn more</button>
+                <button id="go-signup" class="btn-hero-primary"   @onclick="GoSignUp">Create an account</button>
+                <button id="go-login"  class="btn-hero-secondary" @onclick="GoLogin">Sign in</button>
             }
         </div>
 
@@ -142,7 +143,22 @@
         IsAuthenticated = user != null;
     }
 
-    private void GoDashboard() => Navigation.NavigateTo("/dashboard");
-    private void GoLogin()     => Navigation.NavigateTo("/login");
-    private void GoAbout()     => Navigation.NavigateTo("/about");
+    // The landing page has always sent signed in users to "/dashboard", which is
+    // not a route anybody is routed to. Roles each have their own home.
+    private void GoDashboard()
+    {
+        var role = AuthService.CurrentRole();
+
+        var target = role switch
+        {
+            Role.Admin    => "/admin",
+            Role.Student  => "/student/home",
+            _             => "/lecturer/home",
+        };
+
+        Navigation.NavigateTo(target);
+    }
+
+    private void GoSignUp() => Navigation.NavigateTo("/signup");
+    private void GoLogin()  => Navigation.NavigateTo("/login");
 }

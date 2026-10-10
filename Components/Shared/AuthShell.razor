@@ -1,0 +1,38 @@
+@*
+    Shared frame for the sign in and create account screens.
+
+    Both pages are server rendered and post to a normal HTTP endpoint, because
+    the authentication cookie has to be set in the response to a form post. An
+    interactive EditForm cannot issue a cookie, so neither page uses one.
+*@
+
+<div class="auth-wrap">
+    <div class="auth-card">
+        <div class="auth-head">
+            <div class="auth-eyebrow">@Eyebrow</div>
+            <h1 class="auth-title">@Title</h1>
+            <p class="auth-sub">@Subtitle</p>
+        </div>
+
+        @if (!string.IsNullOrEmpty(Error))
+        {
+            <div class="auth-notice" role="alert">
+                <i class="fas fa-exclamation-circle"></i>
+                <span>@Error</span>
+            </div>
+        }
+
+        @ChildContent
+    </div>
+</div>
+
+@code {
+    [Parameter] public string Eyebrow { get; set; } = "Lecturer";
+    [Parameter] public string Title { get; set; } = string.Empty;
+    [Parameter] public string Subtitle { get; set; } = string.Empty;
+
+    /// <summary>Shown above the form. Null means no notice.</summary>
+    [Parameter] public string? Error { get; set; }
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

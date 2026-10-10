@@ -70,12 +70,49 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         options.Cookie.HttpOnly = true;
         options.Cookie.IsEssential = true;
         options.Cookie.SameSite = SameSiteMode.Lax;
-        options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+
+        // Always require HTTPS in production. Over plain HTTP a Secure cookie is
+        // never sent back by the browser, which silently breaks sign-in during local
+        // development and in tests — the symptom is "login succeeds then every
+        // authenticated call returns 401".
+        options.Cookie.SecurePolicy = builder.Environment.IsProduction()
+            ? CookieSecurePolicy.Always
+            : CookieSecurePolicy.SameAsRequest;
         options.ExpireTimeSpan = TimeSpan.FromHours(8);
         options.SlidingExpiration = true;
         options.LoginPath = "/login";
         options.AccessDeniedPath = "/login";
+
+        // A browser navigating to a page should be redirected to sign in. A script
+        // calling the API should get a status code it can act on, not an HTML login
+        // page that fails to parse as JSON. Split the two on the request path.
+        options.Events.OnRedirectToLogin = context =>
+        {
+            if (IsApiRequest(context.Request))
+            {
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                return Task.CompletedTask;
+            }
+
+            context.Response.Redirect(context.RedirectUri);
+            return Task.CompletedTask;
+        };
+
+        options.Events.OnRedirectToAccessDenied = context =>
+        {
+            if (IsApiRequest(context.Request))
+            {
+                context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                return Task.CompletedTask;
+            }
+
+            context.Response.Redirect(context.RedirectUri);
+            return Task.CompletedTask;
+        };
     });
+
+static bool IsApiRequest(HttpRequest request) =>
+    request.Path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase);
 
 builder.Services.AddAuthorization(options =>
 {
@@ -207,7 +244,8 @@ app.MapPost("/auth/login", async (
     {
         logger.LogInformation("Failed login attempt for matric number {MatricNo}", matricNo);
         // Return to login with a generic error; never reveal whether the user exists.
-        return Results.Redirect("/login?error=invalid");
+        // Carry the number back so it is not retyped on a phone.
+        return Results.Redirect($"/login?error=invalid&matricNo={Uri.EscapeDataString(matricNo)}");
     }
 
     var principal = ViidiiPrincipalBuilder.Build(user);
@@ -218,13 +256,87 @@ app.MapPost("/auth/login", async (
 
     logger.LogInformation("Successful login for {MatricNo} ({Role})", user.MatricNo, user.Role);
 
+    return Results.Redirect(SafeReturnUrl(form["returnUrl"].ToString(), user.Role));
+});
+
+app.MapPost("/auth/register", async (
+    HttpContext http,
+    IAntiforgery antiforgery,
+    ViidiiDbContext context,
+    PasswordHasher<User> hasher,
+    ILoggerFactory loggerFactory) =>
+{
+    var logger = loggerFactory.CreateLogger("VIIDII.Auth");
+
+    try
+    {
+        await antiforgery.ValidateRequestAsync(http);
+    }
+    catch (AntiforgeryValidationException)
+    {
+        logger.LogWarning("Rejected registration with invalid antiforgery token.");
+        return Results.BadRequest("Invalid request. Please reload and try again.");
+    }
+
+    var form = await http.Request.ReadFormAsync();
+    var name = form["name"].ToString().Trim();
+    var matricNo = form["matricNo"].ToString().Trim();
+    var password = form["password"].ToString();
+
+    // Same rules as the JSON endpoint in AccountEndpoints so the two cannot drift
+    // apart. On failure we return to this page with a code, keeping whatever was
+    // already typed.
+    if (name.Length is < 2 or > 100)
+    {
+        return Results.Redirect("/signup?error=name");
+    }
+
+    if (matricNo.Length is < 3 or > 20)
+    {
+        return Results.Redirect($"/signup?error=matric&name={Uri.EscapeDataString(name)}");
+    }
+
+    if (password.Length < 8)
+    {
+        return Results.Redirect(
+            $"/signup?error=password&name={Uri.EscapeDataString(name)}&matricNo={Uri.EscapeDataString(matricNo)}");
+    }
+
+    // Lecturer-first: every self-service account is a lecturer. Students join from
+    // a class link and never register.
+    if (await context.Users.AnyAsync(u => u.MatricNo == matricNo))
+    {
+        logger.LogInformation("Rejected registration for already registered {MatricNo}", matricNo);
+        return Results.Redirect($"/signup?error=duplicate&name={Uri.EscapeDataString(name)}");
+    }
+
+    var user = new User
+    {
+        Name = name,
+        MatricNo = matricNo,
+        PasswordHash = hasher.HashPassword(null!, password),
+        Role = Role.Lecturer,
+        CreatedAt = DateTime.UtcNow
+    };
+
+    context.Users.Add(user);
+    await context.SaveChangesAsync();
+
+    var principal = ViidiiPrincipalBuilder.Build(user);
+    await http.SignInAsync(
+        CookieAuthenticationDefaults.AuthenticationScheme,
+        principal,
+        new AuthenticationProperties { IsPersistent = false });
+
+    logger.LogInformation("Registered lecturer {MatricNo}", user.MatricNo);
+
     return Results.Redirect(DashboardPathFor(user.Role));
 });
 
 app.MapPost("/auth/logout", async (HttpContext http) =>
 {
     await http.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-    return Results.Redirect("/login");
+    return Results.Redirect("/");
 });
 
 // Map SignalR hub.
@@ -318,6 +430,35 @@ static string DashboardPathFor(Role role) => role switch
     Role.Student => "/student/home",
     _ => "/dashboard",
 };
+
+/// <summary>
+/// Where to send someone after signing in.
+/// <para>
+/// The form carries a returnUrl so a lecturer who was bounced off a protected page
+/// lands back on it. That value arrives from the browser, so it is treated as
+/// untrusted: only a single-slash local path is honoured. A protocol relative
+/// "//host" target is rejected too, because it would turn the sign in form into an
+/// open redirect that sends the lecturer's session to another host.
+/// </para>
+/// </summary>
+static string SafeReturnUrl(string? candidate, Role role)
+{
+    var fallback = DashboardPathFor(role);
+
+    if (string.IsNullOrWhiteSpace(candidate) || !candidate.StartsWith('/'))
+    {
+        return fallback;
+    }
+
+    var second = candidate.Length > 1 ? candidate[1] : ' ';
+
+    if (second is '/' or (char)92)
+    {
+        return fallback;
+    }
+
+    return candidate;
+}
 
 /// <summary>
 /// Exposed so integration tests can use <c>WebApplicationFactory</c>.

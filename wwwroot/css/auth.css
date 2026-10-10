@@ -1,0 +1,168 @@
+/* ==========================================================================
+   Sign in / Create account
+   Shared by both pages so the browser caches one file instead of two
+   inline style blocks. Plain CSS: these are server-rendered pages, there is
+   no interactive circuit to save anything by scoping it.
+   ========================================================================== */
+
+.auth-wrap {
+    display: flex;
+    justify-content: center;
+    padding: 3rem 1rem 4rem;
+    background: var(--bg);
+    min-height: calc(100vh - 52px); /* minus the nav bar */
+}
+
+.auth-card {
+    width: 100%;
+    max-width: 400px;
+}
+
+.auth-head {
+    margin-bottom: 1.75rem;
+}
+
+.auth-eyebrow {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 0.625rem;
+}
+
+.auth-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 0.5rem;
+    line-height: 1.2;
+}
+
+.auth-sub {
+    font-size: 0.9375rem;
+    color: var(--text-mid);
+    line-height: 1.55;
+    margin: 0;
+}
+
+.auth-notice {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    background: var(--danger-dim);
+    color: var(--danger);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    padding: 0.6875rem 0.875rem;
+    border-radius: var(--r-sm);
+    margin-bottom: 1.25rem;
+    font-size: 0.8125rem;
+    line-height: 1.45;
+}
+
+.auth-notice i {
+    margin-top: 1px;
+    flex-shrink: 0;
+}
+
+.auth-field {
+    margin-bottom: 1.125rem;
+}
+
+.auth-label {
+    display: block;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--text-mid);
+    margin-bottom: 0.4375rem;
+}
+
+.auth-input {
+    width: 100%;
+    padding: 0.6875rem 0.8125rem;
+    background: var(--surface);
+    border: 1px solid var(--border-mid);
+    border-radius: var(--r);
+    color: var(--text);
+    font-size: 0.9375rem;
+    font-family: inherit;
+    transition: border-color var(--t);
+}
+
+.auth-input::placeholder {
+    color: var(--text-faint);
+}
+
+.auth-input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.auth-hint {
+    font-size: 0.75rem;
+    color: var(--text-faint);
+    margin-top: 0.4375rem;
+    line-height: 1.4;
+}
+
+.auth-btn {
+    width: 100%;
+    padding: 0.75rem;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: var(--r);
+    font-size: 0.9375rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background var(--t);
+    font-family: inherit;
+}
+
+.auth-btn:hover {
+    background: var(--accent-hover);
+}
+
+.auth-alt {
+    margin-top: 1.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border);
+    text-align: center;
+    font-size: 0.875rem;
+    color: var(--text-mid);
+}
+
+.auth-alt a {
+    color: var(--accent);
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.auth-alt a:hover {
+    text-decoration: underline;
+}
+
+/* A lecturer arriving from a shared class link must not be pushed through a
+   sign-up form. This is the way back out. */
+.auth-back {
+    display: block;
+    text-align: center;
+    margin-top: 1.25rem;
+    font-size: 0.8125rem;
+    color: var(--text-faint);
+    text-decoration: none;
+}
+
+.auth-back:hover {
+    color: var(--text-mid);
+}
+
+@media (max-width: 480px) {
+    .auth-wrap {
+        padding: 2rem 1.25rem 3rem;
+    }
+
+    .auth-title {
+        font-size: 1.375rem;
+    }
+}

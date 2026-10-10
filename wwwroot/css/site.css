@@ -181,6 +181,59 @@ h1, h2, h3, h4 { font-weight: 600; line-height: 1.25; color: var(--text); }
 }
 .nav-login-btn:hover { background: var(--accent-hover) !important; }
 
+/* Secondary call to action next to "Sign in". Outlined so the two buttons do not
+   compete: an account is the primary journey for a lecturer who has never used
+   VIIDII, sign in is the returning one. */
+.nav-signup-btn {
+    color: var(--text-mid) !important;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    padding: 0.375rem 0.875rem;
+    border: 1px solid var(--border-mid);
+    border-radius: var(--r);
+    text-decoration: none;
+    transition: all var(--t);
+}
+.nav-signup-btn:hover {
+    color: var(--text) !important;
+    border-color: var(--border-strong);
+    background: var(--surface-up);
+}
+
+@media (max-width: 560px) {
+    .nav-signup-btn { display: none; }
+}
+
+/* ── Blazor error banner ──────────────────────────────
+   The banner is in the markup of every page but must stay hidden until Blazor
+   genuinely cannot reach the server. Blazor reveals it by setting an inline
+   style, so display:none here is the default state, not a permanent override.
+
+   Without this rule it fell back to display:block on static server rendered
+   pages such as /login and /signup, so every visitor was told there was an
+   error when the page was working. */
+#blazor-error-ui {
+    display: none;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 1000;
+    background: var(--danger-dim);
+    color: var(--text);
+    border-top: 1px solid var(--danger);
+    padding: 0.75rem 1.25rem;
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.3);
+}
+
+#blazor-error-ui .dismiss {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.75rem;
+    cursor: pointer;
+    color: var(--text-mid);
+}
+
 /* ── Buttons (global) ───────────────────────────────── */
 .btn-primary-custom {
     background: var(--accent);

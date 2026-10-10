@@ -15,7 +15,12 @@ public static class ClassEndpoints
     {
         var group = app.MapGroup("/api/classes").RequireAuthorization();
 
-        group.MapGet("/", async (
+        // NOTE: the collection root is mapped on `app`, not on the group.
+        // `group.MapGet("")` registers the route as "/api/classes/" with a trailing
+        // slash, so "/api/classes" answers with a 302 redirect. The test client
+        // follows it and lands on the Blazor shell, which returns 200 HTML — so an
+        // unauthenticated caller saw the app document instead of a 401.
+        app.MapGet("/api/classes", async (
             ClassService classService,
             CurrentUserAccessor currentUser,
             ViidiiDbContext context) =>
@@ -41,9 +46,9 @@ public static class ClassEndpoints
             }
 
             return Results.Ok(result);
-        });
+        }).RequireAuthorization();
 
-        group.MapPost("/", async (
+        app.MapPost("/api/classes", async (
             CreateClassRequest request,
             ClassService classService,
             CurrentUserAccessor currentUser,
@@ -69,7 +74,7 @@ public static class ClassEndpoints
             }
 
             return Results.Ok(new { created.Id, created.Code, created.Name });
-        });
+        }).RequireAuthorization();
 
         group.MapGet("/suggest-code", async (string? baseCode, ClassService classService) =>
             Results.Ok(new { code = await classService.SuggestCodeAsync(baseCode ?? string.Empty) }));
