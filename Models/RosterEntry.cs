@@ -3,16 +3,19 @@ using System.ComponentModel.DataAnnotations;
 namespace VIIDII.Models;
 
 /// <summary>
-/// A single expected attendee for a session.
+/// A single expected attendee on a course class list.
 /// Persisted rather than held in memory so attendance evidence survives restarts
 /// and can be re-derived from the database alone.
+///
+/// Belongs to a Course, not a Session. A lecturer teaching 30 lectures uploads their
+/// class list once; each session then draws its own attendance from this list.
 /// </summary>
 public class RosterEntry
 {
     public int Id { get; set; }
 
-    /// <summary>Owning session (FK to Sessions.Id).</summary>
-    public int SessionId { get; set; }
+    /// <summary>Owning course (FK to Courses.Id).</summary>
+    public int CourseId { get; set; }
 
     /// <summary>The unique identifier the attendee types to join, e.g. matric number or staff ID.</summary>
     [Required, StringLength(64)]
@@ -52,6 +55,8 @@ public class RosterEntry
     public DateTime ImportedAtUtc { get; set; } = DateTime.UtcNow;
 
     public Session? Session { get; set; }
+
+    public Course? Course { get; set; }
 
     /// <summary>Where this row came from: "csv", "json", or "api".</summary>
     [StringLength(20)]

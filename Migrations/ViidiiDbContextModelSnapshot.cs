@@ -56,6 +56,50 @@ namespace VIIDII.Migrations
                     b.ToTable("AttendanceLogs");
                 });
 
+            modelBuilder.Entity("VIIDII.Models.Course", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<string>("JoinPrompt")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<int>("LecturerId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("RosterMappingJson")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.HasIndex("LecturerId");
+
+                    b.ToTable("Courses");
+                });
+
             modelBuilder.Entity("VIIDII.Models.FileMetadata", b =>
                 {
                     b.Property<int>("Id")
@@ -157,6 +201,9 @@ namespace VIIDII.Migrations
                     b.Property<DateTime?>("ClaimedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int>("CourseId")
+                        .HasColumnType("integer");
+
                     b.Property<string>("DisplayName")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -190,7 +237,7 @@ namespace VIIDII.Migrations
                     b.Property<int>("Role")
                         .HasColumnType("integer");
 
-                    b.Property<int>("SessionId")
+                    b.Property<int?>("SessionId")
                         .HasColumnType("integer");
 
                     b.Property<string>("Source")
@@ -200,7 +247,9 @@ namespace VIIDII.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("SessionId", "Identifier")
+                    b.HasIndex("SessionId");
+
+                    b.HasIndex("CourseId", "Identifier")
                         .IsUnique();
 
                     b.ToTable("RosterEntries");
@@ -221,6 +270,9 @@ namespace VIIDII.Migrations
                     b.Property<string>("AllowedLevels")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<int?>("CourseId")
+                        .HasColumnType("integer");
 
                     b.Property<DateTime>("CreatedAt")
                         .ValueGeneratedOnAdd()
@@ -272,6 +324,8 @@ namespace VIIDII.Migrations
                         .HasColumnType("character varying(200)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CourseId");
 
                     b.HasIndex("LecturerId");
 
@@ -367,6 +421,17 @@ namespace VIIDII.Migrations
                     b.Navigation("Student");
                 });
 
+            modelBuilder.Entity("VIIDII.Models.Course", b =>
+                {
+                    b.HasOne("VIIDII.Models.User", "Lecturer")
+                        .WithMany("Courses")
+                        .HasForeignKey("LecturerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Lecturer");
+                });
+
             modelBuilder.Entity("VIIDII.Models.FileMetadata", b =>
                 {
                     b.HasOne("VIIDII.Models.Session", "Session")
@@ -414,22 +479,35 @@ namespace VIIDII.Migrations
 
             modelBuilder.Entity("VIIDII.Models.RosterEntry", b =>
                 {
-                    b.HasOne("VIIDII.Models.Session", "Session")
+                    b.HasOne("VIIDII.Models.Course", "Course")
                         .WithMany("Roster")
-                        .HasForeignKey("SessionId")
+                        .HasForeignKey("CourseId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.HasOne("VIIDII.Models.Session", "Session")
+                        .WithMany()
+                        .HasForeignKey("SessionId");
+
+                    b.Navigation("Course");
 
                     b.Navigation("Session");
                 });
 
             modelBuilder.Entity("VIIDII.Models.Session", b =>
                 {
+                    b.HasOne("VIIDII.Models.Course", "Course")
+                        .WithMany("Sessions")
+                        .HasForeignKey("CourseId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("VIIDII.Models.User", "Lecturer")
                         .WithMany("LecturerSessions")
                         .HasForeignKey("LecturerId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.Navigation("Course");
 
                     b.Navigation("Lecturer");
                 });
@@ -453,6 +531,13 @@ namespace VIIDII.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("VIIDII.Models.Course", b =>
+                {
+                    b.Navigation("Roster");
+
+                    b.Navigation("Sessions");
+                });
+
             modelBuilder.Entity("VIIDII.Models.Message", b =>
                 {
                     b.Navigation("Replies");
@@ -467,13 +552,13 @@ namespace VIIDII.Migrations
                     b.Navigation("Messages");
 
                     b.Navigation("Participants");
-
-                    b.Navigation("Roster");
                 });
 
             modelBuilder.Entity("VIIDII.Models.User", b =>
                 {
                     b.Navigation("AttendanceLogs");
+
+                    b.Navigation("Courses");
 
                     b.Navigation("LecturerSessions");
 

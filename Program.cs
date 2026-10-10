@@ -40,6 +40,7 @@ builder.Services.AddScoped<MessageService>();
 builder.Services.AddSingleton<PasswordHasher<User>>();
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<RosterService>();
+builder.Services.AddScoped<CourseService>();
 builder.Services.AddScoped<ISessionJsInterop, SessionJsInterop>();
 
 // Add hosted service for participant ping
@@ -237,6 +238,8 @@ app.MapHub<SessionHub>("/sessionHub", options =>
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 
 app.MapRosterEndpoints();
+app.MapCourseEndpoints();
+app.MapPublicCourseEndpoints();
 
 // ---------------------------------------------------------------------------
 // ICE / TURN configuration for the browser.

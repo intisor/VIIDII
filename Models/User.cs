@@ -25,6 +25,12 @@
         public ICollection<AttendanceLog> AttendanceLogs { get; set; } = new List<AttendanceLog>();
         public ICollection<FileMetadata> UploadedFiles { get; set; } = new List<FileMetadata>();
 
+        /// <summary>
+        /// Courses this lecturer teaches.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonIgnore]
+        public ICollection<Course> Courses { get; set; } = new List<Course>();
+
         public enum Departments
         {
             Any = 0,
@@ -77,16 +83,20 @@
         public Dictionary<string, string> ParticipantConnectionIds { get; set; } = new Dictionary<string, string>();
 
         /// <summary>
-        /// Confirmed roster column mapping as JSON. Records which columns the lecturer
-        /// chose as the join identifier and display name, so the student join screen
-        /// can prompt for the right thing instead of guessing.
+        /// Course this session belongs to. Nullable so a lecturer can still run a
+        /// quick standalone session with no class list.
+        /// </summary>
+        public int? CourseId { get; set; }
+
+        /// <summary>
+        /// Confirmed roster column mapping as JSON. Legacy field, retained on the
+        /// session for standalone use; course-owned sessions read Course.RosterMappingJson.
         /// </summary>
         [System.Text.Json.Serialization.JsonIgnore]
         public string? RosterMappingJson { get; set; }
 
         /// <summary>
-        /// Prompt shown to students on the join screen, e.g. "Enter your matric number".
-        /// Set when the lecturer confirms the mapping during roster import.
+        /// Prompt shown to students on the join screen. Legacy field; see Course.JoinPrompt.
         /// </summary>
         [System.Text.Json.Serialization.JsonIgnore]
         public string? RosterIdentifierPrompt { get; set; }
@@ -103,9 +113,12 @@
         [System.Text.Json.Serialization.JsonIgnore]
         public ICollection<FileMetadata> Files { get; set; } = new List<FileMetadata>();
 
-        /// <summary>Expected attendees for this session. Sole owner of the RosterEntry FK —
-        /// a second navigation path here would make EF create a duplicate relationship.</summary>
-        public ICollection<RosterEntry> Roster { get; set; } = new List<RosterEntry>();
+        /// <summary>
+        /// The course this session belongs to. Note there is deliberately no
+        /// Roster navigation here: RosterEntry is owned by Course, and two
+        /// navigation paths to it would make EF create a duplicate FK.
+        /// </summary>
+        public Course? Course { get; set; }
 
         public enum StudentStatus { Active, InActive, BatteryLow, DataFinished, Disconnected }
     }
