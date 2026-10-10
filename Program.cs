@@ -19,11 +19,9 @@ builder.Services.AddRazorComponents()
 // Add HTTP context accessor for session management
 builder.Services.AddHttpContextAccessor();
 
-// Add DbContext with SQL Server
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
-    ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
-builder.Services.AddDbContext<ViidiiDbContext>(options =>
-    options.UseSqlServer(connectionString));
+// Database provider is a deployment decision, chosen from configuration.
+// Defaults to SQLite outside production so a fresh clone runs with no DB server.
+builder.Services.AddViidiiDatabase(builder.Configuration, builder.Environment);
 
 // Add application services
 builder.Services.AddScoped<UserService>();
@@ -104,12 +102,26 @@ builder.Services.AddSignalR(options =>
 var app = builder.Build();
 
 // Apply pending migrations and create database.
-// Seeding is DEVELOPMENT ONLY — seeding demo accounts in production would be a
-// critical vulnerability.
+//
+// Migrations are provider-specific: the checked-in migration is scaffolded against
+// PostgreSQL, the production provider. Running it against SQLite in development
+// would fail on PostgreSQL type names, so development and tests build the schema
+// from the model with EnsureCreated() instead. Production applies migrations.
 using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<ViidiiDbContext>();
-    dbContext.Database.Migrate();
+    var providerName = DatabaseRegistration.ResolveProvider(builder.Configuration, builder.Environment);
+
+    if (providerName == DatabaseProvider.Sqlite && !builder.Environment.IsProduction())
+    {
+        dbContext.Database.EnsureCreated();
+        app.Logger.LogInformation("SQLite schema created from the model (development).");
+    }
+    else
+    {
+        dbContext.Database.Migrate();
+        app.Logger.LogInformation("Migrations applied ({Provider}).", providerName);
+    }
 
     if (app.Environment.IsDevelopment())
     {

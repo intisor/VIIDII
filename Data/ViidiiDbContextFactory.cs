@@ -17,10 +17,35 @@ public class ViidiiDbContextFactory : IDesignTimeDbContextFactory<ViidiiDbContex
     {
         var optionsBuilder = new DbContextOptionsBuilder<ViidiiDbContext>();
 
-        // Design-time only. Never used at runtime — migrations generated against
-        // this provider are provider-neutral because the model uses Fluent APIs.
-        optionsBuilder.UseSqlServer(
-            "Server=(localdb)\\mssqllocaldb;Database=viidii_design;Trusted_Connection=true;");
+        // Design-time only. SQLite requires no server, so `dotnet ef` works on a
+        // fresh clone with nothing installed. Migrations generated here are
+        // provider-neutral as long as the model avoids provider-specific SQL —
+        // which is why the UTC defaults are chosen per provider in OnModelCreating.
+
+        var provider = Environment.GetEnvironmentVariable("VIIDII_DESIGN_PROVIDER")
+                       ?? "sqlite";
+
+        switch (provider.Trim().ToLowerInvariant())
+        {
+            case "postgres":
+            case "postgresql":
+                optionsBuilder.UseNpgsql(
+                    Environment.GetEnvironmentVariable("VIIDII_DESIGN_POSTGRES")
+                    ?? "Host=localhost;Database=viidii_design;Username=postgres;Password=postgres");
+                break;
+
+            case "sqlserver":
+                optionsBuilder.UseSqlServer(
+                    Environment.GetEnvironmentVariable("VIIDII_DESIGN_SQLSERVER")
+                    ?? "Server=(localdb)\\mssqllocaldb;Database=viidii_design;Trusted_Connection=true;");
+                break;
+
+            default:
+                optionsBuilder.UseSqlite(
+                    Environment.GetEnvironmentVariable("VIIDII_DESIGN_SQLITE")
+                    ?? "Data Source=viidii-design.db");
+                break;
+        }
 
         return new ViidiiDbContext(optionsBuilder.Options);
     }

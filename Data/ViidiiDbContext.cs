@@ -10,6 +10,15 @@ namespace VIIDII.Data
         {
         }
 
+        /// <summary>
+        /// Picks the right UTC-now default for whichever provider is in use.
+        /// </summary>
+        private string UtcNowDefaultSql()
+        {
+            if (Database.IsSqlServer()) return "GETUTCDATE()";
+            return "CURRENT_TIMESTAMP";
+        }
+
         // DbSets for all entities
         public DbSet<User> Users { get; set; } = null!;
         public DbSet<Session> Sessions { get; set; } = null!;
@@ -22,6 +31,11 @@ namespace VIIDII.Data
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
+
+            // GETUTCDATE() is SQL Server only. SQLite and PostgreSQL use
+            // CURRENT_TIMESTAMP. Detecting from the model keeps the schema portable
+            // instead of hardcoding one provider's dialect into the entity config.
+            var utcNowDefault = UtcNowDefaultSql();
 
             var departmentsComparer = new ValueComparer<List<User.Departments>>(
                 (left, right) =>
@@ -47,7 +61,7 @@ namespace VIIDII.Data
                 // Nullable: roster-provisioned accounts authenticate by passcode and
                 // deliberately have no password hash.
                 entity.Property(e => e.PasswordHash).HasMaxLength(500);
-                entity.Property(e => e.CreatedAt).HasDefaultValueSql("GETUTCDATE()");
+                entity.Property(e => e.CreatedAt).HasDefaultValueSql(utcNowDefault);
             });
 
             // Session configuration
@@ -60,7 +74,7 @@ namespace VIIDII.Data
                 entity.Property(e => e.LecturerConnectionId).HasMaxLength(500);
                 entity.Property(e => e.RosterMappingJson).HasMaxLength(2000);
                 entity.Property(e => e.RosterIdentifierPrompt).HasMaxLength(120);
-                entity.Property(e => e.CreatedAt).HasDefaultValueSql("GETUTCDATE()");
+                entity.Property(e => e.CreatedAt).HasDefaultValueSql(utcNowDefault);
 
                 // Store JSON arrays for Departments and Levels
                 entity.Property(e => e.AllowedDepartments)
@@ -92,7 +106,7 @@ namespace VIIDII.Data
             modelBuilder.Entity<SessionParticipant>(entity =>
             {
                 entity.HasKey(e => new { e.SessionId, e.UserId });
-                entity.Property(e => e.JoinedAt).HasDefaultValueSql("GETUTCDATE()");
+                entity.Property(e => e.JoinedAt).HasDefaultValueSql(utcNowDefault);
 
                 entity.HasOne(e => e.Session)
                     .WithMany(s => s.Participants)
@@ -111,7 +125,7 @@ namespace VIIDII.Data
                 entity.HasKey(e => e.Id);
                 entity.Property(e => e.Content).IsRequired();
                 entity.Property(e => e.Reaction).HasMaxLength(50);
-                entity.Property(e => e.CreatedAt).HasDefaultValueSql("GETUTCDATE()");
+                entity.Property(e => e.CreatedAt).HasDefaultValueSql(utcNowDefault);
 
                 entity.HasOne(e => e.Session)
                     .WithMany(s => s.Messages)
@@ -133,7 +147,7 @@ namespace VIIDII.Data
             modelBuilder.Entity<AttendanceLog>(entity =>
             {
                 entity.HasKey(e => e.Id);
-                entity.Property(e => e.Timestamp).HasDefaultValueSql("GETUTCDATE()");
+                entity.Property(e => e.Timestamp).HasDefaultValueSql(utcNowDefault);
 
                 entity.HasOne(e => e.Session)
                     .WithMany(s => s.AttendanceLogs)
@@ -153,7 +167,7 @@ namespace VIIDII.Data
                 entity.Property(e => e.FileName).HasMaxLength(500).IsRequired();
                 entity.Property(e => e.MimeType).HasMaxLength(100).IsRequired();
                 entity.Property(e => e.DataChannelPeerId).HasMaxLength(500);
-                entity.Property(e => e.UploadedAt).HasDefaultValueSql("GETUTCDATE()");
+                entity.Property(e => e.UploadedAt).HasDefaultValueSql(utcNowDefault);
 
                 entity.HasOne(e => e.Session)
                     .WithMany(s => s.Files)
@@ -180,7 +194,7 @@ namespace VIIDII.Data
                 entity.Property(e => e.Grouping).HasMaxLength(120);
                 entity.Property(e => e.Source).HasMaxLength(20);
                 entity.Property(e => e.ClaimToken).HasMaxLength(128);
-                entity.Property(e => e.ImportedAtUtc).HasDefaultValueSql("GETUTCDATE()");
+                entity.Property(e => e.ImportedAtUtc).HasDefaultValueSql(utcNowDefault);
 
                 entity.HasOne(e => e.Session)
                     .WithMany(s => s.Roster)
