@@ -133,18 +133,18 @@ public class RosterPerformanceTests : IDisposable
         context.Users.Add(lecturer);
         context.SaveChanges();
 
-        var course = new Course
+        var seeded = new Class
         {
-            Code = "PERF01",
-            Title = "Perf",
+            Code = "PERF1",
+            Name = "Perf",
             LecturerId = lecturer.Id,
             CreatedAt = DateTime.UtcNow
         };
-        context.Courses.Add(course);
+        context.Classes.Add(seeded);
         context.SaveChanges();
 
         var sw = Stopwatch.StartNew();
-        var result = service.ImportAsync(course.Id, csv).GetAwaiter().GetResult();
+        var result = service.ImportAsync(seeded.Id, csv).GetAwaiter().GetResult();
         var importMs = sw.ElapsedMilliseconds;
 
         _output.WriteLine(

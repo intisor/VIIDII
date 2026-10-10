@@ -202,7 +202,7 @@ public class RosterOverrideIntegrationTests : IDisposable
 
     public void Dispose() => _factory.Dispose();
 
-    private async Task<Course> SeedCourseAsync()
+    private async Task<Class> SeedClassAsync()
     {
         var context = _factory.CreateDbContext();
 
@@ -217,23 +217,23 @@ public class RosterOverrideIntegrationTests : IDisposable
         context.Users.Add(lecturer);
         await context.SaveChangesAsync();
 
-        var course = new Course
+        var seeded = new Class
         {
-            Code = "CSC201A",
-            Title = "Data Structures",
+            Code = "CS100",
+            Name = "Data Structures",
             LecturerId = lecturer.Id,
             CreatedAt = DateTime.UtcNow
         };
 
-        context.Courses.Add(course);
+        context.Classes.Add(seeded);
         await context.SaveChangesAsync();
-        return course;
+        return seeded;
     }
 
     [Fact]
     public async Task ExplicitMappingOverridesTheAutomaticPick()
     {
-        var course = await SeedCourseAsync();
+        var seededClass = await SeedClassAsync();
         using var context = _factory.CreateDbContext();
         var service = new RosterService(context, new PasswordHasher<User>());
 
@@ -255,21 +255,21 @@ public class RosterOverrideIntegrationTests : IDisposable
             IdentifierPrompt = "Enter your candidate number"
         };
 
-        var result = await service.ImportAsync(course.Id, csv, mapping: mapping);
+        var result = await service.ImportAsync(seededClass.Id, csv, mapping: mapping);
 
         Assert.Empty(result.Errors);
         Assert.Equal(3, result.Imported);
         Assert.Equal("Candidate Number", result.IdentifierHeader);
         Assert.Equal("Full Name", result.NameHeader);
 
-        var entries = await service.GetForCourseAsync(course.Id);
+        var entries = await service.GetForClassAsync(seededClass.Id);
         Assert.All(entries, e => Assert.StartsWith("CAN", e.Identifier));
     }
 
     [Fact]
     public async Task InvalidMappingIsRejectedWithoutWritingAnything()
     {
-        var course = await SeedCourseAsync();
+        var seededClass = await SeedClassAsync();
         using var context = _factory.CreateDbContext();
         var service = new RosterService(context, new PasswordHasher<User>());
 
@@ -280,19 +280,19 @@ public class RosterOverrideIntegrationTests : IDisposable
         };
 
         var result = await service.ImportAsync(
-            course.Id,
+            seededClass.Id,
             "Matric,Name\nCSC/001,Aisha Bello",
             mapping: mapping);
 
         Assert.Equal(0, result.Imported);
         Assert.Contains(result.Errors, e => e.Contains("not found", StringComparison.OrdinalIgnoreCase));
-        Assert.Empty(await service.GetForCourseAsync(course.Id));
+        Assert.Empty(await service.GetForClassAsync(seededClass.Id));
     }
 
     [Fact]
     public async Task ConfirmedPromptIsPersistedForTheStudentJoinScreen()
     {
-        var course = await SeedCourseAsync();
+        var seededClass = await SeedClassAsync();
         using var context = _factory.CreateDbContext();
         var service = new RosterService(context, new PasswordHasher<User>());
 
@@ -309,14 +309,14 @@ public class RosterOverrideIntegrationTests : IDisposable
             IdentifierPrompt = "Enter your matric number"
         };
 
-        await service.ImportAsync(course.Id, csv, mapping: mapping);
+        await service.ImportAsync(seededClass.Id, csv, mapping: mapping);
 
-        var courseService = new CourseService(context);
-        await courseService.SetJoinPromptAsync(course.Id, "Enter your matric number", mapping);
+        var ClassService = new ClassService(context);
+        await ClassService.SetJoinPromptAsync(seededClass.Id, "Enter your matric number", mapping);
 
         context.ChangeTracker.Clear();
 
-        var reloaded = await context.Courses.AsNoTracking().FirstAsync(c => c.Id == course.Id);
+        var reloaded = await context.Classes.AsNoTracking().FirstAsync(c => c.Id == seededClass.Id);
 
         Assert.Equal("Enter your matric number", reloaded.JoinPrompt);
         Assert.NotNull(reloaded.RosterMappingJson);

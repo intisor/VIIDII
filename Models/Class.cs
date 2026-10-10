@@ -3,27 +3,28 @@ using System.ComponentModel.DataAnnotations;
 namespace VIIDII.Models;
 
 /// <summary>
-/// A course taught by a lecturer, e.g. "CSC201 - Data Structures".
+/// A named list of students a lecturer teaches, e.g. "100 Level Computer Science".
 ///
-/// Owns the class list. This is the fix for the workflow problem: a lecturer who
-/// runs 30 lectures a semester should upload their class list once, not 30 times.
+/// This is the whole container. A lecturer has one of these per class they teach,
+/// uploads the student list once, and every session they run can point at it.
 ///
-/// Institution-first is deferred. A course is owned by a lecturer and may later be
-/// attached to a department or centre without moving any data.
+/// Deliberately simple: no course catalogue, no semesters, no institution. Those can
+/// be attached later without moving data.
 /// </summary>
-public class Course
+public class Class
 {
     public int Id { get; set; }
 
     /// <summary>
-    /// Short public code used in the join link, e.g. "CSC201A". Unique across the
-    /// platform so the link is guessable by nobody but the students.
+    /// Short code used in the join link, e.g. "CS100". Unique across the platform so
+    /// the link is not guessable by anyone outside the class.
     /// </summary>
     [Required, StringLength(32)]
     public string Code { get; set; } = string.Empty;
 
+    /// <summary>The lecturer's own name for this group, e.g. "100 Level Computer Science".</summary>
     [Required, StringLength(200)]
-    public string Title { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
 
     /// <summary>Owning lecturer's user id.</summary>
     public int LecturerId { get; set; }
@@ -31,13 +32,13 @@ public class Course
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     /// <summary>
-    /// Prompt shown to students on the join screen, e.g. "Enter your matric number".
+    /// What students are asked for on the join screen, e.g. "Enter your matric number".
     /// Set when the lecturer confirms the class list columns.
     /// </summary>
     [StringLength(120)]
     public string? JoinPrompt { get; set; }
 
-    /// <summary>Confirmed roster column mapping as JSON.</summary>
+    /// <summary>Confirmed class list column mapping as JSON.</summary>
     [System.Text.Json.Serialization.JsonIgnore]
     public string? RosterMappingJson { get; set; }
 
@@ -45,7 +46,7 @@ public class Course
     public User? Lecturer { get; set; }
 
     [System.Text.Json.Serialization.JsonIgnore]
-    public ICollection<RosterEntry> Roster { get; set; } = new List<RosterEntry>();
+    public ICollection<RosterEntry> Students { get; set; } = new List<RosterEntry>();
 
     [System.Text.Json.Serialization.JsonIgnore]
     public ICollection<Session> Sessions { get; set; } = new List<Session>();

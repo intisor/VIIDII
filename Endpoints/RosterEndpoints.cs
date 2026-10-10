@@ -64,19 +64,19 @@ public static class RosterEndpoints
             });
         });
 
-        // Import a class list for a course.
+        // Import a student list for a class.
         //
         // Accepts either a JSON envelope { content, mapping } (used by the upload
         // screen) or a raw text/csv body (used by scripts and integrations).
-        group.MapPost("/courses/{courseId:int}/import", async (
-            int courseId,
+        group.MapPost("/classes/{ClassId:int}/import", async (
+            int ClassId,
             HttpContext http,
             RosterService rosterService,
-            CourseService courseService,
+            ClassService ClassService,
             CurrentUserAccessor currentUser,
             ViidiiDbContext context) =>
         {
-            if (!await IsCourseOwnerAsync(context, courseId, currentUser.MatricNo))
+            if (!await IsClassOwnerAsync(context, ClassId, currentUser.MatricNo))
             {
                 return Results.Forbid();
             }
@@ -102,7 +102,7 @@ public static class RosterEndpoints
             var mapping = request?.Mapping;
 
             // An explicit mapping always wins over the automatic column pick.
-            var result = await rosterService.ImportAsync(courseId, content, mapping: mapping);
+            var result = await rosterService.ImportAsync(ClassId, content, mapping: mapping);
 
             if (result.Errors.Count > 0 && result.Imported == 0)
             {
@@ -115,13 +115,13 @@ public static class RosterEndpoints
 
             // Persist the confirmed mapping so the student join screen can prompt with the
             // right label rather than a generic request.
-            if (result.Imported > 0 && courseId > 0)
+            if (result.Imported > 0 && ClassId > 0)
             {
                 var prompt = mapping?.IdentifierPrompt
                              ?? $"Enter your {result.IdentifierHeader?.ToLowerInvariant()}";
 
-                await courseService.SetJoinPromptAsync(
-                    courseId,
+                await ClassService.SetJoinPromptAsync(
+                    ClassId,
                     prompt,
                     mapping ?? new RosterColumnMapping
                     {
@@ -146,42 +146,42 @@ public static class RosterEndpoints
         // What a student sees before typing anything. Deliberately returns only labels,
         // never the class list, which would expose every attendee's name and
         // identifier to anyone holding the link.
-        group.MapGet("/courses/{courseId:int}/join-prompt", async (
-            int courseId,
+        group.MapGet("/classes/{ClassId:int}/join-prompt", async (
+            int ClassId,
             ViidiiDbContext context) =>
         {
-            var course = await context.Courses
+            var classInfo = await context.Classes
                 .AsNoTracking()
-                .FirstOrDefaultAsync(c => c.Id == courseId);
+                .FirstOrDefaultAsync(c => c.Id == ClassId);
 
-            if (course is null)
+            if (classInfo is null)
             {
-                return Results.NotFound(new { error = "Course not found." });
+                return Results.NotFound(new { error = "Class not found." });
             }
 
             return Results.Ok(new
             {
-                code = course.Code,
-                title = course.Title,
-                prompt = string.IsNullOrWhiteSpace(course.JoinPrompt)
+                code = classInfo.Code,
+                name = classInfo.Name,
+                prompt = string.IsNullOrWhiteSpace(classInfo.JoinPrompt)
                     ? "Enter your details to join"
-                    : course.JoinPrompt,
-                hasRoster = course.RosterMappingJson is not null
+                    : classInfo.JoinPrompt,
+                hasRoster = classInfo.RosterMappingJson is not null
             });
         });
 
-        group.MapGet("/courses/{courseId:int}", async (
-            int courseId,
+        group.MapGet("/classes/{ClassId:int}", async (
+            int ClassId,
             RosterService rosterService,
             CurrentUserAccessor currentUser,
             ViidiiDbContext context) =>
         {
-            if (!await IsCourseOwnerAsync(context, courseId, currentUser.MatricNo))
+            if (!await IsClassOwnerAsync(context, ClassId, currentUser.MatricNo))
             {
                 return Results.Forbid();
             }
 
-            var entries = await rosterService.GetForCourseAsync(courseId);
+            var entries = await rosterService.GetForClassAsync(ClassId);
 
             return Results.Ok(entries.Select(e => new
             {
@@ -199,8 +199,8 @@ public static class RosterEndpoints
 
         // Fetch a class list from an institutional API, then analyse and import it.
         // Basic auth via Authorization header; the URL must be explicitly allowed.
-        group.MapPost("/courses/{courseId:int}/fetch", async (
-            int courseId,
+        group.MapPost("/classes/{ClassId:int}/fetch", async (
+            int ClassId,
             HttpContext http,
             RosterService rosterService,
             CurrentUserAccessor currentUser,
@@ -208,7 +208,7 @@ public static class RosterEndpoints
             IConfiguration configuration,
             ILoggerFactory loggerFactory) =>
         {
-            if (!await IsCourseOwnerAsync(context, courseId, currentUser.MatricNo))
+            if (!await IsClassOwnerAsync(context, ClassId, currentUser.MatricNo))
             {
                 return Results.Forbid();
             }
@@ -277,7 +277,7 @@ public static class RosterEndpoints
             }
 
             var body = await response.Content.ReadAsStringAsync();
-            var result = await rosterService.ImportAsync(courseId, body);
+            var result = await rosterService.ImportAsync(ClassId, body);
 
             return Results.Ok(new
             {
@@ -296,13 +296,13 @@ public static class RosterEndpoints
         // the roster", not "this specific person attended" — see the warning in
         // RosterService.ResolveAttendeeAsync. Adequate for participation tracking;
         // not adequate for accreditation-grade certification.
-        group.MapPost("/courses/{courseId:int}/resolve", async (
-            int courseId,
+        group.MapPost("/classes/{ClassId:int}/resolve", async (
+            int ClassId,
             ResolveAttendeeRequest request,
             RosterService rosterService) =>
         {
             var entry = await rosterService.ResolveAttendeeAsync(
-                courseId,
+                ClassId,
                 request.Identifier ?? string.Empty,
                 request.Name ?? string.Empty);
 
@@ -326,8 +326,8 @@ public static class RosterEndpoints
         });
     }
 
-    private static async Task<bool> IsCourseOwnerAsync(
-        ViidiiDbContext context, int courseId, string? matricNo)
+    private static async Task<bool> IsClassOwnerAsync(
+        ViidiiDbContext context, int ClassId, string? matricNo)
     {
         if (string.IsNullOrEmpty(matricNo))
         {
@@ -346,8 +346,8 @@ public static class RosterEndpoints
             return true;
         }
 
-        return await context.Courses
-            .AnyAsync(c => c.Id == courseId && c.LecturerId == user.Id);
+        return await context.Classes
+            .AnyAsync(c => c.Id == ClassId && c.LecturerId == user.Id);
     }
 
     private static async Task<string> ReadBodyAsync(HttpContext http)

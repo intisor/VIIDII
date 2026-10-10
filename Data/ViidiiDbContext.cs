@@ -27,7 +27,7 @@ namespace VIIDII.Data
         public DbSet<AttendanceLog> AttendanceLogs { get; set; } = null!;
         public DbSet<FileMetadata> Files { get; set; } = null!;
         public DbSet<RosterEntry> RosterEntries { get; set; } = null!;
-        public DbSet<Course> Courses { get; set; } = null!;
+        public DbSet<Class> Classes { get; set; } = null!;
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -102,13 +102,13 @@ namespace VIIDII.Data
                     .HasForeignKey(e => e.LecturerId)
                     .OnDelete(DeleteBehavior.Restrict);
 
-                // Optional course link. A standalone session with no class list stays valid.
-                entity.HasOne(e => e.Course)
+                // Optional Class link. A standalone session with no class list stays valid.
+                entity.HasOne(e => e.Class)
                     .WithMany(c => c.Sessions)
-                    .HasForeignKey(e => e.CourseId)
+                    .HasForeignKey(e => e.ClassId)
                     .OnDelete(DeleteBehavior.SetNull);
 
-                entity.HasIndex(e => e.CourseId);
+                entity.HasIndex(e => e.ClassId);
             });
 
             // SessionParticipant configuration (Junction table)
@@ -190,13 +190,13 @@ namespace VIIDII.Data
             });
 
             // RosterEntry configuration.
-            // Owned by Course, not Session: a class list is uploaded once and reused
-            // across every session in that course. Unique per course so a duplicated
+            // Owned by Class, not Session: a class list is uploaded once and reused
+            // across every session in that Class. Unique per Class so a duplicated
             // identifier cannot let two attendees share one join code.
             modelBuilder.Entity<RosterEntry>(entity =>
             {
                 entity.HasKey(e => e.Id);
-                entity.HasIndex(e => new { e.CourseId, e.Identifier }).IsUnique();
+                entity.HasIndex(e => new { e.ClassId, e.Identifier }).IsUnique();
                 entity.Property(e => e.Identifier).HasMaxLength(64).IsRequired();
                 entity.Property(e => e.DisplayName).HasMaxLength(200).IsRequired();
                 entity.Property(e => e.Email).HasMaxLength(200);
@@ -206,25 +206,25 @@ namespace VIIDII.Data
                 entity.Property(e => e.ClaimToken).HasMaxLength(128);
                 entity.Property(e => e.ImportedAtUtc).HasDefaultValueSql(utcNowDefault);
 
-                entity.HasOne(e => e.Course)
-                    .WithMany(c => c.Roster)
-                    .HasForeignKey(e => e.CourseId)
+                entity.HasOne(e => e.Class)
+                    .WithMany(c => c.Students)
+                    .HasForeignKey(e => e.ClassId)
                     .OnDelete(DeleteBehavior.Cascade);
             });
 
-            // Course configuration
-            modelBuilder.Entity<Course>(entity =>
+            // Class configuration
+            modelBuilder.Entity<Class>(entity =>
             {
                 entity.HasKey(e => e.Id);
                 entity.HasIndex(e => e.Code).IsUnique();
                 entity.Property(e => e.Code).HasMaxLength(32).IsRequired();
-                entity.Property(e => e.Title).HasMaxLength(200).IsRequired();
+                entity.Property(e => e.Name).HasMaxLength(200).IsRequired();
                 entity.Property(e => e.JoinPrompt).HasMaxLength(120);
                 entity.Property(e => e.RosterMappingJson).HasMaxLength(2000);
                 entity.Property(e => e.CreatedAt).HasDefaultValueSql(utcNowDefault);
 
                 entity.HasOne(e => e.Lecturer)
-                    .WithMany(u => u.Courses)
+                    .WithMany(u => u.Classes)
                     .HasForeignKey(e => e.LecturerId)
                     .OnDelete(DeleteBehavior.Restrict);
             });

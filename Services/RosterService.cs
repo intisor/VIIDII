@@ -23,7 +23,7 @@ public class RosterImportResult
 }
 
 /// <summary>
-/// Imports a class list for a course.
+/// Imports a student list for a class.
 ///
 /// Replaces in-memory participant lists with a durable, queryable roster so that
 /// attendance evidence can be re-derived from the database at any time.
@@ -51,10 +51,10 @@ public class RosterService
     }
 
     /// <summary>
-    /// Persists roster entries for a course, creating User accounts where an
+    /// Persists student entries for a class, creating User accounts where an
     /// attendee does not already exist.
     /// </summary>
-    /// <param name="courseId">Owning course primary key.</param>
+    /// <param name="classId">Owning class primary key.</param>
     /// <param name="content">Raw CSV/TSV/JSON payload.</param>
     /// <param name="passcodeLength">Length of the generated join passcode.</param>
     /// <param name="generatePasscodes">
@@ -62,7 +62,7 @@ public class RosterService
     /// pre-existing credentials. Only returned to the caller — never stored in clear text.
     /// </param>
     public async Task<RosterImportResult> ImportAsync(
-        int courseId,
+        int classId,
         string content,
         RosterColumnMapping? mapping = null)
     {
@@ -71,12 +71,12 @@ public class RosterService
         var errors = new List<string>();
         var warnings = new List<string>();
 
-        var course = await _context.Courses.FindAsync(courseId);
-        if (course is null)
+        var classInfo = await _context.Classes.FindAsync(classId);
+        if (classInfo is null)
         {
             return new RosterImportResult
             {
-                Errors = [$"Course {courseId} was not found."]
+                Errors = [$"Class {classId} was not found."]
             };
         }
 
@@ -98,7 +98,7 @@ public class RosterService
         var linked = 0;
         var created = 0;
 
-        // Identifiers must be unique within a course or two students collide on
+        // Identifiers must be unique within a class or two students collide on
         // the same join code and attendance becomes unprovable.
         var seenIdentifiers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -198,7 +198,7 @@ public class RosterService
                 linked++;
             }
 
-            newEntries.Add(BuildEntry(courseId, identifier, name, email, phone, grouping, parsed.Format.ToString().ToLowerInvariant()));
+            newEntries.Add(BuildEntry(classId, identifier, name, email, phone, grouping, parsed.Format.ToString().ToLowerInvariant()));
 
             imported++;
         }
@@ -232,10 +232,10 @@ public class RosterService
     private static string? HeaderAt(IReadOnlyList<string> headers, int index) =>
         index >= 0 && index < headers.Count ? headers[index] : null;
 
-    /// <summary>Returns the class list for a course, ordered for display.</summary>
-    public async Task<List<RosterEntry>> GetForCourseAsync(int courseId) =>
+    /// <summary>Returns the student list for a class, ordered for display.</summary>
+    public async Task<List<RosterEntry>> GetForClassAsync(int classId) =>
         await _context.RosterEntries
-            .Where(r => r.CourseId == courseId)
+            .Where(r => r.ClassId == classId)
             .OrderBy(r => r.DisplayName)
             .ToListAsync();
 
@@ -274,7 +274,7 @@ public class RosterService
     /// attended". That is acceptable for participation tracking and not acceptable
     /// for accreditation-grade certification.
     /// </summary>
-    public async Task<RosterEntry?> ResolveAttendeeAsync(int courseId, string identifier, string name)
+    public async Task<RosterEntry?> ResolveAttendeeAsync(int classId, string identifier, string name)
     {
         if (string.IsNullOrWhiteSpace(identifier) || string.IsNullOrWhiteSpace(name))
         {
@@ -288,11 +288,11 @@ public class RosterService
         // lookup must agree — otherwise a student who types their matric number in
         // lowercase is locked out of their own session.
         //
-        // The query filters on courseId only and compares in memory: an indexable
+        // The query filters on classId only and compares in memory: an indexable
         // case-insensitive match would need ToUpper() on the column, which discards
-        // the index. A course roster is bounded, and this runs once per join.
+        // the index. A Class roster is bounded, and this runs once per join.
         var candidates = await _context.RosterEntries
-            .Where(r => r.CourseId == courseId)
+            .Where(r => r.ClassId == classId)
             .ToListAsync();
 
         var targetIdentifier = normalisedIdentifier;
@@ -391,10 +391,10 @@ public class RosterService
     }
 
     private static RosterEntry BuildEntry(
-        int courseId, string identifier, string name, string? email, string? phone, string? grouping, string source) =>
+        int classId, string identifier, string name, string? email, string? phone, string? grouping, string source) =>
         new()
         {
-            CourseId = courseId,
+            ClassId = classId,
             Identifier = identifier,
             DisplayName = name,
             Email = string.IsNullOrWhiteSpace(email) ? null : email,

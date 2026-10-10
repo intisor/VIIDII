@@ -168,7 +168,7 @@ public static partial class RosterSchemaAnalyzer
     private static readonly string[] GroupingHeaderHints =
     {
         "department", "dept", "faculty", "level", "programme", "program",
-        "course", "unit", "departmentname", "class", "cohort", "group"
+        "Class", "unit", "departmentname", "class", "cohort", "group"
     };
 
     [GeneratedRegex(@"^[\p{L}]+(\s+[\p{L}'\-]+){1,3}$", RegexOptions.None, 200)]

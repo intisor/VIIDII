@@ -32,6 +32,30 @@ namespace VIIDII.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "Classes",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    Code = table.Column<string>(type: "character varying(32)", maxLength: 32, nullable: false),
+                    Name = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    LecturerId = table.Column<int>(type: "integer", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false, defaultValueSql: "CURRENT_TIMESTAMP"),
+                    JoinPrompt = table.Column<string>(type: "character varying(120)", maxLength: 120, nullable: true),
+                    RosterMappingJson = table.Column<string>(type: "character varying(2000)", maxLength: 2000, nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Classes", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_Classes_Users_LecturerId",
+                        column: x => x.LecturerId,
+                        principalTable: "Users",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "Sessions",
                 columns: table => new
                 {
@@ -50,12 +74,19 @@ namespace VIIDII.Migrations
                     LecturerConnectionId = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: false),
                     Status = table.Column<int>(type: "integer", nullable: false),
                     IsSessionStarted = table.Column<bool>(type: "boolean", nullable: false),
+                    ClassId = table.Column<int>(type: "integer", nullable: true),
                     RosterMappingJson = table.Column<string>(type: "character varying(2000)", maxLength: 2000, nullable: true),
                     RosterIdentifierPrompt = table.Column<string>(type: "character varying(120)", maxLength: 120, nullable: true)
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_Sessions", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_Sessions_Classes_ClassId",
+                        column: x => x.ClassId,
+                        principalTable: "Classes",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.SetNull);
                     table.ForeignKey(
                         name: "FK_Sessions_Users_LecturerId",
                         column: x => x.LecturerId,
@@ -165,7 +196,7 @@ namespace VIIDII.Migrations
                 {
                     Id = table.Column<int>(type: "integer", nullable: false)
                         .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
-                    SessionId = table.Column<int>(type: "integer", nullable: false),
+                    ClassId = table.Column<int>(type: "integer", nullable: false),
                     Identifier = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
                     DisplayName = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
                     Email = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: true),
@@ -176,17 +207,23 @@ namespace VIIDII.Migrations
                     ClaimToken = table.Column<string>(type: "character varying(128)", maxLength: 128, nullable: true),
                     ClaimedAtUtc = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
                     ImportedAtUtc = table.Column<DateTime>(type: "timestamp with time zone", nullable: false, defaultValueSql: "CURRENT_TIMESTAMP"),
+                    SessionId = table.Column<int>(type: "integer", nullable: true),
                     Source = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false)
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_RosterEntries", x => x.Id);
                     table.ForeignKey(
+                        name: "FK_RosterEntries_Classes_ClassId",
+                        column: x => x.ClassId,
+                        principalTable: "Classes",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
                         name: "FK_RosterEntries_Sessions_SessionId",
                         column: x => x.SessionId,
                         principalTable: "Sessions",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
+                        principalColumn: "Id");
                 });
 
             migrationBuilder.CreateTable(
@@ -226,6 +263,17 @@ namespace VIIDII.Migrations
                 column: "StudentId");
 
             migrationBuilder.CreateIndex(
+                name: "IX_Classes_Code",
+                table: "Classes",
+                column: "Code",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Classes_LecturerId",
+                table: "Classes",
+                column: "LecturerId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_Files_SessionId",
                 table: "Files",
                 column: "SessionId");
@@ -251,15 +299,25 @@ namespace VIIDII.Migrations
                 column: "SessionId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_RosterEntries_SessionId_Identifier",
+                name: "IX_RosterEntries_ClassId_Identifier",
                 table: "RosterEntries",
-                columns: new[] { "SessionId", "Identifier" },
+                columns: new[] { "ClassId", "Identifier" },
                 unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_RosterEntries_SessionId",
+                table: "RosterEntries",
+                column: "SessionId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_SessionParticipants_UserId",
                 table: "SessionParticipants",
                 column: "UserId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Sessions_ClassId",
+                table: "Sessions",
+                column: "ClassId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Sessions_LecturerId",
@@ -299,6 +357,9 @@ namespace VIIDII.Migrations
 
             migrationBuilder.DropTable(
                 name: "Sessions");
+
+            migrationBuilder.DropTable(
+                name: "Classes");
 
             migrationBuilder.DropTable(
                 name: "Users");
