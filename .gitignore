@@ -363,3 +363,9 @@ MigrationBackup/
 FodyWeavers.xsd
 /FutaMeetWeb/.trae
 /figma
+
+# Local SQLite development database
+viidii*.db
+viidii*.db-shm
+viidii*.db-wal
+
