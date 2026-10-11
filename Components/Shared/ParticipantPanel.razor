@@ -6,8 +6,10 @@
 <div class="participant-panel">
     <div class="panel-header">
         <h3>
-            <i class="fas fa-users"></i> 
-            Participants (@ParticipantCount)
+            <i class="fas fa-users"></i>
+            @(IsLecturer && ExpectedStudents.Count > 0
+                ? $"Class list ({HereCount}/{ExpectedCount})"
+                : $"Participants ({ParticipantCount})")
         </h3>
         
         @if (IsLecturer && ParticipantCount > 0)
@@ -17,6 +19,50 @@
             </button>
         }
     </div>
+
+    @* Who is expected but has not joined is the number a lecturer actually
+       cares about mid-lecture, so it is stated up front rather than left to be
+       inferred from an empty panel. *@
+    @if (IsLecturer && ExpectedCount > 0)
+    {
+        <div class="engagement-stats">
+            <div class="stat-card active">
+                <i class="fas fa-check-circle"></i>
+                <div>
+                    <span class="count">@HereCount</span>
+                    <span class="label">Here now</span>
+                </div>
+            </div>
+            <div class="stat-card inactive">
+                <i class="fas fa-user-slash"></i>
+                <div>
+                    <span class="count">@(MissingCount)</span>
+                    <span class="label">Not joined</span>
+                </div>
+            </div>
+        </div>
+    }
+
+    @* Expected but absent. Students do not hold accounts, so these are matched
+       on the identifier they typed when claiming their seat. *@
+    @if (IsLecturer && MissingStudents.Count > 0)
+    {
+        <details class="absent-list">
+            <summary>
+                <i class="fas fa-user-clock"></i>
+                Not yet joined (@MissingStudents.Count)
+            </summary>
+            <div class="absent-items">
+                @foreach (var student in MissingStudents)
+                {
+                    <div class="absent-item">
+                        <span class="absent-name">@student.Name</span>
+                        <span class="absent-id">@student.Identifier</span>
+                    </div>
+                }
+            </div>
+        </details>
+    }
 
     @if (ParticipantCount == 0)
     {
@@ -91,6 +137,16 @@
     [Parameter] public string SessionId { get; set; } = string.Empty;
     [Parameter] public bool IsLecturer { get; set; }
 
+    /// <summary>
+    /// Everyone on the class list, lecturer only. Empty when there is no class, and
+    /// the panel falls back to showing participants alone.
+    /// </summary>
+    [Parameter] public IReadOnlyList<ExpectedStudent> ExpectedStudents { get; set; } = [];
+
+    /// <param name="Identifier">What the student types to join.</param>
+    /// <param name="Name">Name as the lecturer spelled it on the list.</param>
+    public sealed record ExpectedStudent(string Identifier, string Name);
+
     private Dictionary<string, string> SafeParticipants => Participants ?? new();
     private Dictionary<string, Session.StudentStatus> SafeParticipantStatuses => ParticipantStatuses ?? new();
     private IEnumerable<KeyValuePair<string, string>> OrderedParticipants =>
@@ -98,6 +154,22 @@
             .Where(static p => !string.IsNullOrWhiteSpace(p.Key) && !string.IsNullOrWhiteSpace(p.Value))
             .OrderBy(static p => p.Value, StringComparer.OrdinalIgnoreCase);
     private int ParticipantCount => OrderedParticipants.Count();
+
+    /// <summary>
+    /// Expected students who are not in the room. Matched on the identifier, which
+    /// is what the student typed when claiming a seat, because that is what the
+    /// hub records them under.
+    /// </summary>
+    private IReadOnlyList<ExpectedStudent> MissingStudents => ExpectedStudents
+        .Where(student =>
+            !SafeParticipants.Keys.Any(id =>
+                string.Equals(id, student.Identifier, StringComparison.OrdinalIgnoreCase)))
+        .OrderBy(student => student.Name, StringComparer.OrdinalIgnoreCase)
+        .ToList();
+
+    private int ExpectedCount => ExpectedStudents.Count;
+    private int HereCount => ExpectedStudents.Count - MissingStudents.Count;
+    private int MissingCount => MissingStudents.Count;
     private int ActiveCount => SafeParticipantStatuses.Count(p => p.Value == Session.StudentStatus.Active);
     private int InactiveCount => SafeParticipantStatuses.Count(p => p.Value == Session.StudentStatus.InActive);
     private int IssuesCount => SafeParticipantStatuses.Count(p => 

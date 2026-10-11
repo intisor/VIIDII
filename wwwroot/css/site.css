@@ -501,3 +501,50 @@ h1, h2, h3, h4 { font-weight: 600; line-height: 1.25; color: var(--text); }
 @media (max-width: 640px) {
     .share-actions { flex-direction: column; }
 }
+
+/* --"?-- Class list in the participant panel -------------------------------- */
+
+/* Expected-but-absent sits above the live list: during a lecture "who has not
+   turned up" is the question, and burying it under the people who did would make
+   it the wrong thing to look at. Collapsed by default so it costs no space
+   when everyone has joined. */
+.absent-list {
+    margin: 0.75rem 0;
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    background: var(--surface-up);
+}
+.absent-list > summary {
+    cursor: pointer;
+    padding: 0.6rem 0.75rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--warning);
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.absent-list > summary::-webkit-details-marker { display: none; }
+.absent-items {
+    max-height: 180px;
+    overflow-y: auto;
+    padding: 0 0.75rem 0.6rem;
+    border-top: 1px solid var(--border);
+}
+.absent-item {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.4rem 0;
+    font-size: 0.8125rem;
+    border-bottom: 1px solid var(--border-mid);
+}
+.absent-item:last-child { border-bottom: none; }
+.absent-name { color: var(--text); }
+.absent-id {
+    color: var(--text-faint);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.75rem;
+    flex-shrink: 0;
+}

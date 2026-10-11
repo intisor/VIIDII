@@ -14,15 +14,22 @@ namespace VIIDII.Hubs
         private readonly SessionService _sessionService;
         private readonly UserService _userService;
         private readonly StudentSeatService _seatService;
+        private readonly RosterService _rosterService;
         private static readonly ConcurrentDictionary<string, DateTime> _lastSeen = new();
         private static readonly ConcurrentDictionary<string, DateTime> _pendingEngagementPrompts = new();
 
-        public SessionHub(MessageService messageService, SessionService sessionService, UserService userService, StudentSeatService seatService)
+        public SessionHub(
+            MessageService messageService,
+            SessionService sessionService,
+            UserService userService,
+            StudentSeatService seatService,
+            RosterService rosterService)
         {
             _messageService = messageService;
             _sessionService = sessionService;
             _userService = userService;
             _seatService = seatService;
+            _rosterService = rosterService;
         }
 
         /// <summary>
@@ -66,9 +73,82 @@ namespace VIIDII.Hubs
             return false;
         }
 
-        public async Task StartSession(string sessionId)
+        /// <summary>
+        /// Resolves who is calling, and proves it rather than believing it.
+        /// <para>
+        /// The room builds its hub connection on the server: the component constructs a
+        /// HubConnection that calls this hub over HTTP from the web server itself. That
+        /// client has no cookie jar, so Context.User is always anonymous on it and every
+        /// call arrived here unidentified. That is why the lecturer's connection ID was
+        /// never recorded, and why students sat waiting for a lecturer who had already
+        /// started.
+        /// </para>
+        /// <para>
+        /// The component's own circuit is different: it runs where the request cookies
+        /// are, and it already resolves an identity there before rendering. So it passes
+        /// what it resolved, and this method checks that against the database rather
+        /// than accepting it. A caller may claim to be whoever they like; the claim only
+        /// counts if they own the session, or are on that session's class list.
+        /// </para>
+        /// </summary>
+        private async Task<string?> ResolveVerifiedIdentityAsync(string sessionId, string? claimed)
         {
-            var matricNo = CurrentMatricNo();
+            var fromConnection = CurrentMatricNo();
+
+            if (!string.IsNullOrWhiteSpace(fromConnection))
+            {
+                return fromConnection;
+            }
+
+            if (string.IsNullOrWhiteSpace(claimed))
+            {
+                return null;
+            }
+
+            var session = await _sessionService.GetSessionByIdAsync(sessionId);
+
+            if (session is null)
+            {
+                return null;
+            }
+
+            // A lecturer is whoever the session was created for.
+            if (!string.IsNullOrWhiteSpace(session.LecturerMatricNo)
+                && string.Equals(session.LecturerMatricNo, claimed, StringComparison.OrdinalIgnoreCase))
+            {
+                return claimed;
+            }
+
+            // A student has to actually be on the list for this class. Without a class
+            // there is nothing to check against, so the claim is refused rather than
+            // allowed through on the strength of being a well-formed identifier.
+            if (session.ClassId is int classId && classId > 0)
+            {
+                // Identifier only, deliberately. The name has already been checked once,
+                // where the student claimed their seat, and that check compares against
+                // the roster's spelling of the name. Re-deriving it here would require
+                // the display name to travel with the identifier, and it buys nothing:
+                // the seat cookie is what the student holds, and this is only confirming
+                // the claim refers to a real attendee on this class.
+                var onList = await _rosterService.GetForClassAsync(classId);
+
+                if (onList.Any(r => string.Equals(r.Identifier.Trim(), claimed.Trim(),
+                        StringComparison.OrdinalIgnoreCase)))
+                {
+                    return claimed;
+                }
+            }
+
+            Console.WriteLine(
+                $"[SessionHub] Refused claimed identity '{claimed}' for session {sessionId}: "
+                + "not the lecturer and not on the class list.");
+
+            return null;
+        }
+
+        public async Task StartSession(string sessionId, string? claimedMatricNo = null)
+        {
+            var matricNo = await ResolveVerifiedIdentityAsync(sessionId, claimedMatricNo);
 
             // Same reason as JoinSession: with no identity the call reaches the service
             // as a null participant key and throws.
@@ -128,14 +208,13 @@ namespace VIIDII.Hubs
             }
         }
 
-        public async Task JoinSession(string sessionId)
+        public async Task JoinSession(string sessionId, string? claimedMatricNo = null)
         {
-            var matricNo = CurrentMatricNo();
+            var matricNo = await ResolveVerifiedIdentityAsync(sessionId, claimedMatricNo);
 
-            // Students hold a seat rather than an account. If the seat cookie did not
-            // ride along on the websocket handshake there is no identity to join
-            // under, and the service used to throw on a null dictionary key, killing
-            // the circuit. Tell the caller instead.
+            // Students hold a seat rather than an account. If no identity can be proven
+            // there is nothing to join under, and the service used to throw on a null
+            // dictionary key, killing the circuit. Tell the caller instead.
             if (string.IsNullOrWhiteSpace(matricNo))
             {
                 Console.WriteLine($"[SessionHub] JoinSession refused: no identity for connection {Context.ConnectionId}.");

@@ -10,6 +10,7 @@
 @inject AuthService AuthService
 @inject SessionService SessionService
 @inject ClassService ClassService
+@inject RosterService RosterService
 @inject ISessionJsInterop SessionJsInterop
 @inject UserService UserLookupService
 @inject StudentSeatService SeatService
@@ -285,6 +286,7 @@ else
                                 else
                                 {
                                     <ParticipantPanel @key="@_participantPanelVersion"
+                                                      ExpectedStudents="@ExpectedStudents"
                                                       Participants="@EffectiveParticipants"
                                                       ParticipantStatuses="@State.ParticipantStatuses"
                                                       HubConnection="@_hubConnection"
@@ -371,6 +373,31 @@ else
             // The link is on screen and can still be selected by hand.
             _joinLinkLabel = "Copy unavailable";
         }
+    }
+
+    /// <summary>
+    /// Everyone expected to be in the room, so the lecturer can see who has not
+    /// turned up rather than only who has. Loaded once with the rest of the
+    /// session: the class list cannot change while a session is running.
+    /// </summary>
+    private IReadOnlyList<ParticipantPanel.ExpectedStudent> ExpectedStudents { get; set; } = [];
+
+    private async Task LoadExpectedStudentsAsync()
+    {
+        ExpectedStudents = [];
+
+        if (CurrentSession?.ClassId is not int classId || classId <= 0)
+        {
+            return;
+        }
+
+        var entries = await RosterService.GetForClassAsync(classId);
+
+        ExpectedStudents = entries
+            .Where(e => !string.IsNullOrWhiteSpace(e.Identifier) && !string.IsNullOrWhiteSpace(e.DisplayName))
+            .Select(e => new ParticipantPanel.ExpectedStudent(e.Identifier, e.DisplayName))
+            .OrderBy(e => e.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     /// <summary>Resolves the student link for this session's class, if it has one.</summary>
@@ -514,6 +541,7 @@ else
             {
                 await RefreshParticipantsFromSessionAsync(CurrentSession);
                 await LoadJoinUrlAsync();
+                await LoadExpectedStudentsAsync();
             }
 
             Console.WriteLine($"[SessionView C#] Session initialized: IsLecturer={State.IsLecturer}, IsSessionStarted={State.IsSessionStarted}");
@@ -626,9 +654,12 @@ else
             Console.WriteLine($"[SessionView C#] SignalR connected. ConnectionId: {_hubConnection.ConnectionId}");
             await JSRuntime.InvokeVoidAsync("console.log", $"[VIIDII] SignalR connected. ConnectionId={_hubConnection.ConnectionId}, session={SessionId}, lecturer={State.IsLecturer}");
 
-            // Join session
+            // Join session. The matric number is passed because this hub connection is
+            // built on the server and has no cookie jar of its own, so it cannot
+            // prove who it is. The hub checks the claim against the session owner and
+            // the class list rather than trusting it.
             Console.WriteLine($"[SessionView C#] Sending JoinSession request to hub. SessionId: {SessionId}");
-            await _hubConnection.SendAsync("JoinSession", SessionId);
+            await _hubConnection.SendAsync("JoinSession", SessionId, Identity?.MatricNo);
             await JSRuntime.InvokeVoidAsync("console.log", $"[VIIDII] JoinSession sent. session={SessionId}, lecturer={State.IsLecturer}");
 
             Console.WriteLine($"[SessionView C#] SignalR joined session: {SessionId}");
