@@ -369,3 +369,10 @@ viidii*.db
 viidii*.db-shm
 viidii*.db-wal
 
+
+# VIIDII local run supervisor: logs, the SQLite file it creates, and the
+# Cloudflare tunnel token. The token grants access to the account, so it must
+# never be committed. scripts/start-viidii.ps1 reads it from the environment
+# first, then from a copy kept outside the repository.
+.run/
+scripts/token.txt
