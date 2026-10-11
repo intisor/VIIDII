@@ -86,6 +86,11 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         // never sent back by the browser, which silently breaks sign-in during local
         // development and in tests — the symptom is "login succeeds then every
         // authenticated call returns 401".
+        //
+        // Tried SameSite=None here to see whether the browser withholding this cookie
+        // from the SignalR WebSocket handshake was the cause. It was not: over real
+        // HTTPS on viidii.intitech.dev the hub still saw an anonymous caller. Reverted
+        // rather than leave an unproven change in place.
         options.Cookie.SecurePolicy = builder.Environment.IsProduction()
             ? CookieSecurePolicy.Always
             : CookieSecurePolicy.SameAsRequest;
