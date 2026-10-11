@@ -72,7 +72,7 @@ public class ColumnProfile
         && !LooksLikeSerialSequence;
 
     /// <summary>True when this column reads as a person's name.</summary>
-    public bool IsLikelyPersonName => PersonNameScore >= 0.5 && Uniqueness >= 0.95;
+    public bool IsLikelyPersonName => PersonNameScore >= 0.5 && Uniqueness >= 0.5;
 
     public override string ToString() =>
         $"{Name} (uniq {Uniqueness:P0}, id {IdentifierScore:P0}, name {PersonNameScore:P0})";
@@ -246,7 +246,7 @@ public static partial class RosterSchemaAnalyzer
             .ToList();
 
         var rankedNames = Rank(
-                columns.Where(c => c.Uniqueness >= 0.95),
+            columns.Where(c => c.PersonNameScore >= 0.5 && c.Uniqueness >= 0.5),
                 c => c.PersonNameScore)
             .Take(5)
             .ToList();
@@ -501,17 +501,26 @@ public static partial class RosterSchemaAnalyzer
             numbers.Add(parsed);
         }
 
+        // Tolerant of small defects on purpose. A real spreadsheet export is rarely
+        // pristine: merged cells repeat a value, filtering a sheet leaves a gap, and
+        // both are everyday. Requiring a perfect sequence meant a single repeat
+        // defeated the check and the S/N column was then offered to lecturers as the
+        // identifier, which would have asked students to type their row numbers.
+        const double tolerance = 0.10;
+
         var distinct = numbers.Distinct().Count();
-        if (distinct != numbers.Count)
+        var min = numbers.Min();
+        var max = numbers.Max();
+
+        // Some repeats are fine. A column of near-identical values is not a serial.
+        if (distinct < numbers.Count * (1 - tolerance))
         {
             return false;
         }
 
-        var min = numbers.Min();
-        var max = numbers.Max();
-
-        // Exactly consecutive and no gaps.
-        return (max - min + 1) == numbers.Count;
+        // Roughly as many values as the range they span. Wide gaps mean these are not
+        // row numbers but something else that happens to be numeric.
+        return (max - min + 1) <= numbers.Count * (1 + tolerance);
     }
 
     private static string Normalise(string value) =>
