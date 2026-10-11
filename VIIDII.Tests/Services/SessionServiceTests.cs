@@ -45,6 +45,7 @@ public class SessionServiceTests
         services.AddScoped<SessionRepository>();
         services.AddScoped<SessionPersistenceService>();
         services.AddSingleton<IServiceProvider>(sp => sp);
+        services.AddSingleton(TimeProvider.System);
         services.AddSingleton<SessionService>();
 
         await using var provider = services.BuildServiceProvider();

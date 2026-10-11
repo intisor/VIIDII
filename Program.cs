@@ -37,6 +37,15 @@ builder.Services.AddScoped<MessagePersistenceService>();
 // HttpContextAccessor), so it MUST be scoped. Registering it as a singleton leaks
 // DbContexts across requests and shares state between users.
 builder.Services.AddScoped<SessionService>();
+
+// One clock for the whole app, injectable so tests can move it.
+//
+// Session timing is business logic: sessions expire, attendance is scored as a
+// fraction of session length, and stale sessions are swept. None of that can be
+// tested against DateTime.UtcNow without either sleeping or asserting on
+// "roughly now". TimeProvider.System is the real clock, so production behaviour is
+// unchanged; FakeTimeProvider in tests replaces it wholesale.
+builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<StudentSeatService>();
 
 // HttpClient for Blazor components.

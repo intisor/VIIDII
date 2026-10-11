@@ -20,11 +20,24 @@ public class SessionService
     private static readonly ConcurrentDictionary<string, Session> _sessions = new();
 
     private readonly IServiceProvider _serviceProvider;
+    private readonly TimeProvider _clock;
 
-    public SessionService(IServiceProvider serviceProvider)
+    public SessionService(IServiceProvider serviceProvider, TimeProvider clock)
     {
         _serviceProvider = serviceProvider;
+        _clock = clock;
     }
+
+    /// <summary>
+    /// The current UTC time, as a <see cref="DateTime"/>.
+    /// <para>
+    /// Every timestamp in here used to be written as <c>DateTime.UtcNow</c>, sometimes
+    /// with <c>.AddHours(1)</c> bolted on. The models store <see cref="DateTime"/>, not
+    /// <see cref="DateTimeOffset"/>, so the offset is dropped here once rather than at
+    /// every call site.
+    /// </para>
+    /// </summary>
+    private DateTime UtcNow => _clock.GetUtcNow().UtcDateTime;
 
     private UserService Users => _serviceProvider.GetRequiredService<UserService>();
 
@@ -91,7 +104,7 @@ public class SessionService
             .AsNoTracking()
             .Where(s => s.ClassId == classId
                         && s.Status == SessionStatus.Active
-                        && s.ExpiresAt > DateTime.UtcNow)
+                        && s.ExpiresAt > UtcNow)
             .OrderByDescending(s => s.StartTime)
             .ToListAsync();
     }
@@ -124,7 +137,7 @@ public class SessionService
         }
 
         var existingSession = _sessions.Values
-            .FirstOrDefault(s => s.LecturerMatricNo == lecturerIdNumber && s.Status == SessionStatus.Active && s.ExpiresAt > DateTime.UtcNow);
+            .FirstOrDefault(s => s.LecturerMatricNo == lecturerIdNumber && s.Status == SessionStatus.Active && s.ExpiresAt > UtcNow);
 
         if (existingSession != null)
         {
@@ -141,8 +154,8 @@ public class SessionService
             Title = title,
             AllowedDepartments = allowedDepartments ?? new List<User.Departments>(),
             AllowedLevels = allowedLevels ?? new List<User.Levels>(),
-            CreatedAt = DateTime.UtcNow,
-            ExpiresAt = DateTime.UtcNow.AddHours(24)
+            CreatedAt = UtcNow,
+            ExpiresAt = UtcNow.AddHours(24)
         };
 
         session.AllowedDepartments = session.AllowedDepartments.Contains(User.Departments.Any) ? [.. Enum.GetValues<User.Departments>()] : session.AllowedDepartments;
@@ -175,7 +188,7 @@ public class SessionService
         return session;
     }
 
-    private static string GenerateSessionCode() => $"{DateTime.UtcNow.AddHours(1):yyyyMMdd}-{string.Concat(Enumerable.Range(0, 6).Select(_ => (char)('A' + Random.Shared.Next(26))))}";
+    private string GenerateSessionCode() => $"{UtcNow:yyyyMMdd}-{string.Concat(Enumerable.Range(0, 6).Select(_ => (char)('A' + Random.Shared.Next(26))))}";
 
     public Session LeaveSession(string sessionId, string participantId)
     {
@@ -191,7 +204,7 @@ public class SessionService
     }
     public async Task<(Session Session, string? Error)> JoinSession(string sessionId, string participantId, string? connectionId)
     {
-        if (!_sessions.TryGetValue(sessionId, out var session) || session.Status == SessionStatus.Ended || session.ExpiresAt < DateTime.UtcNow)
+        if (!_sessions.TryGetValue(sessionId, out var session) || session.Status == SessionStatus.Ended || session.ExpiresAt < UtcNow)
             return (null, "Session not found, inactive, or expired.");
 
         // Students have no account. They arrive from a class link and claim a seat
@@ -237,7 +250,7 @@ public class SessionService
             {
                 session.ParticipantEvents[participantId] = new List<(Session.StudentStatus status, DateTime timeStamp)>();
             }
-            var joinTime = DateTime.UtcNow.AddHours(1);
+            var joinTime = UtcNow;
             if (joinTime > session.StartTime)
             {
                 session.ParticipantEvents[participantId].Add((Session.StudentStatus.Disconnected, session.StartTime));
@@ -267,7 +280,7 @@ public class SessionService
             return null;
         if (session.LecturerMatricNo != lecturerId || (session.Status != SessionStatus.Started && session.Status != SessionStatus.Active))
             return null;
-        var endedAt = DateTime.UtcNow;
+        var endedAt = UtcNow;
         session.Status = SessionStatus.Ended;
         session.EndTime = endedAt;
         session.IsSessionStarted = false;
@@ -284,7 +297,7 @@ public class SessionService
         {
             session.IsSessionStarted = true;
             session.Status = SessionStatus.Started;
-            session.StartTime = DateTime.UtcNow.AddHours(1); // Changed DateTimeOffset to DateTime
+            session.StartTime = UtcNow;
             Console.WriteLine($"[SessionService C#] StartSession: Session {sessionId} started at {session.StartTime}, Participants: {string.Join(", ", session.ParticipantIds)}");
             // Log initial 'Active' status for all current participants
             foreach (var participantId in session.ParticipantIds.ToList()) // ToList to avoid modification issues if any
@@ -338,7 +351,7 @@ public class SessionService
             {
                 session.ParticipantEvents[participantId] = new List<(Session.StudentStatus status, DateTime timeStamp)>(); // Changed DateTimeOffset to DateTime
             }
-            var eventTimestamp = DateTime.UtcNow.AddHours(1); // Changed DateTimeOffset to DateTime
+            var eventTimestamp = UtcNow;
             session.ParticipantEvents[participantId].Add((status, eventTimestamp));
             _ = PersistAttendanceStatusAsync(sessionId, participantId, status, eventTimestamp);
             Console.WriteLine($"UpdateParticipantStatus: {participantId} status {status} at {eventTimestamp} in session {sessionId}"); return true; // Indicates a scorable event was logged
@@ -368,7 +381,7 @@ public class SessionService
         if (_sessions.TryGetValue(sessionId, out var session))
         {
             // Check if session has expired
-            if (session.ExpiresAt < DateTime.UtcNow)
+            if (session.ExpiresAt < UtcNow)
             {
                 Console.WriteLine($"[SessionService C#] Session {sessionId} has expired. Removing from cache.");
                 _sessions.TryRemove(sessionId, out _);
@@ -387,7 +400,7 @@ public class SessionService
             if (dbSession != null)
             {
                 // Check if database session has expired
-                if (dbSession.ExpiresAt < DateTime.UtcNow)
+                if (dbSession.ExpiresAt < UtcNow)
                 {
                     Console.WriteLine($"[SessionService C#] Session {sessionId} from database has expired.");
                     return null;
@@ -461,7 +474,7 @@ public class SessionService
         _sessions.Values
             .Where(s => s.LecturerMatricNo == lecturerId 
                 && (s.Status == SessionStatus.Active || s.Status == SessionStatus.Started)
-                && s.ExpiresAt > DateTime.UtcNow)
+                && s.ExpiresAt > UtcNow)
             .ToList();
 
     public async Task<List<Session>> GetSessionsByLecturerAsync(string lecturerId)
@@ -497,7 +510,7 @@ public class SessionService
             .FirstOrDefault(s =>
                 (s.Status == SessionStatus.Started || s.Status == SessionStatus.Active)
                 && s.ParticipantIds.Contains(participantId)
-                && s.ExpiresAt > DateTime.UtcNow);
+                && s.ExpiresAt > UtcNow);
 
     public async Task<Session?> GetSessionByParticipantAsync(string participantId)
     {
@@ -506,7 +519,7 @@ public class SessionService
             .FirstOrDefault(s =>
                 (s.Status == SessionStatus.Started || s.Status == SessionStatus.Active)
                 && s.ParticipantIds.Contains(participantId)
-                && s.ExpiresAt > DateTime.UtcNow);
+                && s.ExpiresAt > UtcNow);
 
         if (session != null) return session;
 
@@ -580,7 +593,7 @@ public class SessionService
             return new Dictionary<string, ParticipantScoreDetails>();
         }
 
-        var endTime = session.EndTime ?? DateTime.UtcNow;
+        var endTime = session.EndTime ?? UtcNow;
         var totalSessionMinutes = (endTime - session.StartTime).TotalMinutes;
         if (totalSessionMinutes <= 0)
         {
@@ -622,7 +635,7 @@ public class SessionService
             return new Dictionary<string, ParticipantScoreDetails>();
 
         // Use UTC now for endTime to avoid over-rewarding ongoing sessions
-        var endTime = session.EndTime ?? DateTime.UtcNow;
+        var endTime = session.EndTime ?? UtcNow;
         var totalSessionMinutes = (endTime - session.StartTime).TotalMinutes;
 
         // Return empty scores for invalid (zero or negative) session duration
@@ -705,7 +718,7 @@ public class SessionService
         Console.WriteLine($"CalculateScore: {participantId}, TotalSessionMinutes={totalSessionMinutes:F1}, StartTime={session.StartTime}");
 
         double totalCreditMinutes = 0;
-        var sessionEnd = session.EndTime ?? DateTime.UtcNow.AddHours(1);
+        var sessionEnd = session.EndTime ?? UtcNow;
         Session.StudentStatus? previousStatus = null;
 
         if (!session.ParticipantEvents.TryGetValue(participantId, out var events) || !events.Any())
@@ -790,7 +803,7 @@ public class SessionService
             return details;
         }
 
-        var sessionEnd = session.EndTime ?? DateTime.UtcNow;
+        var sessionEnd = session.EndTime ?? UtcNow;
         double totalCreditMinutes = 0;
         Session.StudentStatus? previousStatus = null;
 
