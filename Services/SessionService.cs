@@ -204,6 +204,20 @@ public class SessionService
     }
     public async Task<(Session Session, string? Error)> JoinSession(string sessionId, string participantId, string? connectionId)
     {
+        // participantId is the dictionary key for this participant in four collections
+        // below. A null one threw ArgumentNullException from Dictionary.set_Item and
+        // took down the SignalR circuit, which reached the lecturer as a dropped
+        // connection with nothing in the log but a stack trace.
+        //
+        // It happens whenever CurrentMatricNo() cannot resolve an identity: a student
+        // whose seat cookie did not survive the websocket handshake, or a connection
+        // that arrives with no cookie at all. Losing a seat is ordinary, so this is
+        // an expected condition and not worth crashing over.
+        if (string.IsNullOrWhiteSpace(participantId))
+        {
+            return (null, "Could not tell who you are. Reload the page and try again.");
+        }
+
         if (!_sessions.TryGetValue(sessionId, out var session) || session.Status == SessionStatus.Ended || session.ExpiresAt < UtcNow)
             return (null, "Session not found, inactive, or expired.");
 

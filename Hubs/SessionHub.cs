@@ -69,6 +69,16 @@ namespace VIIDII.Hubs
         public async Task StartSession(string sessionId)
         {
             var matricNo = CurrentMatricNo();
+
+            // Same reason as JoinSession: with no identity the call reaches the service
+            // as a null participant key and throws.
+            if (string.IsNullOrWhiteSpace(matricNo))
+            {
+                Console.WriteLine($"[SessionHub] StartSession refused: no identity for connection {Context.ConnectionId}.");
+                await Clients.Caller.SendAsync("Error", "Your seat expired. Reload the page and try again.");
+                return;
+            }
+
             await Groups.AddToGroupAsync(Context.ConnectionId, sessionId);
             var session = await _sessionService.GetSessionByIdAsync(sessionId);
             if(session != null)
@@ -121,6 +131,18 @@ namespace VIIDII.Hubs
         public async Task JoinSession(string sessionId)
         {
             var matricNo = CurrentMatricNo();
+
+            // Students hold a seat rather than an account. If the seat cookie did not
+            // ride along on the websocket handshake there is no identity to join
+            // under, and the service used to throw on a null dictionary key, killing
+            // the circuit. Tell the caller instead.
+            if (string.IsNullOrWhiteSpace(matricNo))
+            {
+                Console.WriteLine($"[SessionHub] JoinSession refused: no identity for connection {Context.ConnectionId}.");
+                await Clients.Caller.SendAsync("Error", "Your seat expired. Reload the page and join again.");
+                return;
+            }
+
             Console.WriteLine($"[SessionHub] JoinSession called. SessionId={sessionId}, MatricNo={matricNo}, ConnectionId={Context.ConnectionId}");
             var session = await _sessionService.GetSessionByIdAsync(sessionId);
             if (session == null || session.Status == SessionStatus.Ended)
@@ -356,6 +378,13 @@ namespace VIIDII.Hubs
         public async Task ConfirmActive()
         {
             var matricNo = CurrentMatricNo();
+
+            // _lastSeen is keyed by this below.
+            if (string.IsNullOrWhiteSpace(matricNo))
+            {
+                return;
+            }
+
             var session = await _sessionService.GetSessionByParticipantAsync(matricNo);
             if (session is not null && !await IsSessionLecturerAsync(session.SessionId, matricNo) && session.IsSessionStarted)
             {
