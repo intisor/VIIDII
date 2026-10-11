@@ -5,8 +5,10 @@
 @inject ClassService ClassService
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
-@inject HttpClient Http
+@inject RosterService RosterService
+@inject CurrentUserAccessor CurrentUser
 @using System.Net.Http.Json
+@using VIIDII.Services.Roster
 @using System.Text.Json
 @using Microsoft.JSInterop
 
@@ -243,7 +245,7 @@
 
     private List<string> _headers = new();
 
-    private List<ColumnSummary> _columns = new();
+    private List<ColumnProfile> _columns = new();
     private int _rowCount;
     private List<string> _needsConfirmation = new();
 
@@ -328,33 +330,30 @@
 
         try
         {
-            using var response = await Http.PostAsync(
-                "api/roster/analyze",
-                new StringContent(content, System.Text.Encoding.UTF8, "text/plain"));
-
-            if (!response.IsSuccessStatusCode)
-            {
-                _error = $"The list could not be read ({(int)response.StatusCode}).";
-                return;
-            }
-
-            var result = await response.Content.ReadFromJsonAsync<AnalyzeResponse>();
+            // Straight to the service. This used to POST to /api/roster/analyze over
+            // HTTP, from a component already running inside the same server, and every
+            // attempt came back 401: an HttpClient has no cookie container, so the
+            // sign in cookie never left the process and the endpoint's authorization
+            // could not tell who was asking. The HTTP endpoints stay for scripts and
+            // integrations, but a Blazor component and its own scoped services should
+            // just talk to each other.
+            var (parsed, analysis) = RosterService.Preview(content);
 
             _rawContent = content;
-            _headers = result?.Headers ?? new List<string>();
-            _rowCount = result?.RowCount ?? 0;
-            _columns = result?.Columns ?? new List<ColumnSummary>();
-            _needsConfirmation = result?.NeedsConfirmation ?? new List<string>();
+            _headers = parsed.Headers.ToList();
+            _rowCount = analysis.RowCount;
+            _columns = analysis.Columns.ToList();
+            _needsConfirmation = analysis.NeedsConfirmation.ToList();
 
-            _identifierHeader = result?.IdentifierColumn?.Name ?? _headers.FirstOrDefault();
-            _nameHeader = result?.NameColumn?.Name ?? _headers.Skip(1).FirstOrDefault();
-            _emailHeader = result?.EmailColumn?.Name;
-            _phoneHeader = result?.PhoneColumn?.Name;
+            _identifierHeader = analysis.IdentifierColumn?.Name ?? _headers.FirstOrDefault();
+            _nameHeader = analysis.NameColumn?.Name ?? _headers.Skip(1).FirstOrDefault();
+            _emailHeader = analysis.EmailColumn?.Name;
+            _phoneHeader = analysis.PhoneColumn?.Name;
 
             _promptEnabled = true;
             _identifierPrompt = BuildPrompt(_identifierHeader);
 
-            if (!result?.IsUsable ?? true)
+            if (!analysis.IsUsable)
             {
                 _error = "No unique identifier column was found. Check the first row is a header row.";
                 return;
@@ -399,31 +398,48 @@
                 IdentifierPrompt = _promptEnabled ? _identifierPrompt : null
             };
 
-            var payload = new ImportPayload
+            // The endpoint this replaces checked the lecturer owns the class before
+            // writing to it. Calling the service directly skips that middleware, so the
+            // check has to happen here or a lecturer could write into anyone else's
+            // class list.
+            var matricNo = CurrentUser.MatricNo;
+            if (string.IsNullOrEmpty(matricNo))
             {
-                Content = _rawContent,
-                Mapping = mapping
-            };
-
-            using var response = await Http.PostAsJsonAsync(
-                $"api/roster/classes/{ClassId}/import",
-                payload);
-
-            var body = await response.Content.ReadAsStringAsync();
-
-            if (!response.IsSuccessStatusCode)
-            {
-                _error = "The list could not be imported.";
+                _error = "Your session expired. Sign in again and retry.";
                 return;
             }
 
-            var result = JsonSerializer.Deserialize<ImportResponse>(body,
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-
-            if (result is null)
+            var target = await ClassService.GetByIdAsync(ClassId);
+            if (target is null)
             {
-                _error = "The import did not return a result.";
+                _error = "That class no longer exists.";
                 return;
+            }
+
+            var owner = await AuthService.GetCurrentUserAsync();
+            if (owner is null || owner.Id != target.LecturerId)
+            {
+                _error = "That is not your class.";
+                return;
+            }
+
+            var result = await RosterService.ImportAsync(ClassId, _rawContent, mapping: mapping);
+
+            if (result.Errors.Count > 0 && result.Imported == 0)
+            {
+                _error = string.Join(" ", result.Errors);
+                return;
+            }
+
+            if (result.Imported > 0)
+            {
+                // Persist the confirmed mapping so the student join screen can prompt
+                // with the right label instead of a generic request.
+                var prompt = _promptEnabled && !string.IsNullOrWhiteSpace(_identifierPrompt)
+                    ? _identifierPrompt
+                    : $"Enter your {result.IdentifierHeader?.ToLowerInvariant()}";
+
+                await ClassService.SetJoinPromptAsync(ClassId, prompt, mapping);
             }
 
             _imported = result.Imported;
@@ -451,46 +467,9 @@
         _importErrors = new List<string>();
     }
 
-    private sealed class AnalyzeResponse
-    {
-        public List<string> Headers { get; set; } = new();
-        public int RowCount { get; set; }
-        public bool IsUsable { get; set; }
-        public ColumnRef? IdentifierColumn { get; set; }
-        public ColumnRef? NameColumn { get; set; }
-        public ColumnRef? EmailColumn { get; set; }
-        public ColumnRef? PhoneColumn { get; set; }
-        public List<string> NeedsConfirmation { get; set; } = new();
-        public List<ColumnSummary> Columns { get; set; } = new();
-    }
-
     private sealed class ColumnRef
     {
         public string? Name { get; set; }
-    }
-
-    private sealed class ColumnSummary
-    {
-        public string Name { get; set; } = string.Empty;
-        public double Uniqueness { get; set; }
-        public double IdentifierScore { get; set; }
-        public double PersonNameScore { get; set; }
-        public List<string> Samples { get; set; } = new();
-    }
-
-    private sealed class ImportPayload
-    {
-        public string Content { get; set; } = string.Empty;
-        public RosterColumnMapping Mapping { get; set; } = new();
-    }
-
-    private sealed class ImportResponse
-    {
-        public int Imported { get; set; }
-        public int Skipped { get; set; }
-        public int UserAccountsCreated { get; set; }
-        public int LinkedToExistingUser { get; set; }
-        public List<string>? Errors { get; set; }
     }
 }
 

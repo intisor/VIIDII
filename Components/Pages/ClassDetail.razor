@@ -9,7 +9,7 @@
 
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
-@inject HttpClient Http
+@inject RosterService RosterService
 
 <PageTitle>@(Target?.Name ?? "Class") - VIIDII</PageTitle>
 
@@ -265,13 +265,16 @@
             }
             else if (HasList)
             {
-                var rows = await Http.GetFromJsonAsync<JsonElement>($"/api/roster/classes/{ClassId}");
+                // Straight to the service rather than GET /api/roster/classes/{id}.
+                // An HttpClient has no cookie container, so the sign in cookie never
+                // left the process and the endpoint's authorization rejected the
+                // request with 401. It only surfaced once a class actually had a
+                // list, because this branch is the only one that made the call, which
+                // is why the page looked healthy right up until a real upload.
+                var entries = await RosterService.GetForClassAsync(ClassId);
 
-                Students = rows.EnumerateArray()
-                    .Select(e => new StudentRow(
-                        e.GetProperty("identifier").GetString() ?? string.Empty,
-                        e.GetProperty("displayName").GetString() ?? string.Empty,
-                        e.GetProperty("hasClaimed").GetBoolean()))
+                Students = entries
+                    .Select(e => new StudentRow(e.Identifier, e.DisplayName, e.HasClaimed))
                     .ToList();
             }
         }

@@ -47,20 +47,6 @@ builder.Services.AddScoped<SessionService>();
 // unchanged; FakeTimeProvider in tests replaces it wholesale.
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<StudentSeatService>();
-
-// HttpClient for Blazor components.
-//
-// Registered rather than built inside a component, because both failure modes are
-// silent at build time: an @inject for an unregistered type kills the circuit on the
-// first render, and constructing one in a component throws during instantiation.
-builder.Services.AddScoped(sp => new HttpClient
-{
-    // NavigationManager is scoped to the circuit in Blazor Server, so the base address
-    // is whatever address the browser is actually on. Components used to build their
-    // own client with new Uri("/"), which is relative: HttpClient.BaseAddress requires
-    // an absolute URI, so the page threw UriFormatException and never rendered.
-    BaseAddress = new Uri(sp.GetRequiredService<NavigationManager>().BaseUri)
-});
 builder.Services.AddScoped<MessageService>();
 builder.Services.AddSingleton<PasswordHasher<User>>();
 builder.Services.AddScoped<AuthService>();

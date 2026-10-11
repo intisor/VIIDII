@@ -187,6 +187,40 @@ public static partial class RosterSchemaAnalyzer
     /// Analyses rows and returns a ranked column profile with the best
     /// identifier/name/email/phone/column selections.
     /// </summary>
+    /// <summary>
+    /// True for a totals or summary footer rather than a person.
+    /// <para>
+    /// Deliberately narrow. At most two cells may be populated and one of them has to
+    /// start with "total", because a genuine attendee row carries at least an
+    /// identifier and a name. A student genuinely called "Totai" is not a risk here:
+    /// that row would also have to be almost entirely empty.
+    /// </para>
+    /// </summary>
+    private static bool IsSummaryRow(IReadOnlyList<string> row)
+    {
+        var populated = 0;
+        var saysTotal = false;
+
+        foreach (var cell in row)
+        {
+            var value = (cell ?? string.Empty).Trim();
+
+            if (value.Length == 0)
+            {
+                continue;
+            }
+
+            if (value.StartsWith("total", StringComparison.OrdinalIgnoreCase))
+            {
+                saysTotal = true;
+            }
+
+            populated++;
+        }
+
+        return saysTotal && populated <= 2;
+    }
+
     /// <param name="headers">Column headers in source order.</param>
     /// <param name="rows">Data rows, each matching the header count.</param>
     public static RosterAnalysis Analyze(IReadOnlyList<string> headers, IReadOnlyList<IReadOnlyList<string>> rows)
@@ -201,11 +235,19 @@ public static partial class RosterSchemaAnalyzer
             return new RosterAnalysis { RowCount = rows.Count, Notes = ["No headers found."] };
         }
 
+        // Registrar exports routinely end with a totals footer, for example
+        // ";;;120;;;Total: 120 students;;;". It is not an attendee, so it is kept out
+        // of both the count and the column profiling. The import still receives the
+        // row and skips it for having no identifier, which is why it never reached
+        // the roster; the problem was only that the upload screen said "121 students
+        // detected" and offered a button reading "Import 121 students".
+        var dataRows = rows.Where(r => !IsSummaryRow(r)).ToList();
+
         var columns = new List<ColumnProfile>(headers.Count);
 
         for (var i = 0; i < headers.Count; i++)
         {
-            var values = rows
+            var values = dataRows
                 .Where(r => i < r.Count)
                 .Select(r => (r[i] ?? string.Empty).Trim())
                 .Where(v => v.Length > 0)
@@ -301,7 +343,7 @@ public static partial class RosterSchemaAnalyzer
 
         if (grouping is not null) notes.Add($"Department/level: '{grouping.Name}'.");
 
-        if (rows.Count == 0)
+        if (dataRows.Count == 0)
         {
             notes.Add("No data rows were found below the header.");
         }
@@ -311,7 +353,7 @@ public static partial class RosterSchemaAnalyzer
         return new RosterAnalysis
         {
             Columns = columns,
-            RowCount = rows.Count,
+            RowCount = dataRows.Count,
             IdentifierColumn = identifier,
             NameColumn = name,
             EmailColumn = email,
