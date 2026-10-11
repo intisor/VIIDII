@@ -445,3 +445,59 @@ h1, h2, h3, h4 { font-weight: 600; line-height: 1.25; color: var(--text); }
     .nav-links      { display: none; }
     .nav-user-chip  { display: none; }
 }
+/* --"?-- Session share card: the student link the lecturer hands out ---- */
+
+/* Also styles .roster-entry-card, which had no rule anywhere. */
+.roster-entry-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.25rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    padding: 1.25rem 1.5rem;
+}
+.roster-entry-text { flex: 1; min-width: 0; }
+.roster-entry-text h3 {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text);
+    margin: 0 0 0.25rem;
+}
+.roster-entry-text p {
+    font-size: 0.8125rem;
+    color: var(--text-mid);
+    margin: 0;
+}
+
+/* Wraps rather than overflowing. A join link is long and these screens are
+   read on phones, where a lecturer is most likely to forward one from a
+   class group. */
+.share-url {
+    display: block;
+    margin-top: 0.75rem;
+    padding: 0.6rem 0.75rem;
+    background: var(--surface-up);
+    border: 1px solid var(--border-mid);
+    border-radius: var(--r-sm);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.8125rem;
+    color: var(--accent);
+    word-break: break-all;
+}
+
+@media (max-width: 640px) {
+    .roster-entry-card { flex-direction: column; align-items: stretch; }
+    .roster-entry-card .btn-control { justify-content: center; }
+}
+
+/* Copy and WhatsApp sit together; on a phone they stack. */
+.share-actions {
+    display: flex;
+    gap: 0.625rem;
+    flex-shrink: 0;
+}
+@media (max-width: 640px) {
+    .share-actions { flex-direction: column; }
+}

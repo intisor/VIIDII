@@ -9,6 +9,7 @@
 @implements IAsyncDisposable
 @inject AuthService AuthService
 @inject SessionService SessionService
+@inject ClassService ClassService
 @inject ISessionJsInterop SessionJsInterop
 @inject UserService UserLookupService
 @inject StudentSeatService SeatService
@@ -97,6 +98,36 @@ else
                     <i class="fas fa-users"></i>
                     <span class="control-label">Manage list</span>
                 </a>
+            </div>
+        }
+
+        <!-- Share the student link (Lecturer Only) -->
+        @if (State.IsLecturer && !string.IsNullOrWhiteSpace(JoinUrl))
+        {
+            <div class="roster-entry-card share-card">
+                <div class="roster-entry-text">
+                    <h3>Share with your students</h3>
+                    <p>
+                        This is the same link every week. Send it in your class group; nobody has to
+                        make an account.
+                    </p>
+                    <code class="share-url">@JoinUrl</code>
+                </div>
+                <div class="share-actions">
+                    <button class="btn-control" @onclick="CopyJoinLink">
+                        <i class="fas fa-copy"></i>
+                        <span class="control-label">@JoinLinkLabel</span>
+                    </button>
+                    @* WhatsApp needs no clipboard permission, which matters because
+                       clipboard writes are refused on unfocused tabs, on some
+                       in-app browsers, and anywhere the origin is not secure. Most
+                       lecturers are forwarding this from a class group, so a button
+                       that hands the text to WhatsApp is the one that reliably works. *@
+                    <a class="btn-control" href="@WhatsAppHref" target="_blank" rel="noopener noreferrer">
+                        <i class="fab fa-whatsapp"></i>
+                        <span class="control-label">WhatsApp</span>
+                    </a>
+                </div>
             </div>
         }
 
@@ -298,6 +329,72 @@ else
     private bool _isNavigating = false; // Prevent render after navigation
     private bool IsLecturer => State.IsLecturer;
     private bool _pendingStudentPeerSetup = false;
+
+    /// <summary>
+    /// Where students go. One link per class, not per session, because the class list
+    /// is what they need and a lecturer runs the same cohort all semester. Looking it
+    /// up from the class rather than building it here keeps that single source of
+    /// truth.
+    /// </summary>
+    private string? _joinUrl;
+    private string? _classCode;
+
+    private string? JoinUrl => _joinUrl;
+
+    private string JoinLinkLabel => _joinLinkLabel;
+    private string _joinLinkLabel = "Copy link";
+
+    /// <summary>
+    /// Opens WhatsApp with the join link already typed. The message is fixed text
+    /// rather than something the lecturer writes, so it reads as a link being sent
+    /// on purpose rather than an ad.
+    /// </summary>
+    private string? WhatsAppHref => _joinUrl is null
+        ? null
+        : $"https://wa.me/?text={Uri.EscapeDataString($"Join our class: {_joinUrl}")}";
+
+    private async Task CopyJoinLink()
+    {
+        if (string.IsNullOrWhiteSpace(_joinUrl))
+        {
+            return;
+        }
+
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", _joinUrl);
+            _joinLinkLabel = "Copied";
+        }
+        catch (JSException)
+        {
+            // Clipboard access needs a secure context, so it fails on plain HTTP.
+            // The link is on screen and can still be selected by hand.
+            _joinLinkLabel = "Copy unavailable";
+        }
+    }
+
+    /// <summary>Resolves the student link for this session's class, if it has one.</summary>
+    private async Task LoadJoinUrlAsync()
+    {
+        _joinUrl = null;
+        _classCode = null;
+
+        // Sessions can predate classes, and ClassId is nullable. Nothing to share then.
+        if (CurrentSession?.ClassId is not int classId || classId <= 0)
+        {
+            return;
+        }
+
+        var cls = await ClassService.GetByIdAsync(classId);
+
+        if (cls is null || string.IsNullOrWhiteSpace(cls.Code))
+        {
+            return;
+        }
+
+        _classCode = cls.Code;
+        _joinUrl = $"{Navigation.BaseUri.TrimEnd('/')}/join/{_classCode}";
+    }
     private int _participantPanelVersion = 0;
     private Dictionary<string, string> EffectiveParticipants
     {
@@ -416,6 +513,7 @@ else
             if (State.IsLecturer)
             {
                 await RefreshParticipantsFromSessionAsync(CurrentSession);
+                await LoadJoinUrlAsync();
             }
 
             Console.WriteLine($"[SessionView C#] Session initialized: IsLecturer={State.IsLecturer}, IsSessionStarted={State.IsSessionStarted}");

@@ -53,7 +53,8 @@ public class SessionClockTests
             HandleCookies = true
         });
 
-    private static async Task<(int ClassId, string LecturerMatric)> SetUpClassAsync(HttpClient lecturer)
+    private static async Task<(int ClassId, string LecturerMatric, string StudentId)> SetUpClassAsync(
+        HttpClient lecturer)
     {
         var matricNo = $"LEC{Guid.NewGuid().ToString("N")[..8]}";
 
@@ -73,9 +74,22 @@ public class SessionClockTests
         Assert.Equal(HttpStatusCode.OK, created.StatusCode);
         var classId = (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetInt32();
 
-        var csv = """
+        // Unique, and on the list. Both matter:
+        //
+        // Unique, because SessionService._sessions is static and shared across the
+        // whole test process, and joining refuses anyone already active in a different
+        // session. A fixed identifier collides with whichever other test used it first,
+        // which made this file pass alone and fail in the full run.
+        //
+        // On the list, because attendance is only written for a student the roster
+        // knows: importing creates the user row that LogAttendanceStatusAsync looks up.
+        // An identifier that is unique but absent from the class list joins fine and
+        // records nothing.
+        var studentId = $"CSC/{Guid.NewGuid():N}";
+
+        var csv = $"""
         Matric Number,Full Name
-        CSC/2021/002,Babatunde Cole
+        {studentId},Babatunde Cole
         """;
 
         var import = await lecturer.PostAsJsonAsync($"/api/roster/classes/{classId}/import", new
@@ -90,17 +104,19 @@ public class SessionClockTests
         });
         Assert.Equal(HttpStatusCode.OK, import.StatusCode);
 
-        return (classId, matricNo);
+        return (classId, matricNo, studentId);
     }
 
     /// <summary>Registers a lecturer, stands up a class, starts a session, joins a student.</summary>
-    private static async Task<Session> StageLiveSessionAsync(WebApplicationFactory<Program> app)
+    private static async Task<(Session Session, string StudentId)> StageLiveSessionAsync(
+        WebApplicationFactory<Program> app)
     {
         int classId;
         string lecturerMatric;
+        string studentId;
         using (var lecturer = Browser(app))
         {
-            (classId, lecturerMatric) = await SetUpClassAsync(lecturer);
+            (classId, lecturerMatric, studentId) = await SetUpClassAsync(lecturer);
         }
 
         using var scope = app.Services.CreateScope();
@@ -115,11 +131,11 @@ public class SessionClockTests
 
         await sessions.StartSessionAsync(session.SessionId);
 
-        var (joined, error) = await sessions.JoinSession(session.SessionId, "CSC/2021/002", "conn-1");
+        var (joined, error) = await sessions.JoinSession(session.SessionId, studentId, "conn-1");
         Assert.NotNull(joined);
         Assert.Null(error);
 
-        return session;
+        return (session, studentId);
     }
 
     /// <summary>
@@ -135,7 +151,7 @@ public class SessionClockTests
         var clock = ClockStartingNow();
         using var app = CreateApp(clock);
 
-        var session = await StageLiveSessionAsync(app);
+        var (session, studentId) = await StageLiveSessionAsync(app);
 
         // A 20 minute lecture, then read the attendance back.
         clock.Advance(TimeSpan.FromMinutes(20));
@@ -145,7 +161,7 @@ public class SessionClockTests
         var scores = await sessions.CalculateAttendanceScoreFromPersistenceAsync(session.SessionId);
 
         Assert.True(
-            scores.ContainsKey("CSC/2021/002"),
+            scores.ContainsKey(studentId),
             "A 20 minute session produced no attendance at all. Session length is being "
             + "computed an hour short, so anything under an hour reads as zero length.");
     }
@@ -161,7 +177,7 @@ public class SessionClockTests
         var clock = ClockStartingNow();
         using var app = CreateApp(clock);
 
-        var session = await StageLiveSessionAsync(app);
+        var (session, studentId) = await StageLiveSessionAsync(app);
         var stampedAt = clock.GetUtcNow().UtcDateTime;
 
         for (var attempt = 0; attempt < 50; attempt++)
@@ -180,7 +196,7 @@ public class SessionClockTests
 
         var log = await context.AttendanceLogs
             .Include(l => l.Student)
-            .FirstAsync(l => l.Student != null && l.Student.MatricNo == "CSC/2021/002");
+            .FirstAsync(l => l.Student != null && l.Student.MatricNo == studentId);
 
         // Timestamps read back from SQLite arrive with Kind=Unspecified, and
         // ToUniversalTime() on an Unspecified value treats it as local time and shifts
@@ -219,7 +235,7 @@ public class SessionClockTests
         string lecturerMatric;
         using (var lecturer = Browser(app))
         {
-            (classId, lecturerMatric) = await SetUpClassAsync(lecturer);
+            (classId, lecturerMatric, _) = await SetUpClassAsync(lecturer);
         }
 
         string sessionId;
