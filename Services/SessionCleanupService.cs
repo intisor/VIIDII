@@ -52,12 +52,13 @@ public class SessionCleanupService : BackgroundService
 
         var now = DateTime.UtcNow;
 
-        // Find expired sessions (ended sessions older than 7 days, active sessions older than 24 hours)
+        // Expired means ExpiresAt has passed. This used to be written as two branches,
+        // one for ended sessions and one for the rest, both testing ExpiresAt < now, so
+        // the status check contributed nothing and ExpiresAt was doing all the work.
+        // Which means there is currently no distinction between an old ended session
+        // and a stale one that was never closed: both go when they expire.
         var expiredSessions = await dbContext.Sessions
-            .Where(s => 
-                (s.Status == SessionStatus.Ended && s.ExpiresAt < now) ||
-                (s.Status != SessionStatus.Ended && s.ExpiresAt < now)
-            )
+            .Where(s => s.ExpiresAt < now)
             .ToListAsync(cancellationToken);
 
         if (expiredSessions.Any())

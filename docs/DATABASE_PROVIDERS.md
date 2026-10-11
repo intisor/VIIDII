@@ -101,6 +101,18 @@ $env:VIIDII_DESIGN_PROVIDER = "postgres"
 dotnet ef migrations add <Name> --context ViidiiDbContext
 ```
 
+`VIIDII_DESIGN_PROVIDER` now defaults to `postgres`, so the line above is belt and braces rather than a requirement. That default was changed after this went wrong the obvious way.
+
+**Check which provider you scaffolded against before committing a migration.** A migration generated for the wrong provider compiles fine, passes the whole test suite, and only fails at deploy time against real PostgreSQL. This is not hypothetical: scaffolding a single-column change against SQLite produced a migration containing about ninety `AlterColumn` calls rewriting every column in the schema from PostgreSQL type names (`character varying(200)`, `timestamp with time zone`, `interval`, `bigint`) to SQLite ones. Nothing warned about it.
+
+The quick check is to read the generated file. A correct migration names only what it actually changes. If you see `AlterColumn` for tables the change has nothing to do with, you scaffolded with the wrong provider:
+
+```bash
+grep -c AlterColumn Migrations/<YourMigration>.cs
+```
+
+`dotnet ef migrations script --no-build` after a build will print the exact SQL, which settles it outright.
+
 ### Applying in production
 
 ```bash

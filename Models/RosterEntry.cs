@@ -33,14 +33,14 @@ public class RosterEntry
     [StringLength(40)]
     public string? Phone { get; set; }
 
-    /// <summary>Role in this session. Staff run sessions; students attend them.</summary>
+    /// <summary>Role on the list. Staff run sessions; students attend them.</summary>
     public RosterRole Role { get; set; } = RosterRole.Student;
 
     /// <summary>Optional free-text department/level/unit, used for filtering and grouping.</summary>
     [StringLength(120)]
     public string? Grouping { get; set; }
 
-    /// <summary>True once the attendee has claimed their seat for this session.</summary>
+    /// <summary>True once this attendee has claimed their seat for this class.</summary>
     public bool HasClaimed { get; set; }
 
     /// <summary>
@@ -54,8 +54,7 @@ public class RosterEntry
 
     public DateTime ImportedAtUtc { get; set; } = DateTime.UtcNow;
 
-    public Session? Session { get; set; }
-
+    /// <summary>Owning Class. A class list is reused by every session in that class.</summary>
     public Class? Class { get; set; }
 
     /// <summary>Where this row came from: "csv", "json", or "api".</summary>

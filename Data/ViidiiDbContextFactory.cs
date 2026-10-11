@@ -10,6 +10,10 @@ namespace VIIDII.Data;
 /// requires a reachable database and a resolved hosted-service graph — just to
 /// read the model. That made migration generation fail for anyone without a
 /// local SQL Server instance.
+///
+/// Note what this does and does not solve: it decides which provider the
+/// *scaffolded DDL* targets. It does not make migrations portable. A migration
+/// file is written in one provider's type names and cannot run on another.
 /// </summary>
 public class ViidiiDbContextFactory : IDesignTimeDbContextFactory<ViidiiDbContext>
 {
@@ -17,13 +21,21 @@ public class ViidiiDbContextFactory : IDesignTimeDbContextFactory<ViidiiDbContex
     {
         var optionsBuilder = new DbContextOptionsBuilder<ViidiiDbContext>();
 
-        // Design-time only. SQLite requires no server, so `dotnet ef` works on a
-        // fresh clone with nothing installed. Migrations generated here are
-        // provider-neutral as long as the model avoids provider-specific SQL —
-        // which is why the UTC defaults are chosen per provider in OnModelCreating.
+        // Which provider the scaffolded DDL is written for. This defaults to
+        // PostgreSQL, the production provider, and that is deliberate.
+        //
+        // Scaffolding never connects to a database — it only reads the model — so
+        // targeting PostgreSQL costs nothing on a fresh clone with no server running.
+        // Defaulting to SQLite instead costs a great deal: the generated migration
+        // then contains SQLite column types, and applying it to the production
+        // PostgreSQL database fails. That has already happened once. The provider can
+        // be overridden for anyone who genuinely needs different DDL:
+        //
+        //     $env:VIIDII_DESIGN_PROVIDER = "postgres"
+        //     dotnet ef migrations add <Name>
 
         var provider = Environment.GetEnvironmentVariable("VIIDII_DESIGN_PROVIDER")
-                       ?? "sqlite";
+                       ?? "postgres";
 
         switch (provider.Trim().ToLowerInvariant())
         {

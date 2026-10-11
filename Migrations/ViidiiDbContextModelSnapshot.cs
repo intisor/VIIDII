@@ -53,7 +53,7 @@ namespace VIIDII.Migrations
 
                     b.HasIndex("StudentId");
 
-                    b.ToTable("AttendanceLogs");
+                    b.ToTable("AttendanceLogs", (string)null);
                 });
 
             modelBuilder.Entity("VIIDII.Models.Class", b =>
@@ -97,7 +97,7 @@ namespace VIIDII.Migrations
 
                     b.HasIndex("LecturerId");
 
-                    b.ToTable("Classes");
+                    b.ToTable("Classes", (string)null);
                 });
 
             modelBuilder.Entity("VIIDII.Models.FileMetadata", b =>
@@ -142,7 +142,7 @@ namespace VIIDII.Migrations
 
                     b.HasIndex("UploadedByUserId");
 
-                    b.ToTable("Files");
+                    b.ToTable("Files", (string)null);
                 });
 
             modelBuilder.Entity("VIIDII.Models.Message", b =>
@@ -183,7 +183,7 @@ namespace VIIDII.Migrations
 
                     b.HasIndex("SessionId");
 
-                    b.ToTable("Messages");
+                    b.ToTable("Messages", (string)null);
                 });
 
             modelBuilder.Entity("VIIDII.Models.RosterEntry", b =>
@@ -237,9 +237,6 @@ namespace VIIDII.Migrations
                     b.Property<int>("Role")
                         .HasColumnType("integer");
 
-                    b.Property<int?>("SessionId")
-                        .HasColumnType("integer");
-
                     b.Property<string>("Source")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -247,12 +244,10 @@ namespace VIIDII.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("SessionId");
-
                     b.HasIndex("ClassId", "Identifier")
                         .IsUnique();
 
-                    b.ToTable("RosterEntries");
+                    b.ToTable("RosterEntries", (string)null);
                 });
 
             modelBuilder.Entity("VIIDII.Models.Session", b =>
@@ -332,7 +327,7 @@ namespace VIIDII.Migrations
                     b.HasIndex("SessionId")
                         .IsUnique();
 
-                    b.ToTable("Sessions");
+                    b.ToTable("Sessions", (string)null);
                 });
 
             modelBuilder.Entity("VIIDII.Models.SessionParticipant", b =>
@@ -355,7 +350,7 @@ namespace VIIDII.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("SessionParticipants");
+                    b.ToTable("SessionParticipants", (string)null);
                 });
 
             modelBuilder.Entity("VIIDII.Models.User", b =>
@@ -399,7 +394,7 @@ namespace VIIDII.Migrations
                     b.HasIndex("MatricNo")
                         .IsUnique();
 
-                    b.ToTable("Users");
+                    b.ToTable("Users", (string)null);
                 });
 
             modelBuilder.Entity("VIIDII.Models.AttendanceLog", b =>
@@ -485,13 +480,7 @@ namespace VIIDII.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("VIIDII.Models.Session", "Session")
-                        .WithMany()
-                        .HasForeignKey("SessionId");
-
                     b.Navigation("Class");
-
-                    b.Navigation("Session");
                 });
 
             modelBuilder.Entity("VIIDII.Models.Session", b =>

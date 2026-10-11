@@ -172,6 +172,13 @@
     </div>
 
 @code {
+    /// <summary>
+    /// The class preselected by /create-session?classId=, set by the "Start a session"
+    /// button on the class page. Honoured only when the lecturer owns that class.
+    /// </summary>
+    [SupplyParameterFromQuery(Name = "classId")]
+    public int? RequestedClassId { get; set; }
+
     private CreateSessionRequest SessionModel = new();
     private string? ErrorMessage;
     private string? SuccessMessage;
@@ -232,9 +239,17 @@
             .Select(c => new ClassOption(c.Id, c.Code, c.Name, c.RosterMappingJson is not null))
             .ToList();
 
-        // One class means there is nothing to choose, so pick it and skip the question.
-        if (MyClasses.Count == 1)
+        // Arriving from a class page carries ?classId=, because that class is the only
+        // sensible one for a session started from that page. Only accept an id the
+        // lecturer actually owns: the query string is caller-supplied, and taking it
+        // at face value would preselect a class that then fails to create a session.
+        if (RequestedClassId is int requested && MyClasses.Any(c => c.Id == requested))
         {
+            SessionModel.ClassId = requested;
+        }
+        else if (MyClasses.Count == 1)
+        {
+            // One class means there is nothing to choose, so pick it and skip the question.
             SessionModel.ClassId = MyClasses[0].Id;
         }
 
