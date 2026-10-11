@@ -89,6 +89,18 @@
                             <span class="student-state @(student.HasClaimed ? "claimed" : null)">
                                 @(student.HasClaimed ? "joined" : "-")
                             </span>
+                            @* Only offered once a seat is actually held. A student who
+                               loses their phone or changes number is otherwise locked
+                               out permanently, and the join screen tells them to ask
+                               the lecturer to reset the list. *@
+                            @if (student.HasClaimed)
+                            {
+                                <button class="btn-release"
+                                        title="Free this seat so the student can join from another device"
+                                        @onclick="() => ReleaseSeatAsync(student)">
+                                    Release
+                                </button>
+                            }
                         </div>
                     }
                 </div>
@@ -219,7 +231,7 @@
 
     [Parameter] public int ClassId { get; set; }
 
-    private sealed record StudentRow(string Identifier, string DisplayName, bool HasClaimed);
+    private sealed record StudentRow(int RosterEntryId, string Identifier, string DisplayName, bool HasClaimed);
 
     private Class? Target { get; set; }
     private List<StudentRow> Students { get; set; } = new();
@@ -274,12 +286,39 @@
                 var entries = await RosterService.GetForClassAsync(ClassId);
 
                 Students = entries
-                    .Select(e => new StudentRow(e.Identifier, e.DisplayName, e.HasClaimed))
+                    .Select(e => new StudentRow(e.Id, e.Identifier, e.DisplayName, e.HasClaimed))
                     .ToList();
             }
         }
 
         IsLoading = false;
+    }
+
+    /// <summary>
+    /// Frees a seat, so a student locked out of their own place can get back in from
+    /// another device. Reloads the list rather than patching the row, because the
+    /// claimed count in the header has to agree with it.
+    /// </summary>
+    private async Task ReleaseSeatAsync(StudentRow student)
+    {
+        try
+        {
+            await RosterService.ReleaseSeatAsync(student.RosterEntryId);
+
+            var entries = await RosterService.GetForClassAsync(ClassId);
+
+            Students = entries
+                .Select(e => new StudentRow(e.Id, e.Identifier, e.DisplayName, e.HasClaimed))
+                .ToList();
+
+            Notice = $"Released the seat for {student.DisplayName}.";
+            NoticeKind = "alert-success";
+        }
+        catch (Exception ex)
+        {
+            Notice = $"Could not release that seat: {ex.Message}";
+            NoticeKind = "alert-danger";
+        }
     }
 
     private async Task CopyLink()

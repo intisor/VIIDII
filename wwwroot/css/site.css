@@ -548,3 +548,21 @@ h1, h2, h3, h4 { font-weight: 600; line-height: 1.25; color: var(--text); }
     font-size: 0.75rem;
     flex-shrink: 0;
 }
+
+/* Free a held seat. Small and secondary: it is a recovery action for the
+   occasional student, not a routine control. */
+.btn-release {
+    background: transparent;
+    border: 1px solid var(--border-mid);
+    border-radius: var(--r-sm);
+    color: var(--text-mid);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    padding: 0.2rem 0.5rem;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.btn-release:hover {
+    border-color: var(--danger);
+    color: var(--danger);
+}

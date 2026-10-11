@@ -146,6 +146,37 @@ public static class RosterEndpoints
         // What a student sees before typing anything. Deliberately returns only labels,
         // never the class list, which would expose every attendee's name and
         // identifier to anyone holding the link.
+        // Frees a seat a student is locked out of. The join screen tells a blocked
+        // student to ask their lecturer to reset the list, so this has to exist or
+        // that advice is a dead end.
+        group.MapPost("/classes/{classId:int}/release/{rosterEntryId:int}", async (
+            int classId,
+            int rosterEntryId,
+            ViidiiDbContext context,
+            RosterService rosterService,
+            ClassService classService,
+            CurrentUserAccessor currentUser,
+            ILoggerFactory loggerFactory) =>
+        {
+            if (!await IsClassOwnerAsync(context, classId, currentUser.MatricNo))
+            {
+                return Results.Forbid();
+            }
+
+            var released = await rosterService.ReleaseSeatAsync(rosterEntryId);
+
+            if (!released)
+            {
+                return Results.NotFound(new { error = "That seat is not currently held." });
+            }
+
+            loggerFactory.CreateLogger("VIIDII.Roster").LogInformation(
+                "Seat released for roster entry {RosterEntryId} in class {ClassId}",
+                rosterEntryId, classId);
+
+            return Results.Ok(new { released = true });
+        });
+
         group.MapGet("/classes/{classId:int}/join-prompt", async (
             int ClassId,
             ViidiiDbContext context) =>

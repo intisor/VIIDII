@@ -118,50 +118,65 @@ if (-not $NoTunnel) {
 
 Write-Log 'Supervising. Ctrl+C to stop.'
 
+# Everything below runs on a timer and must never be allowed to end the loop.
+# With ErrorActionPreference set to Stop, one failed Start-Process, or one moment
+# where the port is not yet free, took the whole supervisor down and the site stayed
+# broken until someone noticed. That is the failure this script exists to prevent,
+# so it has to survive its own failures.
 $failures = 0
 while ($true) {
     Start-Sleep -Seconds 5
 
-    # The app. Checked by HTTP rather than by process, because a process can be
-    # alive while it has stopped serving, which is exactly the state that produced
-    # a 502 that never recovered.
-    if ($app.HasExited -or -not (Test-OriginHealthy)) {
-        $failures++
+    try {
+        # The app. Checked by HTTP rather than by process, because a process can be
+        # alive while it has stopped serving, which is exactly the state that produced
+        # a 502 that never recovered.
+        if ($app.HasExited -or -not (Test-OriginHealthy)) {
+            $failures++
 
-        if (-not $app.HasExited) {
-            Write-Log "App alive but not answering on port $Port, restarting."
-            $app | Stop-Process -Force -ErrorAction SilentlyContinue
-            Start-Sleep -Seconds 2
-        } else {
-            Write-Log "App exited with code $($app.ExitCode), restarting."
-        }
+            if (-not $app.HasExited) {
+                Write-Log "App alive but not answering on port $Port, restarting."
+                $app | Stop-Process -Force -ErrorAction SilentlyContinue
+            } else {
+                Write-Log "App exited with code $($app.ExitCode), restarting."
+            }
 
-        # Back off if it keeps dying, so a bad build does not spin forever.
-        if ($failures -gt 3) {
-            Write-Log "Failed $failures times, waiting 15s before trying again."
-            Start-Sleep -Seconds 15
-        }
+            # Give the old socket time to clear, otherwise the replacement fails to
+            # bind and the next attempt inherits the same problem.
+            Start-Sleep -Seconds 3
 
-        $app = Start-Process dotnet -ArgumentList @($dll, '--urls', "http://localhost:$Port") `
-            -WorkingDirectory $repo -PassThru -WindowStyle Hidden `
-            -RedirectStandardOutput (Join-Path $logDir 'app.log') `
-            -RedirectStandardError  (Join-Path $logDir 'app.err')
+            # Back off if it keeps dying, so a bad build does not spin forever.
+            if ($failures -gt 3) {
+                Write-Log "Failed $failures times, waiting 15s before trying again."
+                Start-Sleep -Seconds 15
+            }
 
-        if (Test-OriginHealthy) {
-            Write-Log 'Recovered.'
+            $app = Start-Process dotnet -ArgumentList @($dll, '--urls', "http://localhost:$Port") `
+                -WorkingDirectory $repo -PassThru -WindowStyle Hidden `
+                -RedirectStandardOutput (Join-Path $logDir 'app.log') `
+                -RedirectStandardError  (Join-Path $logDir 'app.err')
+
+            if (Test-OriginHealthy) {
+                Write-Log 'Recovered.'
+                $failures = 0
+            }
+        } elseif ($failures -gt 0) {
             $failures = 0
         }
-    } elseif ($failures -gt 0) {
-        $failures = 0
-    }
 
-    # The tunnel. cloudflared reconnects on its own for network blips; this only
-    # catches the process being gone altogether.
-    if ($tunnel -and $tunnel.HasExited) {
-        Write-Log 'Tunnel connector exited, restarting.'
-        $tunnel = Start-Process $cf -ArgumentList @('tunnel', '--no-autoupdate', 'run', '--token', $token) `
-            -PassThru -WindowStyle Hidden `
-            -RedirectStandardOutput (Join-Path $logDir 'cloudflared.log') `
-            -RedirectStandardError  (Join-Path $logDir 'cloudflared.err')
+        # The tunnel. cloudflared reconnects on its own for network blips; this only
+        # catches the process being gone altogether.
+        if ($tunnel -and $tunnel.HasExited) {
+            Write-Log 'Tunnel connector exited, restarting.'
+            $tunnel = Start-Process $cf -ArgumentList @('tunnel', '--no-autoupdate', 'run', '--token', $token) `
+                -PassThru -WindowStyle Hidden `
+                -RedirectStandardOutput (Join-Path $logDir 'cloudflared.log') `
+                -RedirectStandardError  (Join-Path $logDir 'cloudflared.err')
+        }
+    }
+    catch {
+        # Log and carry on. The next tick will try again.
+        Write-Log "Supervisor tick failed: $($_.Exception.Message)"
+        Start-Sleep -Seconds 5
     }
 }

@@ -274,6 +274,32 @@ public class RosterService
     /// attended". That is acceptable for participation tracking and not acceptable
     /// for accreditation-grade certification.
     /// </summary>
+    /// <summary>
+    /// Frees a seat a student is being held out of.
+    /// <para>
+    /// A claim is deliberately one-device-at-a-time, but that leaves a real trap: a
+    /// student who loses their phone, changes number, or whose first claim response was
+    /// lost mid-request can never get back in, and the student is told to ask the lecturer
+    /// to reset the list when no such control existed. This is that control.
+    /// </para>
+    /// </summary>
+    public async Task<bool> ReleaseSeatAsync(int rosterEntryId)
+    {
+        var entry = await _context.RosterEntries.FindAsync(rosterEntryId);
+
+        if (entry is null || !entry.HasClaimed)
+        {
+            return false;
+        }
+
+        entry.HasClaimed = false;
+        entry.ClaimedAtUtc = null;
+        entry.ClaimToken = null;
+        await _context.SaveChangesAsync();
+
+        return true;
+    }
+
     public async Task<RosterEntry?> ResolveAttendeeAsync(int classId, string identifier, string name)
     {
         if (string.IsNullOrWhiteSpace(identifier) || string.IsNullOrWhiteSpace(name))

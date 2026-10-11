@@ -96,16 +96,40 @@ public static class JoinEndpoints
                     $"/join/{Uri.EscapeDataString(code)}?error=not-found&identifier={Uri.EscapeDataString(identifier)}&name={Uri.EscapeDataString(name)}");
             }
 
-            var claimToken = Guid.NewGuid().ToString("N");
-            var claimed = await rosterService.ClaimSeatAsync(entry.Id, claimToken);
+            // Already holding this exact seat on this device. Re-issuing lets a student
+            // who refreshed, or whose first response was lost, back in.
+            //
+            // This check was missing and that made claims a one-way door. A fresh
+            // random token is generated per request and compared against the stored
+            // one, so it could never match: once a row was claimed, every later claim
+            // was refused, on every device including the one that had just claimed it.
+            // If the response was lost in between, the row stayed held by a token
+            // nobody had and the student was locked out with no way back.
+            var held = seats.Read(http);
+            var alreadyOurs = held is not null
+                              && held.ClassId == target.Id
+                              && string.Equals(held.ClaimToken, entry.ClaimToken, StringComparison.Ordinal);
 
-            if (!claimed)
+            string claimToken;
+
+            if (alreadyOurs)
             {
-                // The same roster row is already held from another device. Refusing
-                // here stops one person being counted twice, but it also means a
-                // student who simply reopened the page is now locked out.
-                return Results.Redirect(
-                    $"/join/{Uri.EscapeDataString(code)}?error=already-claimed&identifier={Uri.EscapeDataString(identifier)}");
+                claimToken = entry.ClaimToken!;
+                logger.LogInformation(
+                    "{Identifier} re-entered on the device holding their seat", entry.Identifier);
+            }
+            else
+            {
+                claimToken = Guid.NewGuid().ToString("N");
+                var claimed = await rosterService.ClaimSeatAsync(entry.Id, claimToken);
+
+                if (!claimed)
+                {
+                    // Held from a different device. Refusing stops one person being
+                    // counted twice. The lecturer can free it from the class page.
+                    return Results.Redirect(
+                        $"/join/{Uri.EscapeDataString(code)}?error=already-claimed&identifier={Uri.EscapeDataString(identifier)}");
+                }
             }
 
             seats.Issue(http, new StudentSeat(entry.Identifier, entry.DisplayName, target.Id, claimToken));
