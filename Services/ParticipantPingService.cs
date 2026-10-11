@@ -77,7 +77,7 @@ namespace VIIDII.Services
 
                 foreach (var participantId in session.ParticipantIds)
                 {
-                    if (sessionService.IsLecturer(participantId))
+                    if (await sessionService.IsLecturerAsync(participantId))
                     {
                         continue;
                     }

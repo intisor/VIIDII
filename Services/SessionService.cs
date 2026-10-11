@@ -1,18 +1,32 @@
-using VIIDII.Models;               
+using VIIDII.Models;
+using VIIDII.Data;
+using Microsoft.EntityFrameworkCore;
 using System.Collections.Concurrent;
 
 namespace VIIDII.Services;
 
 public class SessionService
 {
-    private readonly ConcurrentDictionary<string, Session> _sessions = [];
-    private static Dictionary<string, string> _userDetailsCache = new(); // Static cache for user details
+    /// <summary>
+    /// Live sessions, process-wide rather than per dependency injection scope.
+    /// <para>
+    /// This was an instance field on a scoped service. Blazor Server builds a fresh
+    /// scope for every circuit, so each circuit got its own empty dictionary: a
+    /// lecturer created a session in their circuit, and every student who connected
+    /// afterwards was told the session did not exist. Sessions also disappear the
+    /// moment the lecturer's circuit ends.
+    /// </para>
+    /// </summary>
+    private static readonly ConcurrentDictionary<string, Session> _sessions = new();
+
     private readonly IServiceProvider _serviceProvider;
 
     public SessionService(IServiceProvider serviceProvider)
     {
         _serviceProvider = serviceProvider;
     }
+
+    private UserService Users => _serviceProvider.GetRequiredService<UserService>();
 
     // Define ParticipantScoreDetails here or ensure it's in Models/User.cs or a new Models/ParticipantScoreDetails.cs
     public class ParticipantScoreDetails
@@ -28,23 +42,39 @@ public class SessionService
         public required string ParticipantName { get; set; } // Added to fetch participant name
     }
   
-    public bool IsLecturer(string matricNo)
+    /// <summary>
+    /// Whether this matric number belongs to a lecturer, read from the database.
+    /// <para>
+    /// This used to be answered from a hardcoded list of demo users, which meant
+    /// nobody who signed up could ever be recognised as a lecturer.
+    /// </para>
+    /// </summary>
+    public async Task<bool> IsLecturerAsync(string matricNo)
     {
-        var lecturers = MockApiService.GetLecturers();
-        return lecturers.Any(l => l.MatricNo == matricNo);
+        if (string.IsNullOrWhiteSpace(matricNo))
+        {
+            return false;
+        }
+
+        return await _serviceProvider.GetRequiredService<ViidiiDbContext>()
+            .Users
+            .AsNoTracking()
+            .AnyAsync(u => u.MatricNo == matricNo && u.Role == Role.Lecturer);
     }
-    public Session CreateSession(string lecturerId, string title, List<User.Departments> allowedDepartments, List<User.Levels> allowedLevels, bool? replaceExisting = false)
+
+    public async Task<Session> CreateSession(string lecturerId, string title, List<User.Departments> allowedDepartments, List<User.Levels> allowedLevels, bool replaceExisting = false)
     {
-        var lecturers = MockApiService.GetLecturers();
-        if (!lecturers.Any(l => l.MatricNo == lecturerId))
+        if (!await IsLecturerAsync(lecturerId))
+        {
             return null;
+        }
 
         var existingSession = _sessions.Values
             .FirstOrDefault(s => s.LecturerMatricNo == lecturerId && s.Status == SessionStatus.Active && s.ExpiresAt > DateTime.UtcNow);
 
         if (existingSession != null)
         {
-            if (replaceExisting == null || replaceExisting == false)
+            if (!replaceExisting)
                 return existingSession;
             _sessions.TryRemove(existingSession.SessionId, out _);
         }
@@ -68,10 +98,24 @@ public class SessionService
         }
 
         session.Status = SessionStatus.Active;
-        _sessions.TryAdd(session.SessionId, session);
 
-        // Persist to database asynchronously (fire and forget)
-        _ = PersistSessionCreationAsync(lecturerId, title, allowedDepartments, allowedLevels);
+        // Persist before advertising the session. This used to be fire and forget,
+        // so a database failure left a session running in memory that was never
+        // written down: it worked until the process restarted, and the exception
+        // went nowhere. If the write fails, take it back out of the dictionary.
+        try
+        {
+            await PersistSessionCreationAsync(lecturerId, title, allowedDepartments, allowedLevels);
+        }
+        catch (Exception ex)
+        {
+            _sessions.TryRemove(session.SessionId, out _);
+
+            throw new InvalidOperationException(
+                "The session could not be saved, so it was not created.", ex);
+        }
+
+        _sessions.TryAdd(session.SessionId, session);
 
         return session;
     }
@@ -90,24 +134,35 @@ public class SessionService
         _ = PersistParticipantLeaveAsync(sessionId, participantId);
         return session;
     }
-    public (Session Session, string? Error) JoinSession(string sessionId, string participantId, string? connectionId)
+    public async Task<(Session Session, string? Error)> JoinSession(string sessionId, string participantId, string? connectionId)
     {
         if (!_sessions.TryGetValue(sessionId, out var session) || session.Status == SessionStatus.Ended || session.ExpiresAt < DateTime.UtcNow)
             return (null, "Session not found, inactive, or expired.");
-        var user = MockApiService.GetUsers().FirstOrDefault(u => u.MatricNo == participantId);
-        if (user is null)
-            return (null, "Invalid user.");
 
-        if (!session.AllowedDepartments.Contains(User.Departments.Any))
+        // Students have no account. They arrive from a class link and claim a seat
+        // against the roster, so most participants have no user row at all and the
+        // old "Invalid user." rejection would turn the join link away from everyone.
+        //
+        // A participant who does have an account is still held to the session's
+        // department and level, which is what those fields were for. A null
+        // department or level means "not recorded", not "not allowed".
+        var user = await Users.GetUserByMatricNoAsync(participantId);
+
+        if (user is not null)
         {
-            if (user.Department is null || !session.AllowedDepartments.Contains(user.Department.Value))
+            if (!session.AllowedDepartments.Contains(User.Departments.Any)
+                && user.Department is not null
+                && !session.AllowedDepartments.Contains(user.Department.Value))
+            {
                 return (null, "Your department is not allowed for this session.");
-        }
+            }
 
-        if (!session.AllowedLevels.Contains(User.Levels.Any))
-        {
-            if (user.Level is null || !session.AllowedLevels.Contains(user.Level.Value))
+            if (!session.AllowedLevels.Contains(User.Levels.Any)
+                && user.Level is not null
+                && !session.AllowedLevels.Contains(user.Level.Value))
+            {
                 return (null, "Your level is not allowed for this session.");
+            }
         }
 
         if (_sessions.Values.Any(s => s.Status == SessionStatus.Active && s.ParticipantIds.Contains(participantId) && s.SessionId != sessionId))
@@ -537,12 +592,37 @@ public class SessionService
             }
         }
 
-        _userDetailsCache ??= MockApiService.GetUsers().ToDictionary(u => u.MatricNo, u => u.Name);
-
         // Single-pass participant ID collection, including past participants with events/statuses
         var allParticipantIds = new HashSet<string>(session.ParticipantIds);
         allParticipantIds.UnionWith(session.ParticipantEvents.Keys);
         allParticipantIds.UnionWith(session.ParticipantStatuses.Keys);
+
+        // Names for anyone who turned up in the session but is not already resolved
+        // from the participant rows. Resolved per participant against the database,
+        // in one query, rather than from a static cache that was built once from
+        // hardcoded demo users and never refreshed, so it only ever knew names that
+        // did not exist.
+        //
+        // Kept synchronous: this method is called from six places on the hub's hot
+        // path and already returns synchronously, and it is a single small read.
+        var unresolved = allParticipantIds
+            .Where(id => !participantNames.ContainsKey(id))
+            .ToList();
+
+        if (unresolved.Count > 0)
+        {
+            var known = _serviceProvider.GetRequiredService<ViidiiDbContext>()
+                .Users
+                .AsNoTracking()
+                .Where(u => unresolved.Contains(u.MatricNo))
+                .Select(u => new { u.MatricNo, u.Name })
+                .ToList();
+
+            foreach (var found in known)
+            {
+                participantNames[found.MatricNo] = found.Name;
+            }
+        }
 
         var result = new Dictionary<string, ParticipantScoreDetails>(allParticipantIds.Count);
         foreach (var participantId in allParticipantIds)
@@ -551,7 +631,7 @@ public class SessionService
                 session,
                 participantId,
                 totalSessionMinutes,
-                participantNames.GetValueOrDefault(participantId, _userDetailsCache.GetValueOrDefault(participantId, "Unknown User"))
+                participantNames.GetValueOrDefault(participantId, participantId)
             );
         }
 

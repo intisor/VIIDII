@@ -84,7 +84,7 @@ namespace VIIDII.Hubs
                 }
                 else
                 {
-                    var (joinedSession, error) = _sessionService.JoinSession(sessionId, matricNo,Context.ConnectionId);
+                    var (joinedSession, error) = await _sessionService.JoinSession(sessionId, matricNo, Context.ConnectionId);
                     if (joinedSession is null)
                     {
                         Console.WriteLine($"JoinSession failed: {error}");
@@ -122,7 +122,7 @@ namespace VIIDII.Hubs
             await Groups.AddToGroupAsync(Context.ConnectionId, sessionId);
             if (!await IsSessionLecturerAsync(sessionId, matricNo))
             {
-                var (joinedSession, error) = _sessionService.JoinSession(sessionId, matricNo, Context.ConnectionId);
+                var (joinedSession, error) = await _sessionService.JoinSession(sessionId, matricNo, Context.ConnectionId);
                 if (joinedSession is null)
                 {
                     Console.WriteLine($"JoinSession failed: {error}");
@@ -451,7 +451,7 @@ namespace VIIDII.Hubs
 
                 foreach (var participantId in session.ParticipantIds)
                 {
-                    if (_sessionService.IsLecturer(participantId))
+                    if (await _sessionService.IsLecturerAsync(participantId))
                     {
                         continue;
                     }

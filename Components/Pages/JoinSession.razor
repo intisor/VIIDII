@@ -354,7 +354,7 @@ else
     {
         try
         {
-            var (_, error) = SessionService.JoinSession(session.SessionId, CurrentUser!.MatricNo, null);
+            var (_, error) = await SessionService.JoinSession(session.SessionId, CurrentUser!.MatricNo, null);
             if (error is not null)
             {
                 ErrorMessage = error;

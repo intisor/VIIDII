@@ -246,7 +246,7 @@
                 return;
             }
 
-            var session = SessionService.CreateSession(
+            var session = await SessionService.CreateSession(
                 currentUser.MatricNo,
                 SessionModel.Title,
                 selectedDepts,
