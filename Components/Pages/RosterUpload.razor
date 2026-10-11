@@ -5,10 +5,10 @@
 @inject ClassService ClassService
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
+@inject HttpClient Http
 @using System.Net.Http.Json
 @using System.Text.Json
 @using Microsoft.JSInterop
-@implements IDisposable
 
 <PageTitle>Attendee List - VIIDII</PageTitle>
 
@@ -260,12 +260,6 @@
     private int _linked;
     private List<string> _importErrors = new();
 
-    private readonly HttpClient _http;
-
-    public RosterUpload()
-    {
-        _http = new HttpClient { BaseAddress = new Uri("/") };
-    }
 
     private static string Percent(double value) => $"{value * 100:0}%";
 
@@ -334,7 +328,7 @@
 
         try
         {
-            using var response = await _http.PostAsync(
+            using var response = await Http.PostAsync(
                 "api/roster/analyze",
                 new StringContent(content, System.Text.Encoding.UTF8, "text/plain"));
 
@@ -411,7 +405,7 @@
                 Mapping = mapping
             };
 
-            using var response = await _http.PostAsJsonAsync(
+            using var response = await Http.PostAsJsonAsync(
                 $"api/roster/classes/{ClassId}/import",
                 payload);
 
@@ -456,8 +450,6 @@
         _error = null;
         _importErrors = new List<string>();
     }
-
-    public void Dispose() => _http.Dispose();
 
     private sealed class AnalyzeResponse
     {

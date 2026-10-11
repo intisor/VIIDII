@@ -1,0 +1,302 @@
+@page "/classes/{ClassId:int}"
+@using System.Net.Http.Json
+@using System.Text.Json
+@using Microsoft.JSInterop
+@attribute [Authorize(Policy = ViidiiPolicies.LecturerOnly)]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject AuthService AuthService
+@inject ClassService ClassService
+
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@inject HttpClient Http
+
+<PageTitle>@(Target?.Name ?? "Class") - VIIDII</PageTitle>
+
+<div class="detail-wrap">
+
+    <a href="/classes" class="detail-back">&larr; All classes</a>
+
+    @if (IsLoading)
+    {
+        <p class="info-text">Loading...</p>
+    }
+    else if (Target is null)
+    {
+        <h1>Class not found</h1>
+        <p class="info-text">It may have been removed, or the link is wrong.</p>
+    }
+    else
+    {
+        <div class="detail-head">
+            <span class="detail-code">@Target.Code</span>
+            <h1>@Target.Name</h1>
+        </div>
+
+        @if (!string.IsNullOrEmpty(Notice))
+        {
+            <div class="alert @NoticeKind">@Notice</div>
+        }
+
+        <div class="detail-card">
+            <h2>Student link</h2>
+            <p class="info-text">
+                This is the same link every week. Send it in your class group; nobody has to
+                make an account.
+            </p>
+
+            <div class="share-row">
+                <code class="share-link">@ShareUrl</code>
+                <button class="btn-secondary-custom" @onclick="CopyLink">Copy</button>
+            </div>
+        </div>
+
+        <div class="detail-card">
+            <h2>Class list</h2>
+
+            @if (!HasList)
+            {
+                <p class="info-text">
+                    No list yet. Upload the file you already have and VIIDII will work out
+                    which column is which.
+                </p>
+
+                <button class="btn-primary-custom" @onclick="Upload">
+                    Upload the list
+                </button>
+            }
+            else
+            {
+                <p class="info-text">
+                    @Students.Count student(s), @ClaimedCount of them have joined at least once.
+                </p>
+
+                <div class="btn-row">
+                    <button class="btn-primary-custom" @onclick="Upload">
+                        Replace the list
+                    </button>
+                    <button class="btn-secondary-custom" @onclick="StartSession">
+                        Start a session
+                    </button>
+                </div>
+
+                <div class="student-list">
+                    @foreach (var student in Students)
+                    {
+                        <div class="student-row">
+                            <span class="student-id">@student.Identifier</span>
+                            <span class="student-name">@student.DisplayName</span>
+                            <span class="student-state @(student.HasClaimed ? "claimed" : null)">
+                                @(student.HasClaimed ? "joined" : "-")
+                            </span>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>
+
+<style>
+    .detail-wrap {
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 2rem 1rem 3rem;
+    }
+
+    .detail-back {
+        display: inline-block;
+        margin-bottom: 1rem;
+        color: var(--text-mid);
+        text-decoration: none;
+        font-size: 0.875rem;
+    }
+
+    .detail-back:hover {
+        color: var(--text);
+    }
+
+    .detail-head {
+        margin-bottom: 1.5rem;
+    }
+
+    .detail-code {
+        display: inline-block;
+        font-size: 0.6875rem;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        color: var(--accent);
+        background: var(--accent-dim);
+        padding: 0.125rem 0.5rem;
+        border-radius: var(--r-sm);
+        margin-bottom: 0.5rem;
+    }
+
+    .detail-head h1 {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: var(--text);
+    }
+
+    .detail-card {
+        background: var(--surface);
+        border: 1px solid var(--border-mid);
+        border-radius: var(--r-lg);
+        padding: 1.5rem;
+        margin-bottom: 1.25rem;
+    }
+
+    .detail-card h2 {
+        font-size: 1.0625rem;
+        font-weight: 700;
+        color: var(--text);
+        margin-bottom: 0.5rem;
+    }
+
+    .share-row {
+        display: flex;
+        gap: 0.5rem;
+        align-items: stretch;
+        margin-top: 0.75rem;
+    }
+
+    .share-link {
+        flex: 1;
+        background: var(--bg);
+        border: 1px solid var(--border-mid);
+        border-radius: var(--r);
+        padding: 0.625rem 0.75rem;
+        font-size: 0.8125rem;
+        color: var(--text);
+        overflow-x: auto;
+        white-space: nowrap;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+
+    .student-list {
+        margin-top: 1.25rem;
+        border: 1px solid var(--border-mid);
+        border-radius: var(--r);
+        max-height: 26rem;
+        overflow-y: auto;
+    }
+
+    .student-row {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.5rem 0.75rem;
+        border-bottom: 1px solid var(--border);
+        font-size: 0.875rem;
+    }
+
+    .student-row:last-child {
+        border-bottom: none;
+    }
+
+    .student-id {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        color: var(--text-mid);
+        min-width: 9rem;
+    }
+
+    .student-name {
+        flex: 1;
+        color: var(--text);
+    }
+
+    .student-state {
+        font-size: 0.6875rem;
+        color: var(--text-faint);
+    }
+
+    .student-state.claimed {
+        color: var(--success);
+    }
+</style>
+
+@code {
+
+    [Parameter] public int ClassId { get; set; }
+
+    private sealed record StudentRow(string Identifier, string DisplayName, bool HasClaimed);
+
+    private Class? Target { get; set; }
+    private List<StudentRow> Students { get; set; } = new();
+
+    private bool IsLoading { get; set; } = true;
+    private string? Notice { get; set; }
+    private string NoticeKind { get; set; } = "alert-danger";
+
+    private bool HasList => Target?.RosterMappingJson is not null;
+
+    private int ClaimedCount => Students.Count(s => s.HasClaimed);
+
+    private string ShareUrl =>
+        $"{Navigation.BaseUri.TrimEnd('/')}/join/{Target?.Code}";
+
+    protected override async Task OnParametersSetAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        IsLoading = true;
+
+        var user = await AuthService.GetCurrentUserAsync();
+
+        if (user is null)
+        {
+            Navigation.NavigateTo("/login");
+            return;
+        }
+
+        Target = await ClassService.GetByIdAsync(ClassId);
+
+        Students = new List<StudentRow>();
+
+        if (Target is not null)
+        {
+            // Checked here as well as in the endpoint, so a lecturer following the wrong
+            // link is told plainly rather than shown an empty class.
+            if (Target.LecturerId != user.Id)
+            {
+                Target = null;
+                Notice = "That class is not yours.";
+                NoticeKind = "alert-danger";
+            }
+            else if (HasList)
+            {
+                var rows = await Http.GetFromJsonAsync<JsonElement>($"/api/roster/classes/{ClassId}");
+
+                Students = rows.EnumerateArray()
+                    .Select(e => new StudentRow(
+                        e.GetProperty("identifier").GetString() ?? string.Empty,
+                        e.GetProperty("displayName").GetString() ?? string.Empty,
+                        e.GetProperty("hasClaimed").GetBoolean()))
+                    .ToList();
+            }
+        }
+
+        IsLoading = false;
+    }
+
+    private async Task CopyLink()
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", ShareUrl);
+            Notice = "Link copied.";
+            NoticeKind = "alert-success";
+        }
+        catch (JSException)
+        {
+            // Clipboard access needs a secure context, so it fails on plain HTTP.
+            // The link is on screen and can still be selected by hand.
+            Notice = "Copying is not available here. Select the link and copy it by hand.";
+            NoticeKind = "alert-warning";
+        }
+    }
+
+    private void Upload() => Navigation.NavigateTo($"/classes/{ClassId}/roster");
+
+    private void StartSession() => Navigation.NavigateTo($"/create-session?classId={ClassId}");
+}

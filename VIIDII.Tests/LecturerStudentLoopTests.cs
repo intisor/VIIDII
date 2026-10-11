@@ -529,4 +529,25 @@ public class LecturerStudentLoopTests : IClassFixture<WebApplicationFactory<Prog
         Assert.Null(error);
         Assert.Contains("CSC/2021/002", joined.ParticipantIds);
     }
+    [Fact]
+    public async Task TheClassScreensResolveForALecturer()
+    {
+        using var app = CreateApp();
+        using var lecturer = Browser(app);
+
+        var fixture = await SetUpClassAsync(lecturer);
+
+        // The list page and the detail page its buttons link to. These were missing
+        // for a while and nothing caught it, because the 404 is a Blazor route that
+        // only appears once somebody clicks through.
+        var list = await lecturer.GetAsync("/classes");
+        Assert.Equal(HttpStatusCode.OK, list.StatusCode);
+
+        var detail = await lecturer.GetAsync($"/classes/{fixture.ClassId}");
+        Assert.Equal(HttpStatusCode.OK, detail.StatusCode);
+
+        // And the upload screen the detail page sends the lecturer to.
+        var upload = await lecturer.GetAsync($"/classes/{fixture.ClassId}/roster");
+        Assert.Equal(HttpStatusCode.OK, upload.StatusCode);
+    }
 }
