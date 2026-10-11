@@ -36,6 +36,7 @@ builder.Services.AddScoped<MessagePersistenceService>();
 // HttpContextAccessor), so it MUST be scoped. Registering it as a singleton leaks
 // DbContexts across requests and shares state between users.
 builder.Services.AddScoped<SessionService>();
+builder.Services.AddScoped<StudentSeatService>();
 builder.Services.AddScoped<MessageService>();
 builder.Services.AddSingleton<PasswordHasher<User>>();
 builder.Services.AddScoped<AuthService>();

@@ -1,0 +1,262 @@
+@page "/join/{code}"
+@using VIIDII.Components.Shared
+@inject ClassService ClassService
+@inject IHttpContextAccessor HttpContextAccessor
+@inject StudentSeatService Seats
+
+<PageTitle>@(Target?.Name ?? "Join class") - VIIDII</PageTitle>
+
+@if (Target is null)
+{
+    <div class="auth-wrap">
+        <div class="auth-card">
+            <div class="auth-head">
+                <div class="auth-eyebrow">Join</div>
+                <h1 class="auth-title">That class link did not work</h1>
+                <p class="auth-sub">Check the link your lecturer shared, or ask them to send it again.</p>
+            </div>
+
+            <a class="auth-back" href="/">Back to home</a>
+        </div>
+    </div>
+}
+else if (Waiting)
+{
+    <div class="auth-wrap">
+        <div class="auth-card">
+            <div class="auth-head">
+                <div class="auth-eyebrow">@Target.Code</div>
+                <h1 class="auth-title">You are on the list</h1>
+                <p class="auth-sub">
+                    Nothing is running for @Target.Name at the moment. Refresh this page once your
+                    lecturer starts, and you will go straight in.
+                </p>
+            </div>
+
+            <div class="auth-seat">
+                <span class="auth-seat-label">Signed in as</span>
+                <span class="auth-seat-name">@SeatIdentifier</span>
+                <span class="auth-seat-name">@SeatDisplayName</span>
+            </div>
+
+                <a class="auth-btn auth-btn-quiet" href="@JoinUrl">Refresh</a>
+
+            <p class="auth-alt">
+                Not you? <a href="@LeaveUrl">Start again</a>
+            </p>
+        </div>
+    </div>
+}
+else
+{
+    <div class="auth-wrap">
+        <div class="auth-card">
+            <div class="auth-head">
+                <div class="auth-eyebrow">@Target.Code</div>
+                <h1 class="auth-title">@Target.Name</h1>
+                <p class="auth-sub">@Prompt</p>
+            </div>
+
+            @if (!string.IsNullOrEmpty(Error))
+            {
+                <div class="auth-notice" role="alert">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <span>@Error</span>
+                </div>
+            }
+
+            @* Server rendered: one request on a slow network, and the seat cookie is
+               issued by the response that validates the details. An interactive form
+               would need a second round trip and could not set the cookie. *@
+            <form method="post" action="@ClaimUrl">
+                <AntiforgeryToken />
+
+                <div class="auth-field">
+                    <label class="auth-label" for="identifier-input">@IdentifierLabel</label>
+                    <input id="identifier-input"
+                           name="identifier"
+                           type="text"
+                           class="auth-input"
+                           autocomplete="off"
+                           autocapitalize="characters"
+                           spellcheck="false"
+                           required
+                           autofocus
+                           maxlength="64"
+                           placeholder="@IdentifierPlaceholder"
+                           value="@Identifier" />
+                </div>
+
+                <div class="auth-field">
+                    <label class="auth-label" for="name-input">Your name</label>
+                    <input id="name-input"
+                           name="name"
+                           type="text"
+                           class="auth-input"
+                           autocomplete="name"
+                           required
+                           maxlength="200"
+                           placeholder="As it appears on the list"
+                           value="@Name" />
+                </div>
+
+                <button id="join-submit" type="submit" class="auth-btn">Join</button>
+            </form>
+
+            <p class="auth-alt">
+                <a href="@LeaveUrl">Not on the list, or is it someone else's name?</a>
+            </p>
+
+            <a class="auth-back" href="/">VIIDII</a>
+        </div>
+    </div>
+}
+
+<style>
+    .auth-btn-quiet {
+        display: block;
+        text-align: center;
+        background: var(--surface);
+        color: var(--text);
+        border: 1px solid var(--border-mid);
+        text-decoration: none;
+    }
+
+    .auth-btn-quiet:hover {
+        background: var(--surface-up);
+        border-color: var(--border-strong);
+        color: var(--text);
+    }
+
+    .auth-seat {
+        background: var(--surface);
+        border: 1px solid var(--border-mid);
+        border-radius: var(--r);
+        padding: 0.875rem 1rem;
+        margin-bottom: 1.25rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.125rem;
+    }
+
+    .auth-seat-label {
+        font-size: 0.6875rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--text-faint);
+        margin-bottom: 0.25rem;
+    }
+
+    .auth-seat-name {
+        font-size: 0.9375rem;
+        color: var(--text);
+        font-weight: 500;
+    }
+</style>
+
+@code {
+    [Parameter] public string Code { get; set; } = string.Empty;
+
+    [SupplyParameterFromQuery(Name = "error")] private string? ErrorCode { get; set; }
+
+    [SupplyParameterFromQuery(Name = "identifier")] private string? Identifier { get; set; }
+
+    [SupplyParameterFromQuery(Name = "name")] private string? Name { get; set; }
+
+    [SupplyParameterFromQuery(Name = "waiting")] private string? WaitingFlag { get; set; }
+
+    [SupplyParameterFromQuery(Name = "leave")] private string? LeaveFlag { get; set; }
+
+    private Class? Target { get; set; }
+    private HttpContext? Http { get; set; }
+
+    private StudentSeat? Seat { get; set; }
+
+    private string JoinUrl => $"/join/{Code}";
+
+    private string ClaimUrl => $"/join/claim/{Code}";
+
+    private string LeaveUrl => $"/join/{Code}?leave=1";
+
+    private bool Waiting => WaitingFlag == "1" && LeaveFlag != "1";
+
+    /// <summary>
+    /// Who is waiting. Read from the seat rather than the query string: the waiting
+    /// redirect carries no details, deliberately, so a name never lands in a URL or in
+    /// browser history. The seat cookie already holds both.
+    /// </summary>
+    private string SeatIdentifier => Seat?.MatricNo ?? Identifier;
+
+    private string SeatDisplayName => Seat?.DisplayName ?? Name;
+
+    private string? Error => ErrorCode switch
+    {
+        "not-found" => "Those details were not on the class list. Check them and try again.",
+        "no-list" => "Your lecturer has not added a class list yet. Try again once they have.",
+        "already-claimed" => "That place has already been claimed from another device. Ask your lecturer to reset the list.",
+        _ => null
+    };
+
+    private string Prompt => Target is null
+        ? string.Empty
+        : string.IsNullOrWhiteSpace(Target.JoinPrompt)
+            ? "Enter your details to join"
+            : Target.JoinPrompt;
+
+    // Taken from the column the lecturer chose as the identifier, so the student is
+    // asked for the thing they actually know rather than a guessed "matric number".
+    private string IdentifierLabel
+    {
+        get
+        {
+            var header = RosterColumnMappingFromTarget();
+            return string.IsNullOrWhiteSpace(header) ? "Your identifier" : header;
+        }
+    }
+
+    private string IdentifierPlaceholder => IdentifierLabel.Contains("Number", StringComparison.OrdinalIgnoreCase)
+        ? "e.g. CSC/2021/001"
+        : "As it appears on the list";
+
+    private string? RosterColumnMappingFromTarget()
+    {
+        if (Target?.RosterMappingJson is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(Target.RosterMappingJson);
+
+            return document.RootElement.TryGetProperty("identifierHeader", out var element)
+                ? element.GetString()
+                : null;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return null;
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        Target = string.IsNullOrWhiteSpace(Code) ? null : await ClassService.GetByCodeAsync(Code);
+
+        Seat = Seats.Read(Http);
+
+        // Clearing the old seat so "Not you?" actually starts again.
+        if (LeaveFlag == "1" && Http is not null)
+        {
+            Seats.Clear(Http);
+            Seat = null;
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        Http = HttpContextAccessor.HttpContext;
+    }
+
+}

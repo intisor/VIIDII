@@ -3,6 +3,7 @@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inject AuthService AuthService
 @inject SessionService SessionService
+@inject ClassService ClassService
 @inject NavigationManager Navigation
 
 <PageTitle>Create Session - VIIDII</PageTitle>
@@ -92,6 +93,27 @@
         <div class="form-card">
             <EditForm Model="@SessionModel" OnValidSubmit="@HandleCreateSession" FormName="CreateSessionForm">
                 <DataAnnotationsValidator />
+
+                <div class="form-group">
+                    <label class="form-label" for="class-select">Class</label>
+                    <InputSelect class="form-control" id="class-select" @bind-Value="SessionModel.ClassId">
+                        <option value="0">Choose a class</option>
+                        @foreach (var classOption in MyClasses)
+                        {
+                            <option value="@classOption.Id">
+                                @classOption.Code - @classOption.Name@(classOption.HasList ? "" : " (no list yet)")
+                            </option>
+                        }
+                    </InputSelect>
+                    <ValidationMessage For="@(() => SessionModel.ClassId)" />
+                    <p class="form-hint">
+                        Students join from the class link, so a session has to belong to a class.
+                        @if (MyClasses.Count == 0)
+                        {
+                            <span><a href="/classes">Create a class first</a>.</span>
+                        }
+                    </p>
+                </div>
 
                 <div class="form-group">
                     <label class="form-label">Session Title</label>
@@ -187,7 +209,7 @@
     protected override async Task OnInitializedAsync()
     {
         var currentUser = await AuthService.GetCurrentUserAsync();
-        
+
         // Check if user is authenticated
         if (currentUser == null)
         {
@@ -198,8 +220,22 @@
         // Check if user is a lecturer
         if (currentUser.Role.ToString() != "Lecturer")
         {
-            Navigation.NavigateTo("/dashboard");
+            Navigation.NavigateTo("/lecturer/home");
             return;
+        }
+
+        // A session has to belong to one of this lecturer's classes, otherwise no
+        // student could ever be routed to it from the join link.
+        var owned = await ClassService.GetForLecturerAsync(currentUser.Id);
+
+        MyClasses = owned
+            .Select(c => new ClassOption(c.Id, c.Code, c.Name, c.RosterMappingJson is not null))
+            .ToList();
+
+        // One class means there is nothing to choose, so pick it and skip the question.
+        if (MyClasses.Count == 1)
+        {
+            SessionModel.ClassId = MyClasses[0].Id;
         }
 
         // Initialize department and level dictionaries
@@ -229,6 +265,13 @@
                 return;
             }
 
+            if (SessionModel.ClassId <= 0)
+            {
+                ErrorMessage = "Choose the class this session is for.";
+                IsLoading = false;
+                return;
+            }
+
             var selectedDepts = SessionModel.AllowedDepartments
                 .Where(x => x.Value)
                 .Select(x => x.Key)
@@ -250,12 +293,13 @@
                 currentUser.MatricNo,
                 SessionModel.Title,
                 selectedDepts,
-                selectedLevels
+                selectedLevels,
+                SessionModel.ClassId
             );
 
             if (session != null)
             {
-                SuccessMessage = $"Session created successfully! Redirecting...";
+                SuccessMessage = "Session created. Share your class link with your students.";
                 await Task.Delay(1000);
                 Navigation.NavigateTo($"/session/{session.SessionId}");
             }
@@ -274,10 +318,15 @@
         }
     }
 
-    private void GoBack() => Navigation.NavigateTo("/dashboard");
+    private void GoBack() => Navigation.NavigateTo("/lecturer/home");
+
+    private sealed record ClassOption(int Id, string Code, string Name, bool HasList);
+
+    private List<ClassOption> MyClasses { get; set; } = new();
 
     public class CreateSessionRequest
     {
+        public int ClassId { get; set; }
         public string Title { get; set; } = string.Empty;
         public Dictionary<User.Departments, bool> AllowedDepartments { get; set; } = new();
         public Dictionary<User.Levels, bool> AllowedLevels { get; set; } = new();

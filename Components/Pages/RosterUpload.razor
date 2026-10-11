@@ -1,8 +1,8 @@
-@page "/session/{SessionId}/roster"
+@page "/classes/{ClassId:int}/roster"
 @attribute [Authorize(Policy = ViidiiPolicies.LecturerOnly)]
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inject AuthService AuthService
-@inject SessionService SessionService
+@inject ClassService ClassService
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
 @using System.Net.Http.Json
@@ -14,7 +14,7 @@
 
 <div class="roster-container">
     <div class="roster-header">
-        <a href="/session/@SessionId" class="back-link">&larr; Back to session</a>
+        <a href="/classes/@ClassId" class="back-link">&larr; Back to class</a>
         <h1>Attendee list</h1>
         <p class="roster-sub">
             Upload the class list so VIIDII knows who is expected. Every attendee gets a
@@ -223,7 +223,7 @@
 
             <div class="actions">
                 <button class="ghost-btn" @onclick="BackToUpload">Upload a different list</button>
-                <a class="primary-btn" href="/session/@SessionId">Back to the session</a>
+                <a class="primary-btn" href="/classes/@ClassId">Back to the class</a>
             </div>
         </div>
     }
@@ -232,7 +232,7 @@
 @code {
     private enum Step { Upload, Confirm, Done }
 
-    [Parameter] public string SessionId { get; set; } = string.Empty;
+    [Parameter] public int ClassId { get; set; }
 
     private Step _step = Step.Upload;
     private bool IsBusy;
@@ -241,8 +241,8 @@
     private string _pastedContent = string.Empty;
     private string _rawContent = string.Empty;
 
-    private int _sessionPk;
     private List<string> _headers = new();
+
     private List<ColumnSummary> _columns = new();
     private int _rowCount;
     private List<string> _needsConfirmation = new();
@@ -278,14 +278,20 @@
             return;
         }
 
-        var session = await SessionService.GetSessionByIdAsync(SessionId);
-        if (session is null)
+        var target = await ClassService.GetByIdAsync(ClassId);
+        if (target is null)
         {
-            _error = "That session could not be found.";
+            _error = "That class could not be found.";
             return;
         }
 
-        _sessionPk = session.Id;
+        // The import endpoint scopes by class and checks ownership, but saying so here
+        // gives a clear message instead of a generic refusal further down.
+        if (target.LecturerId != user.Id)
+        {
+            _error = "That class is not yours.";
+            return;
+        }
     }
 
     private async Task OnFileSelected(InputFileChangeEventArgs args)
@@ -406,7 +412,7 @@
             };
 
             using var response = await _http.PostAsJsonAsync(
-                $"api/roster/sessions/{_sessionPk}/import",
+                $"api/roster/classes/{ClassId}/import",
                 payload);
 
             var body = await response.Content.ReadAsStringAsync();

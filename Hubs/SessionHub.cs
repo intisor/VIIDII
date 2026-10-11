@@ -13,14 +13,16 @@ namespace VIIDII.Hubs
         private readonly MessageService _messageService;
         private readonly SessionService _sessionService;
         private readonly UserService _userService;
+        private readonly StudentSeatService _seatService;
         private static readonly ConcurrentDictionary<string, DateTime> _lastSeen = new();
         private static readonly ConcurrentDictionary<string, DateTime> _pendingEngagementPrompts = new();
 
-        public SessionHub(MessageService messageService, SessionService sessionService, UserService userService)
+        public SessionHub(MessageService messageService, SessionService sessionService, UserService userService, StudentSeatService seatService)
         {
             _messageService = messageService;
             _sessionService = sessionService;
             _userService = userService;
+            _seatService = seatService;
         }
 
         /// <summary>
@@ -34,6 +36,15 @@ namespace VIIDII.Hubs
             if (!string.IsNullOrWhiteSpace(fromClaims))
             {
                 return fromClaims;
+            }
+
+            // Students hold a seat rather than an account, so there are no claims for
+            // them. The hub has to recognise the seat on every call, not just when the
+            // classroom page first loaded, or the connection drops them as anonymous.
+            var seat = _seatService.Read(Context.GetHttpContext());
+            if (seat is not null)
+            {
+                return seat.MatricNo;
             }
 
             return Context.GetHttpContext()?.Session.GetString("MatricNo");

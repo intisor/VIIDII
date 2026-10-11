@@ -19,7 +19,8 @@
 
                 @if (CurrentUser.Role == Role.Lecturer)
                 {
-                    <a class="nav-link" href="/create-session">New Session</a>
+                    <a class="nav-link" href="/classes">My Classes</a>
+                <a class="nav-link" href="/create-session">New Session</a>
                 }
 
                 @if (CurrentUser.Role == Role.Student || CurrentUser.Role == Role.Lecturer)

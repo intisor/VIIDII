@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.EntityFrameworkCore;
 using VIIDII.Data;
 using VIIDII.Models;
@@ -41,6 +42,88 @@ public static class JoinEndpoints
                 // rather than pretending a login is needed.
                 requiresList = target.RosterMappingJson is not null
             });
+        });
+
+        // The form post behind the join screen. Server rendered like sign in, so it
+        // costs one request on a slow network and issues the seat cookie in the same
+        // response that validates the details.
+        //
+        // Posted to /join/claim/{code}, not /join/{code}. The join screen itself is a Razor
+        // page registered for every method, so sharing the path made every POST match two
+        // endpoints and fail routing with an ambiguous match.
+        app.MapPost("/join/claim/{code}", async (
+            string code,
+            HttpContext http,
+            IAntiforgery antiforgery,
+            ClassService classService,
+            RosterService rosterService,
+            SessionService sessionService,
+            StudentSeatService seats,
+            ILoggerFactory loggerFactory) =>
+        {
+            var logger = loggerFactory.CreateLogger("VIIDII.Join");
+
+            try
+            {
+                await antiforgery.ValidateRequestAsync(http);
+            }
+            catch (AntiforgeryValidationException)
+            {
+                return Results.BadRequest("This page sat open too long. Please try again.");
+            }
+
+            var form = await http.Request.ReadFormAsync();
+            var identifier = form["identifier"].ToString().Trim();
+            var name = form["name"].ToString().Trim();
+
+            var target = await classService.GetByCodeAsync(code);
+            if (target is null)
+            {
+                return Results.NotFound();
+            }
+
+            if (target.RosterMappingJson is null)
+            {
+                return Results.Redirect($"/join/{Uri.EscapeDataString(code)}?error=no-list");
+            }
+
+            var entry = await rosterService.ResolveAttendeeAsync(target.Id, identifier, name);
+            if (entry is null)
+            {
+                // Deliberately vague. Confirming an identifier exists would let anyone
+                // walk the class list.
+                return Results.Redirect(
+                    $"/join/{Uri.EscapeDataString(code)}?error=not-found&identifier={Uri.EscapeDataString(identifier)}&name={Uri.EscapeDataString(name)}");
+            }
+
+            var claimToken = Guid.NewGuid().ToString("N");
+            var claimed = await rosterService.ClaimSeatAsync(entry.Id, claimToken);
+
+            if (!claimed)
+            {
+                // The same roster row is already held from another device. Refusing
+                // here stops one person being counted twice, but it also means a
+                // student who simply reopened the page is now locked out.
+                return Results.Redirect(
+                    $"/join/{Uri.EscapeDataString(code)}?error=already-claimed&identifier={Uri.EscapeDataString(identifier)}");
+            }
+
+            seats.Issue(http, new StudentSeat(entry.Identifier, entry.DisplayName, target.Id, claimToken));
+
+            logger.LogInformation(
+                "{Identifier} claimed a seat in class {ClassCode}", entry.Identifier, target.Code);
+
+            var live = await sessionService.GetLiveSessionsForClassAsync(target.Id);
+            var room = live.FirstOrDefault();
+
+            if (room is null)
+            {
+                // Nothing running yet. Stay on the join link so the student can retry
+                // once the lecture starts, rather than dropping them on a dead end.
+                return Results.Redirect($"/join/{Uri.EscapeDataString(code)}?waiting=1");
+            }
+
+            return Results.Redirect($"/session/{Uri.EscapeDataString(room.SessionId)}");
         });
 
         // Verify the two fields and hand back a short-lived claim for this session.

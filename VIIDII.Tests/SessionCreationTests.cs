@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Net.Http.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
@@ -60,13 +61,40 @@ public class SessionCreationTests : IClassFixture<WebApplicationFactory<Program>
         return matricNo;
     }
 
+    /// <summary>Registers a lecturer and gives them a class, since a session needs one.</summary>
+    private static async Task<(string MatricNo, int ClassId)> RegisterWithClassAsync(HttpClient client)
+    {
+        var matricNo = $"LEC{Guid.NewGuid().ToString("N")[..8]}";
+
+        Assert.Equal(
+            HttpStatusCode.OK,
+            (await client.PostAsJsonAsync("/api/account/register", new
+            {
+                name = "Dr. Amaka Obi",
+                matricNo,
+                password = "a-good-password"
+            })).StatusCode);
+
+        var created = await client.PostAsJsonAsync("/api/classes", new
+        {
+            code = $"C{Guid.NewGuid().ToString("N")[..5].ToUpperInvariant()}",
+            name = "100 Level Computer Science"
+        });
+
+        Assert.Equal(HttpStatusCode.OK, created.StatusCode);
+
+        var classId = (await created.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>())
+            .GetProperty("id").GetInt32();
+
+        return (matricNo, classId);
+    }
     [Fact]
     public async Task ALecturerWhoSignedUpCanCreateASession()
     {
         using var app = CreateApp();
         using var client = app.CreateClient();
 
-        var matricNo = await RegisterLecturerAsync(client, "Dr. Amaka Obi");
+        var (matricNo, classId) = await RegisterWithClassAsync(client);
 
         using var scope = app.Services.CreateScope();
         var sessionService = scope.ServiceProvider.GetRequiredService<SessionService>();
@@ -75,7 +103,8 @@ public class SessionCreationTests : IClassFixture<WebApplicationFactory<Program>
             matricNo,
             "Introduction to Computing",
             [User.Departments.Any],
-            [User.Levels.Any]);
+            [User.Levels.Any],
+            classId);
 
         Assert.NotNull(session);
         Assert.Equal("Introduction to Computing", session.Title);
@@ -89,7 +118,7 @@ public class SessionCreationTests : IClassFixture<WebApplicationFactory<Program>
         using var app = CreateApp();
         using var client = app.CreateClient();
 
-        var matricNo = await RegisterLecturerAsync(client, "Dr. Amaka Obi");
+        var (matricNo, classId) = await RegisterWithClassAsync(client);
 
         using var scope = app.Services.CreateScope();
         var sessionService = scope.ServiceProvider.GetRequiredService<SessionService>();
@@ -100,7 +129,8 @@ public class SessionCreationTests : IClassFixture<WebApplicationFactory<Program>
             "NOBODY123",
             "Introduction to Computing",
             [User.Departments.Any],
-            [User.Levels.Any]);
+            [User.Levels.Any],
+            classId);
 
         Assert.Null(session);
     }
@@ -111,7 +141,7 @@ public class SessionCreationTests : IClassFixture<WebApplicationFactory<Program>
         using var app = CreateApp();
         using var client = app.CreateClient();
 
-        var matricNo = await RegisterLecturerAsync(client, "Dr. Amaka Obi");
+        var (matricNo, classId) = await RegisterWithClassAsync(client);
 
         using var scope = app.Services.CreateScope();
         var sessionService = scope.ServiceProvider.GetRequiredService<SessionService>();
@@ -127,7 +157,7 @@ public class SessionCreationTests : IClassFixture<WebApplicationFactory<Program>
         using var app = CreateApp();
         using var client = app.CreateClient();
 
-        var matricNo = await RegisterLecturerAsync(client, "Dr. Amaka Obi");
+        var (matricNo, classId) = await RegisterWithClassAsync(client);
 
         string sessionId;
 
@@ -140,7 +170,8 @@ public class SessionCreationTests : IClassFixture<WebApplicationFactory<Program>
                 matricNo,
                 "Introduction to Computing",
                 [User.Departments.Any],
-                [User.Levels.Any]);
+                [User.Levels.Any],
+                classId);
 
             Assert.NotNull(session);
             sessionId = session.SessionId;
@@ -166,7 +197,7 @@ public class SessionCreationTests : IClassFixture<WebApplicationFactory<Program>
         using var app = CreateApp();
         using var client = app.CreateClient();
 
-        var matricNo = await RegisterLecturerAsync(client, "Dr. Amaka Obi");
+        var (matricNo, classId) = await RegisterWithClassAsync(client);
 
         using var scope = app.Services.CreateScope();
         var sessionService = scope.ServiceProvider.GetRequiredService<SessionService>();
@@ -175,7 +206,8 @@ public class SessionCreationTests : IClassFixture<WebApplicationFactory<Program>
             matricNo,
             "Introduction to Computing",
             [User.Departments.Any],
-            [User.Levels.Any]);
+            [User.Levels.Any],
+            classId);
 
         Assert.NotNull(session);
 
@@ -193,13 +225,13 @@ public class SessionCreationTests : IClassFixture<WebApplicationFactory<Program>
         using var app = CreateApp();
         using var client = app.CreateClient();
 
-        var matricNo = await RegisterLecturerAsync(client, "Dr. Amaka Obi");
+        var (matricNo, classId) = await RegisterWithClassAsync(client);
 
         using var scope = app.Services.CreateScope();
         var sessionService = scope.ServiceProvider.GetRequiredService<SessionService>();
 
-        var first = await sessionService.CreateSession(matricNo, "Lecture 1", [User.Departments.Any], [User.Levels.Any]);
-        var second = await sessionService.CreateSession(matricNo, "Lecture 2", [User.Departments.Any], [User.Levels.Any]);
+        var first = await sessionService.CreateSession(matricNo, "Lecture 1", [User.Departments.Any], [User.Levels.Any], classId);
+        var second = await sessionService.CreateSession(matricNo, "Lecture 2", [User.Departments.Any], [User.Levels.Any], classId);
 
         Assert.NotNull(first);
         Assert.NotNull(second);

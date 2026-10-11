@@ -40,9 +40,12 @@ else
         <!-- Actions -->
         <div class="section-card">
             <h2>Sessions</h2>
-            <p class="info-text">Create a new class or open an existing one.</p>
+            <p class="info-text">Set up a class list, then start a lecture for it.</p>
             <div class="btn-row">
-                <button id="create-session-btn" class="btn-primary-custom" @onclick="GoCreateSession">
+                <button id="go-classes-btn" class="btn-primary-custom" @onclick="GoClasses">
+                    <i class="fas fa-users"></i> My Classes
+                </button>
+                <button id="create-session-btn" class="btn-secondary-custom" @onclick="GoCreateSession">
                     <i class="fas fa-plus"></i> New Session
                 </button>
                 <button id="join-session-btn" class="btn-secondary-custom" @onclick="GoJoin">
@@ -97,6 +100,7 @@ else
     }
 
     private void GoCreateSession() => Navigation.NavigateTo("/create-session");
+    private void GoClasses()        => Navigation.NavigateTo("/classes");
     private void GoJoin()          => Navigation.NavigateTo("/join-session");
     private void GoSession(string id) => Navigation.NavigateTo($"/session/{id}");
 }

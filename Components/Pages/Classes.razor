@@ -1,0 +1,298 @@
+@page "/classes"
+@using Microsoft.JSInterop
+@attribute [Authorize(Policy = ViidiiPolicies.LecturerOnly)]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject AuthService AuthService
+@inject ClassService ClassService
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Your classes - VIIDII</PageTitle>
+
+<div class="classes-wrap">
+
+    <div class="classes-head">
+        <h1>Your classes</h1>
+        <p class="classes-sub">
+            A class is your student list. Each class has one link your students use to join.
+        </p>
+    </div>
+
+    @if (!string.IsNullOrEmpty(Notice))
+    {
+        <div class="alert @NoticeKind">@Notice</div>
+    }
+
+    @if (IsLoading)
+    {
+        <p class="info-text">Loading...</p>
+    }
+    else if (Items.Count == 0)
+    {
+        <div class="class-card class-card-empty">
+            <h2>No classes yet</h2>
+            <p class="info-text">
+                Create one for the students you teach. You only need a short code and a name,
+                and you can add the list afterwards.
+            </p>
+        </div>
+    }
+    else
+    {
+        @foreach (var item in Items)
+        {
+            <div class="class-card">
+                <div class="class-card-head">
+                    <div>
+                        <span class="class-code">@item.Code</span>
+                        <h2>@item.Name</h2>
+                    </div>
+                    <span class="class-count">
+                        @(item.HasList ? $"{item.StudentCount} students" : "No list yet")
+                    </span>
+                </div>
+
+                <div class="share-row">
+                    <code class="share-link">@ShareUrlFor(item.Code)</code>
+                    <button class="btn-secondary-custom" @onclick="() => CopyLink(item.Code)">
+                        Copy
+                    </button>
+                </div>
+
+                <p class="info-text">
+                    Send this link to your students. It is the same link every week.
+                </p>
+
+                <div class="btn-row">
+                    <button class="btn-primary-custom" @onclick="() => Open(item.Id)">
+                        @(item.HasList ? "View students" : "Upload the list")
+                    </button>
+                    <button class="btn-secondary-custom" @onclick="() => StartSession(item.Id)">
+                        Start a session
+                    </button>
+                </div>
+            </div>
+        }
+    }
+
+    <div class="class-card">
+        <h2>New class</h2>
+
+        <div class="form-group">
+            <label class="form-label" for="new-code">Short code</label>
+            <input id="new-code" class="form-control" @bind="NewCode" @bind:event="oninput"
+                   placeholder="e.g. CS100" maxlength="20" />
+            <p class="form-hint">
+                Students type this in the link, so keep it short and easy to read out.
+            </p>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label" for="new-name">Class name</label>
+            <input id="new-name" class="form-control" @bind="NewName" @bind:event="oninput"
+                   placeholder="e.g. 100 Level Computer Science" maxlength="100" />
+        </div>
+
+        <button class="btn-primary-custom" disabled="@IsSaving" @onclick="CreateClassAsync">
+            @(IsSaving ? "Creating..." : "Create class")
+        </button>
+    </div>
+
+</div>
+
+<style>
+    .classes-wrap {
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 2rem 1rem 3rem;
+    }
+
+    .classes-head {
+        margin-bottom: 1.5rem;
+    }
+
+    .classes-head h1 {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: var(--text);
+        margin-bottom: 0.375rem;
+    }
+
+    .classes-sub {
+        font-size: 0.9375rem;
+        color: var(--text-mid);
+        margin: 0;
+        line-height: 1.55;
+    }
+
+    .class-card {
+        background: var(--surface);
+        border: 1px solid var(--border-mid);
+        border-radius: var(--r-lg);
+        padding: 1.5rem;
+        margin-bottom: 1.25rem;
+    }
+
+    .class-card-empty h2,
+    .class-card h2 {
+        font-size: 1.0625rem;
+        font-weight: 700;
+        color: var(--text);
+        margin-bottom: 0.5rem;
+    }
+
+    .class-card-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 1rem;
+        margin-bottom: 1rem;
+    }
+
+    .class-card-head h2 {
+        margin-bottom: 0.25rem;
+    }
+
+    .class-code {
+        display: inline-block;
+        font-size: 0.6875rem;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        color: var(--accent);
+        background: var(--accent-dim);
+        padding: 0.125rem 0.5rem;
+        border-radius: var(--r-sm);
+        margin-bottom: 0.5rem;
+    }
+
+    .class-count {
+        font-size: 0.8125rem;
+        color: var(--text-mid);
+        white-space: nowrap;
+    }
+
+    .share-row {
+        display: flex;
+        gap: 0.5rem;
+        align-items: stretch;
+        margin-bottom: 0.75rem;
+    }
+
+    .share-link {
+        flex: 1;
+        background: var(--bg);
+        border: 1px solid var(--border-mid);
+        border-radius: var(--r);
+        padding: 0.625rem 0.75rem;
+        font-size: 0.8125rem;
+        color: var(--text);
+        overflow-x: auto;
+        white-space: nowrap;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+</style>
+
+@code {
+    private sealed record ClassRow(int Id, string Code, string Name, bool HasList, int StudentCount);
+
+    private List<ClassRow> Items { get; set; } = new();
+
+    private string NewCode { get; set; } = string.Empty;
+    private string NewName { get; set; } = string.Empty;
+
+    private bool IsLoading { get; set; } = true;
+    private bool IsSaving { get; set; }
+
+    private string? Notice { get; set; }
+    private string NoticeKind { get; set; } = "alert-danger";
+
+    private User? CurrentUser { get; set; }
+
+    private string ShareUrlFor(string code) =>
+        $"{Navigation.BaseUri.TrimEnd('/')}/join/{code}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        CurrentUser = await AuthService.GetCurrentUserAsync();
+
+        if (CurrentUser is null)
+        {
+            Navigation.NavigateTo("/login");
+            return;
+        }
+
+        if (CurrentUser.Role != Role.Lecturer)
+        {
+            Navigation.NavigateTo("/lecturer/home");
+            return;
+        }
+
+        var owned = await ClassService.GetForLecturerAsync(CurrentUser.Id);
+
+        Items = new List<ClassRow>();
+
+        foreach (var item in owned)
+        {
+            Items.Add(new ClassRow(
+                item.Id,
+                item.Code,
+                item.Name,
+                item.RosterMappingJson is not null,
+                await ClassService.GetStudentCountAsync(item.Id)));
+        }
+
+        IsLoading = false;
+    }
+
+    private async Task CreateClassAsync()
+    {
+        if (IsSaving)
+        {
+            return;
+        }
+
+        IsSaving = true;
+        Notice = null;
+
+        var (created, error) = await ClassService.CreateAsync(CurrentUser!.Id, NewCode, NewName);
+
+        IsSaving = false;
+
+        if (created is null)
+        {
+            Notice = error;
+            NoticeKind = "alert-danger";
+            return;
+        }
+
+        Notice = $"{created.Code} is ready. Share the link below with your students.";
+        NoticeKind = "alert-success";
+
+        NewCode = string.Empty;
+        NewName = string.Empty;
+
+        await OnInitializedAsync();
+    }
+
+    private async Task CopyLink(string code)
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", ShareUrlFor(code));
+            Notice = "Link copied.";
+            NoticeKind = "alert-success";
+        }
+        catch (JSException)
+        {
+            // Clipboard access needs a secure context, so it fails on plain HTTP.
+            // The link is on screen and can still be selected by hand.
+            Notice = "Copying is not available here. Select the link and copy it by hand.";
+            NoticeKind = "alert-warning";
+        }
+    }
+
+    private void Open(int classId) => Navigation.NavigateTo($"/classes/{classId}");
+
+    private void StartSession(int classId) =>
+        Navigation.NavigateTo($"/create-session?classId={classId}");
+}

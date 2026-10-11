@@ -62,15 +62,69 @@ public class SessionService
             .AnyAsync(u => u.MatricNo == matricNo && u.Role == Role.Lecturer);
     }
 
-    public async Task<Session> CreateSession(string lecturerId, string title, List<User.Departments> allowedDepartments, List<User.Levels> allowedLevels, bool replaceExisting = false)
+    private async Task<int> ResolveLecturerIdAsync(string matricNo)
     {
-        if (!await IsLecturerAsync(lecturerId))
+        var id = await _serviceProvider.GetRequiredService<ViidiiDbContext>()
+            .Users
+            .AsNoTracking()
+            .Where(u => u.MatricNo == matricNo)
+            .Select(u => (int?)u.Id)
+            .FirstOrDefaultAsync();
+
+        return id ?? 0;
+    }
+
+    /// <summary>
+    /// Live sessions for a class, newest first. This is how a student who has just
+    /// claimed a seat finds the room to walk into.
+    /// <para>
+    /// Read from the database rather than the in-memory dictionary. Session creation
+    /// persists before it publishes, so the stored row is always the truth, and an
+    /// entry left in memory by an earlier run cannot send somebody into a room that no
+    /// longer belongs to their class.
+    /// </para>
+    /// </summary>
+    public async Task<List<Session>> GetLiveSessionsForClassAsync(int classId)
+    {
+        return await _serviceProvider.GetRequiredService<ViidiiDbContext>()
+            .Sessions
+            .AsNoTracking()
+            .Where(s => s.ClassId == classId
+                        && s.Status == SessionStatus.Active
+                        && s.ExpiresAt > DateTime.UtcNow)
+            .OrderByDescending(s => s.StartTime)
+            .ToListAsync();
+    }
+
+    public async Task<Session> CreateSession(string lecturerIdNumber, string title, List<User.Departments> allowedDepartments, List<User.Levels> allowedLevels, int? classId = null, bool replaceExisting = false)
+    {
+        if (!await IsLecturerAsync(lecturerIdNumber))
+        {
+            return null;
+        }
+
+        // A session that is not tied to a class has no audience: a student joining
+        // /join/CS100 would never be routed to it. Refuse rather than create one that
+        // nobody can find.
+        if (classId is null or <= 0)
+        {
+            return null;
+        }
+
+        var lecturerId = await ResolveLecturerIdAsync(lecturerIdNumber);
+
+        var owned = await _serviceProvider.GetRequiredService<ViidiiDbContext>()
+            .Classes
+            .AsNoTracking()
+            .AnyAsync(c => c.Id == classId.Value && c.LecturerId == lecturerId);
+
+        if (!owned)
         {
             return null;
         }
 
         var existingSession = _sessions.Values
-            .FirstOrDefault(s => s.LecturerMatricNo == lecturerId && s.Status == SessionStatus.Active && s.ExpiresAt > DateTime.UtcNow);
+            .FirstOrDefault(s => s.LecturerMatricNo == lecturerIdNumber && s.Status == SessionStatus.Active && s.ExpiresAt > DateTime.UtcNow);
 
         if (existingSession != null)
         {
@@ -82,7 +136,8 @@ public class SessionService
         var session = new Session
         {
             SessionId = GenerateSessionCode(),
-            LecturerMatricNo = lecturerId,
+            LecturerMatricNo = lecturerIdNumber,
+            ClassId = classId.Value,
             Title = title,
             AllowedDepartments = allowedDepartments ?? new List<User.Departments>(),
             AllowedLevels = allowedLevels ?? new List<User.Levels>(),
@@ -105,7 +160,7 @@ public class SessionService
         // went nowhere. If the write fails, take it back out of the dictionary.
         try
         {
-            await PersistSessionCreationAsync(lecturerId, title, allowedDepartments, allowedLevels);
+            await PersistSessionCreationAsync(session);
         }
         catch (Exception ex)
         {
@@ -844,21 +899,18 @@ public class SessionService
     }
 
     // Persistence helper methods
-    private async Task PersistSessionCreationAsync(string lecturerId, string title, List<User.Departments> allowedDepartments, List<User.Levels> allowedLevels)
-    {
-        try
-        {
-            using var scope = _serviceProvider.CreateScope();
-            var persistenceService = scope.ServiceProvider.GetRequiredService<Data.SessionPersistenceService>();
-            await persistenceService.CreateAndPersistSessionAsync(lecturerId, title, allowedDepartments, allowedLevels);
-            Console.WriteLine($"[SessionService] Session '{title}' persisted for lecturer {lecturerId}");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[SessionService] Error persisting session creation: {ex.Message}");
-        }
-    }
 
+    private async Task PersistSessionCreationAsync(Session session)
+    {
+        // Deliberately no catch. This used to swallow every failure and write it to the
+        // console, so the caller believed the session had been saved when nothing was
+        // written, and a lecturer was told a session had started that existed only in
+        // memory until the process restarted.
+        using var scope = _serviceProvider.CreateScope();
+        var persistenceService = scope.ServiceProvider.GetRequiredService<Data.SessionPersistenceService>();
+
+        await persistenceService.CreateAndPersistSessionAsync(session);
+    }
     private async Task PersistParticipantJoinAsync(string sessionId, string participantMatricNo)
     {
         try

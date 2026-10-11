@@ -19,37 +19,30 @@ namespace VIIDII.Data
         }
 
         /// <summary>
-        /// Create session and persist to database
+        /// Persists the session exactly as it was created.
+        /// <para>
+        /// This used to take the lecturer and title and build a second, separate session
+        /// with a freshly generated code. The live session and the stored row therefore
+        /// had different identifiers, and neither the class link nor the expiry was ever
+        /// written down. A student routed from the database and a participant tracked in
+        /// memory ended up in two different rooms.
+        /// </para>
         /// </summary>
-        public async Task<Models.Session?> CreateAndPersistSessionAsync(
-            string lecturerMatricNo, 
-            string title, 
-            List<User.Departments> allowedDepartments, 
-            List<User.Levels> allowedLevels)
+        public async Task<Models.Session?> CreateAndPersistSessionAsync(Models.Session session)
         {
-            var lecturer = await _userService.GetUserByMatricNoAsync(lecturerMatricNo);
-            if (lecturer == null || lecturer.Role != Role.Lecturer)
+            if (session is null)
                 return null;
 
-            var sessionCode = GenerateSessionCode();
-            var session = new Models.Session
+            // The caller may not have resolved the lecturer to a row yet.
+            if (session.LecturerId <= 0)
             {
-                SessionId = sessionCode,
-                LecturerId = lecturer.Id,
-                LecturerMatricNo = lecturerMatricNo,
-                Title = title,
-                AllowedDepartments = allowedDepartments ?? new List<User.Departments>(),
-                AllowedLevels = allowedLevels ?? new List<User.Levels>(),
-                Status = SessionStatus.Active,
-                CreatedAt = DateTime.UtcNow
-            };
+                var lecturer = await _userService.GetUserByMatricNoAsync(session.LecturerMatricNo ?? string.Empty);
 
-            // Expand "Any" to include all enums
-            if (session.AllowedDepartments.Contains(User.Departments.Any))
-                session.AllowedDepartments = Enum.GetValues<User.Departments>().ToList();
+                if (lecturer == null || lecturer.Role != Role.Lecturer)
+                    return null;
 
-            if (session.AllowedLevels.Contains(User.Levels.Any))
-                session.AllowedLevels = Enum.GetValues<User.Levels>().ToList();
+                session.LecturerId = lecturer.Id;
+            }
 
             return await _sessionRepository.CreateSessionAsync(session);
         }

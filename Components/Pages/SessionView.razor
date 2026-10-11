@@ -1,5 +1,9 @@
 @page "/session/{SessionId}"
-@attribute [Authorize]
+@* No [Authorize] here on purpose. Students have no account to authenticate with;
+   they hold a seat claimed against the class list, and ResolveIdentityAsync is the
+   gate that accepts either a signed in member of staff or a seat for this session's
+   class. Removing the attribute does not open the room, it only moves the check to
+   where the two kinds of identity can both be considered. *@
 @layout SessionLayout
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @implements IAsyncDisposable
@@ -7,6 +11,8 @@
 @inject SessionService SessionService
 @inject ISessionJsInterop SessionJsInterop
 @inject UserService UserLookupService
+@inject StudentSeatService SeatService
+@inject IHttpContextAccessor HttpContextAccessor
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
 @using VIIDII.Models
@@ -23,9 +29,9 @@
         <p>Loading session...</p>
     </div>
 }
-else if (State.CurrentUser == null)
+else if (Identity is null)
 {
-    <div class="alert alert-warning">Please log in first.</div>
+    <div class="alert alert-warning">Please log in, or use the link your lecturer shared.</div>
 }
 else if (CurrentSession == null)
 {
@@ -315,33 +321,87 @@ else
         }
     }
 
+    /// <summary>
+    /// Who is in the room. A member of staff with an account, or a student holding a
+    /// seat claimed against the class list.
+    /// </summary>
+    private sealed record RoomIdentity(User? User, string MatricNo, string Name, bool IsStudent);
+
+    private RoomIdentity? Identity { get; set; }
+
+    /// <summary>
+    /// Works out who is in the room, or null if they should not be here.
+    ///
+    /// A student seat is only honoured for a session of the class it was claimed in.
+    /// Without that check a seat for one class would open any session whose link
+    /// reached the student.
+    /// </summary>
+    private async Task<RoomIdentity?> ResolveIdentityAsync()
+    {
+        var signedIn = await AuthService.GetCurrentUserAsync();
+        if (signedIn is not null)
+        {
+            return new RoomIdentity(signedIn, signedIn.MatricNo, signedIn.Name, IsStudent: false);
+        }
+
+        var seat = SeatService.Read(HttpContextAccessor.HttpContext);
+
+        if (seat is null || CurrentSession is null)
+        {
+            return null;
+        }
+
+        // StudentSeatService owns the rule about which seats open which room, so it can
+        // be tested without standing up a whole classroom.
+        if (!SeatService.Allows(HttpContextAccessor.HttpContext, CurrentSession))
+        {
+            return null;
+        }
+
+        // Detached, never tracked and never added. Students have no row in Users,
+        // and this object must not become one. Only MatricNo and Name are read.
+        var synthetic = new VIIDII.Models.User
+        {
+            Id = 0,
+            MatricNo = seat.MatricNo,
+            Name = seat.DisplayName,
+            Role = VIIDII.Models.Role.Student
+        };
+
+        return new RoomIdentity(synthetic, seat.MatricNo, seat.DisplayName, IsStudent: true);
+    }
+
     // Lifecycle Methods
     protected override async Task OnInitializedAsync()
     {
         Console.WriteLine($"[SessionView C#] OnInitializedAsync started. SessionId: {SessionId}");
         try
         {
-            // Load user FIRST
-            State.CurrentUser = await AuthService.GetCurrentUserAsync();
-            if (State.CurrentUser == null)
-            {
-                Console.WriteLine($"[SessionView C#] OnInitializedAsync: User not logged in, redirecting to /login");
-                _isNavigating = true;
-                Navigation.NavigateTo("/login", forceLoad: true);
-                return;
-            }
-            Console.WriteLine($"[SessionView C#] Current User loaded: MatricNo={State.CurrentUser.MatricNo}, Name={State.CurrentUser.Name}");
-
-            // Load session
+            // Load the session first. The seat check depends on which class it belongs
+            // to, and a session that does not exist needs no further work.
             CurrentSession = await SessionService.GetSessionByIdAsync(SessionId);
             if (CurrentSession == null)
             {
-                Console.WriteLine($"[SessionView C#] OnInitializedAsync: Session {SessionId} not found in SessionService, redirecting to /dashboard");
+                Console.WriteLine($"[SessionView C#] OnInitializedAsync: Session {SessionId} not found, redirecting to /dashboard");
                 _isNavigating = true;
                 Navigation.NavigateTo("/dashboard", forceLoad: true);
                 return;
             }
-            Console.WriteLine($"[SessionView C#] Loaded Session from SessionService: Title='{CurrentSession.Title}', Status={CurrentSession.Status}, Lecturer={CurrentSession.LecturerMatricNo}");
+
+            // Who is in the room. Either a signed in member of staff, or a student
+            // holding a seat claimed against the class list.
+            Identity = await ResolveIdentityAsync();
+
+            if (Identity is null)
+            {
+                Console.WriteLine($"[SessionView C#] No signed in user and no valid seat, redirecting to /login");
+                _isNavigating = true;
+                Navigation.NavigateTo("/login", forceLoad: true);
+                return;
+            }
+
+            State.CurrentUser = Identity.User;
+            Console.WriteLine($"[SessionView C#] Identity loaded: MatricNo={Identity.MatricNo}, Name={Identity.Name}, IsStudent={Identity.IsStudent}");
 
             // NOW try to restore state (after user is loaded)
             await TryRestoreSessionStateAsync();
@@ -351,7 +411,7 @@ else
             State.SessionTitle = CurrentSession.Title;
             State.Status = CurrentSession.Status;
             State.IsSessionStarted = CurrentSession.IsSessionStarted;
-            State.IsLecturer = CurrentSession.LecturerMatricNo == State.CurrentUser.MatricNo;
+            State.IsLecturer = CurrentSession.LecturerMatricNo == Identity.MatricNo;
 
             if (State.IsLecturer)
             {
