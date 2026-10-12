@@ -49,6 +49,15 @@ public class SessionState
     // Connection State
     public bool IsHubConnected { get; set; }
     public bool IsPeerConnected { get; set; }
+
+    /// <summary>
+    /// How far the student's media connection got, reported from the browser so a
+    /// student on a phone can describe the problem without a developer console.
+    /// </summary>
+    public string MediaStage { get; set; } = string.Empty;
+
+    /// <summary>Supporting detail for <see cref="MediaStage"/>, e.g. the ICE state.</summary>
+    public string MediaDetail { get; set; } = string.Empty;
     public int ConnectionAttempts { get; set; }
     public DateTime? LastConnectionAttempt { get; set; }
 

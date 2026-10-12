@@ -566,3 +566,45 @@ h1, h2, h3, h4 { font-weight: 600; line-height: 1.25; color: var(--text); }
     border-color: var(--danger);
     color: var(--danger);
 }
+
+/* "--"?-- Student connection diagnostics --------------------------------- */
+
+/* Shown to a student whose video has not arrived. They are on a phone with no
+   developer console, so the connection stage has to be readable on screen.
+   Hidden until there is something to say, so it never shouts at a student whose
+   video is already working. */
+.media-diagnostics {
+    margin-top: 1rem;
+    padding: 0.75rem 0.9rem;
+    max-width: 22rem;
+    background: var(--surface-up);
+    border: 1px solid var(--border-mid);
+    border-radius: var(--r-sm);
+    text-align: left;
+}
+.media-diagnostics-title {
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: var(--warning);
+    margin: 0 0 0.35rem;
+}
+.media-diagnostics-stage {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.75rem;
+    color: var(--text);
+    margin: 0 0 0.2rem;
+    word-break: break-word;
+}
+.media-diagnostics-detail {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.6875rem;
+    color: var(--text-faint);
+    margin: 0 0 0.5rem;
+    word-break: break-word;
+}
+.media-diagnostics-hint {
+    font-size: 0.75rem;
+    color: var(--text-mid);
+    margin: 0;
+    line-height: 1.45;
+}

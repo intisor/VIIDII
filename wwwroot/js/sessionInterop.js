@@ -49,6 +49,50 @@ window.sessionInterop = (function () {
  */
     let iceServersCache = null;
 
+    // What the student is actually seeing, in words they can report from a phone.
+    //
+    // A student on mobile data cannot open a developer console, so "it didn't work"
+    // used to be the whole of the feedback available. This surfaces the stage the
+    // connection reached, which is the difference between a signalling problem and
+    // a relay problem: two completely different fixes.
+    let mediaState = { stage: "starting", detail: "", at: Date.now() };
+
+    function reportMediaState(stage, detail) {
+        mediaState = { stage, detail: detail || "", at: Date.now() };
+        console.log("[sessionInterop JS] [Student] Media state:", stage, detail);
+        if (dotNetRef) {
+            dotNetRef.invokeMethodAsync('OnMediaState', stage, detail || "");
+        }
+    }
+
+    function getMediaState() {
+        return mediaState;
+    }
+
+    // Reads the underlying RTCPeerConnection so we can say which kind of path was
+    // negotiated. "relay" means it had to go through a TURN server, which is the
+    // thing that breaks under real student traffic on the public relays.
+    function describeIce(call) {
+        try {
+            const pc = call && (call._pc || call.pc);
+            if (!pc) return "";
+
+            const stats = [];
+            (pc.getStats ? null : null);
+
+            if (pc.iceConnectionState) {
+                stats.push("ice=" + pc.iceConnectionState);
+            }
+            if (pc.iceGatheringState) {
+                stats.push("gathering=" + pc.iceGatheringState);
+            }
+
+            return stats.join(" ");
+        } catch (err) {
+            return "";
+        }
+    }
+
     const PUBLIC_FALLBACK_ICE = [
         { urls: "stun:stun.l.google.com:19302" },
         { urls: "stun:freestun.net:3478" },
@@ -393,12 +437,24 @@ window.sessionInterop = (function () {
 
     function handleIncomingCall(call, video) {
         console.log("[sessionInterop JS] [Student] handleIncomingCall called. Answering incoming media call...");
+        reportMediaState("call answered", "waiting for media " + describeIce(call));
         call.answer();
+
+        // ICE goes new -> checking -> connected. If it sits on checking it is
+        // failing to find a path, which on a real phone means the relay did not
+        // come back. Poll it so the failure is visible instead of silent.
+        const iceTimer = setInterval(() => {
+            const state = describeIce(call);
+            if (state) reportMediaState("negotiating", state);
+        }, 2000);
 
         console.log("[sessionInterop JS] [Student] Setting up 10-second timeout to verify stream reception...");
         let streamTimeout = setTimeout(() => {
             if (!isStreamAttached) {
+                const state = describeIce(call);
                 console.warn("[sessionInterop JS] [Student] Stream timeout! No stream received after 10s. Closing call to trigger reconnect.");
+                reportMediaState("no media after 10s", state || "connection never completed");
+                clearInterval(iceTimer);
                 call.close();
             }
         }, 10000);
@@ -406,6 +462,7 @@ window.sessionInterop = (function () {
         call.on("stream", (remoteStream) => {
             clearTimeout(streamTimeout);
             console.log("[sessionInterop JS] [Student] Stream event triggered. Remote stream ID:", remoteStream.id);
+            reportMediaState("stream received", "connected");
 
             if (remoteStream.id === attachedStreamId) {
                 console.log("[sessionInterop JS] [Student] Ignoring duplicate stream with ID:", remoteStream.id);
@@ -456,6 +513,8 @@ window.sessionInterop = (function () {
 
         call.on("error", (err) => {
             console.error("[sessionInterop JS] [Student] Call stream error:", err);
+            reportMediaState("call error", err.type || "unknown");
+            clearInterval(iceTimer);
             if (dotNetRef) {
                 console.log("[sessionInterop JS] [Student] Invoking Blazor callback: OnPeerError");
                 dotNetRef.invokeMethodAsync('OnPeerError', err.type || 'unknown');

@@ -226,6 +226,27 @@ else
                         <div class="waiting-overlay">
                             <div class="spinner"></div>
                             <p>Waiting for lecturer to start streaming...</p>
+
+                            @* A student on a phone cannot open a console, so the stage
+                               is put on screen. Without it, "no video" and "the relay
+                               refused the connection" look identical from their side. *@
+                            @if (!string.IsNullOrWhiteSpace(State.MediaStage)
+                                 && State.MediaStage != "starting"
+                                 && State.MediaStage != "stream received")
+                            {
+                                <div class="media-diagnostics">
+                                    <p class="media-diagnostics-title">Connecting…</p>
+                                    <p class="media-diagnostics-stage">@State.MediaStage</p>
+                                    @if (!string.IsNullOrWhiteSpace(State.MediaDetail))
+                                    {
+                                        <p class="media-diagnostics-detail">@State.MediaDetail</p>
+                                    }
+                                    <p class="media-diagnostics-hint">
+                                        If this stays here, your network is blocking the connection.
+                                        Try a different network, such as mobile data.
+                                    </p>
+                                </div>
+                            }
                         </div>
                     }
 
@@ -1228,6 +1249,27 @@ else
     }
 
     // JSInvokable Callbacks (called from JavaScript)
+    /// <summary>
+    /// The student's connection stage, reported up from the browser.
+    /// <para>
+    /// A student on mobile data cannot open a developer console, so before this the
+    /// only feedback available was "it didn't work". Knowing whether the call was
+    /// ever placed, and how far ICE got, is what separates a signalling fault from a
+    /// relay fault. They have different fixes.
+    /// </para>
+    /// </summary>
+    [JSInvokable]
+    public Task OnMediaState(string stage, string detail)
+    {
+        State.MediaStage = stage;
+        State.MediaDetail = detail;
+
+        Console.WriteLine($"[SessionView C#] Media state: {stage} {detail}");
+
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
     [JSInvokable]
     public async Task OnLecturerPeerReady(string peerId)
     {
