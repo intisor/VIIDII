@@ -95,7 +95,10 @@ else
                         join code, and attendance is recorded against their verified identity.
                     </p>
                 </div>
-                <a class="btn-control" href="/session/@SessionId/roster">
+                @* Class-scoped, not session-scoped: the roster belongs to the class and is reused by
+               every session in it. This used to point at /session/{id}/roster, which
+               does not exist, so "Manage list" was a 404. *@
+                <a class="btn-control" href="/classes/@(CurrentSession?.ClassId)/roster">
                     <i class="fas fa-users"></i>
                     <span class="control-label">Manage list</span>
                 </a>

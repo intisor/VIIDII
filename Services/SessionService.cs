@@ -96,6 +96,15 @@ public class SessionService
     /// entry left in memory by an earlier run cannot send somebody into a room that no
     /// longer belongs to their class.
     /// </para>
+    /// <summary>
+    /// Sessions a student of this class could be routed into right now.
+    /// <para>
+    /// A created session is Active. Starting it flips the status to Started, so
+    /// matching on Active alone made the session visible to students only in the
+    /// window before the lecturer pressed start, and invisible for the entire
+    /// lecture. Every other lookup in this file accepts both; this one did not,
+    /// which is why the waiting page kept saying nothing was running.
+    /// </para>
     /// </summary>
     public async Task<List<Session>> GetLiveSessionsForClassAsync(int classId)
     {
@@ -103,7 +112,7 @@ public class SessionService
             .Sessions
             .AsNoTracking()
             .Where(s => s.ClassId == classId
-                        && s.Status == SessionStatus.Active
+                        && (s.Status == SessionStatus.Active || s.Status == SessionStatus.Started)
                         && s.ExpiresAt > UtcNow)
             .OrderByDescending(s => s.StartTime)
             .ToListAsync();
@@ -487,7 +496,7 @@ public class SessionService
     public List<Session> GetSessionsByLecturer(string lecturerId) =>
         _sessions.Values
             .Where(s => s.LecturerMatricNo == lecturerId 
-                && (s.Status == SessionStatus.Active || s.Status == SessionStatus.Started)
+                && s.Status == SessionStatus.Active
                 && s.ExpiresAt > UtcNow)
             .ToList();
 

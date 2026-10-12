@@ -250,6 +250,12 @@ public class SessionClockTests
                 classId))!;
 
             sessionId = session.SessionId;
+
+            // Start it. This is the step that made the session invisible to students:
+            // CreateSession leaves it Active, starting flips it to Started, and
+            // GetLiveSessionsForClassAsync matched on Active alone. The waiting page
+            // said "nothing is running" for the whole lecture.
+            await sessions.StartSessionAsync(session.SessionId);
         }
 
         clock.Advance(TimeSpan.FromHours(23));
