@@ -221,7 +221,7 @@ else
                     }
 
                     <!-- Waiting for Lecturer (Student View) -->
-                    @if (!State.IsLecturer && !State.IsPeerConnected && State.IsSessionStarted)
+                    @if (!State.IsLecturer && !State.HasStream && State.IsSessionStarted)
                     {
                         <div class="waiting-overlay">
                             <div class="spinner"></div>
@@ -229,24 +229,26 @@ else
 
                             @* A student on a phone cannot open a console, so the stage
                                is put on screen. Without it, "no video" and "the relay
-                               refused the connection" look identical from their side. *@
-                            @if (!string.IsNullOrWhiteSpace(State.MediaStage)
-                                 && State.MediaStage != "starting"
-                                 && State.MediaStage != "stream received")
-                            {
-                                <div class="media-diagnostics">
-                                    <p class="media-diagnostics-title">Connecting…</p>
-                                    <p class="media-diagnostics-stage">@State.MediaStage</p>
-                                    @if (!string.IsNullOrWhiteSpace(State.MediaDetail))
-                                    {
-                                        <p class="media-diagnostics-detail">@State.MediaDetail</p>
-                                    }
-                                    <p class="media-diagnostics-hint">
-                                        If this stays here, your network is blocking the connection.
-                                        Try a different network, such as mobile data.
-                                    </p>
-                                </div>
-                            }
+                               refused the connection" look identical from their side.
+                               Rendered unconditionally while waiting: the first attempt
+                               showed nothing at all when no stage had been reported yet,
+                               which is the same as showing nothing when it fails. *@
+                            <div class="media-diagnostics">
+                                <p class="media-diagnostics-title">Connecting to the lecturer…</p>
+                                <p class="media-diagnostics-stage">
+                                    @(string.IsNullOrWhiteSpace(State.MediaStage)
+                                        ? "starting up"
+                                        : State.MediaStage)
+                                </p>
+                                @if (!string.IsNullOrWhiteSpace(State.MediaDetail))
+                                {
+                                    <p class="media-diagnostics-detail">@State.MediaDetail</p>
+                                }
+                                <p class="media-diagnostics-hint">
+                                    If this stays here, your network is blocking the connection.
+                                    Try a different network, such as mobile data.
+                                </p>
+                            </div>
                         </div>
                     }
 
@@ -1370,6 +1372,8 @@ else
         Console.WriteLine($"[SessionView C#] [JSInvokable] OnStreamReceived: Media stream received from lecturer. Setting IsStreamLoaded=true, IsPeerConnected=true, stopping loading state.");
         State.IsStreamLoaded = true;
         State.IsPeerConnected = true;
+        State.HasStream = true;
+        State.MediaStage = "stream received";
         State.ShowMobilePlayOverlay = State.IsMobileDevice;
         State.StopLoading();
         StateHasChanged();
@@ -1380,6 +1384,7 @@ else
     {
         Console.WriteLine("[SessionView C#] [JSInvokable] OnStreamLost: Media stream lost/disconnected. Setting IsStreamLoaded=false.");
         State.IsStreamLoaded = false;
+        State.HasStream = false;
         State.SetError("Connection to lecturer lost. Reconnecting...");
         StateHasChanged();
     }

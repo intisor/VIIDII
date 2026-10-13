@@ -58,6 +58,14 @@ public class SessionState
 
     /// <summary>Supporting detail for <see cref="MediaStage"/>, e.g. the ICE state.</summary>
     public string MediaDetail { get; set; } = string.Empty;
+
+    /// <summary>
+    /// True once actual video frames have arrived. Deliberately separate from
+    /// <see cref="IsPeerConnected"/>: the signalling connection can succeed while no
+    /// media flows, and gating the waiting screen on the peer hid the one case a
+    /// student needs telling about.
+    /// </summary>
+    public bool HasStream { get; set; }
     public int ConnectionAttempts { get; set; }
     public DateTime? LastConnectionAttempt { get; set; }
 

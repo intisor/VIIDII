@@ -196,7 +196,29 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-app.UseStaticFiles();
+
+// During development the browser must not hold on to scripts or stylesheets.
+//
+// The page is delivered by the server, so a Blazor edit shows up immediately, while
+// js/sessionInterop.js is a separate asset fetched from its own URL. A phone that had
+// loaded it once would keep serving the old copy for hours, which is how a rebuilt
+// page came to be running old JavaScript: the new markup rendered, and none of the
+// new behaviour did. StaticFileOptions is a different cache from Cloudflare's edge
+// cache, so both had to be dealt with.
+if (!app.Environment.IsProduction())
+{
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        OnPrepareResponse = ctx =>
+        {
+            ctx.Context.Response.Headers.CacheControl = "no-store, max-age=0";
+        }
+    });
+}
+else
+{
+    app.UseStaticFiles();
+}
 app.UseRouting();
 
 app.UseAuthentication();

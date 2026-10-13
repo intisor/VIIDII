@@ -411,9 +411,17 @@ window.sessionInterop = (function () {
                     dotNetRef.invokeMethodAsync('OnStudentPeerReady', id);
                 }
 
+                // Reported from here as well as from the incoming call handler. If the
+                // lecturer never places a call there is no handler to report from, so
+                // the panel stayed blank and "no video" was indistinguishable from
+                // "the lecturer never called me". Those are different faults with
+                // different fixes.
+                reportMediaState("registered with the signalling server", "waiting for the lecturer to send their stream");
+
                 // Connect to lecturer to open the data channel.
                 if (currentSessionId) {
                     console.log("[sessionInterop JS] [Student] Automatically connecting to lecturer peer ID:", currentSessionId);
+                    reportMediaState("connecting to lecturer", currentSessionId);
                     connectToLecturer(currentSessionId);
                 } else {
                     console.warn("[sessionInterop JS] [Student] Warning: currentSessionId not set, cannot connect to lecturer");
