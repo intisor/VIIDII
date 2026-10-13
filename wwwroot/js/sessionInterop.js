@@ -548,6 +548,7 @@ window.sessionInterop = (function () {
             console.log("[sessionInterop JS] [Student] Data connection open to lecturer:", lecturerPeerId);
             console.log("[sessionInterop JS] [Student] Sending 'studentReady' handshake packet");
             conn.send({ type: "studentReady", studentId: peer.id });
+            reportMediaState("reached the lecturer", "waiting for their video");
 
             // Notify Blazor of successful connection
             if (dotNetRef) {
@@ -575,10 +576,21 @@ window.sessionInterop = (function () {
         conn.on("error", (err) => {
             console.error("[sessionInterop JS] [Student] Data connection error with lecturer:", err);
             if (attempt < maxAttempts && err.type === "peer-unavailable") {
+                // Reported, because this used to retry in silence. A student sat on
+                // "connecting to lecturer" for the best part of a minute with nothing
+                // on screen, and the reason was never surfaced anywhere.
+                reportMediaState(
+                    "cannot reach the lecturer, retrying",
+                    `${err.type}, try ${attempt + 1} of ${maxAttempts}`
+                );
                 console.warn(`[sessionInterop JS] [Student] Lecturer peer unavailable. Retrying connection (attempt ${attempt + 1}/${maxAttempts}) in 3000ms...`);
                 setTimeout(() => connectToLecturer(lecturerPeerId, attempt + 1, maxAttempts), 3000);
             } else {
                 console.error("[sessionInterop JS] [Student] Max connection attempts reached or fatal data channel error:", err);
+                reportMediaState(
+                    attempt >= maxAttempts ? "gave up reaching the lecturer" : "connection failed",
+                    err.type || 'unknown'
+                );
                 if (dotNetRef) {
                     console.log("[sessionInterop JS] [Student] Invoking Blazor callback: OnConnectionFailed");
                     dotNetRef.invokeMethodAsync('OnConnectionFailed', err.type || 'unknown');
