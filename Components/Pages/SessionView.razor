@@ -210,11 +210,13 @@ else
                     }
 
                     <!-- Mobile Play Overlay -->
-                    @if (State.ShowMobilePlayOverlay && !State.IsLecturer && State.IsSessionStarted)
+                    @if (State.ShowMobilePlayOverlay && !State.IsLecturer)
                     {
                         <div class="mobile-play-overlay" @onclick="PlayVideo">
                             <div class="play-button">
-                                <i class="fas fa-play"></i>
+                                <div class="play-icon-circle">
+                                    <i class="fas fa-play"></i>
+                                </div>
                                 <p>Tap to start video</p>
                             </div>
                         </div>
@@ -357,6 +359,9 @@ else
     private bool _isNavigating = false; // Prevent render after navigation
     private bool IsLecturer => State.IsLecturer;
     private bool _pendingStudentPeerSetup = false;
+    // LiveKit is started once per component. Blazor re-renders often, and each
+    // render would otherwise open another room connection for the same session.
+    private bool _liveKitStarted = false;
 
     /// <summary>
     /// Where students go. One link per class, not per session, because the class list
@@ -563,6 +568,20 @@ else
             State.IsSessionStarted = CurrentSession.IsSessionStarted;
             State.IsLecturer = CurrentSession.LecturerMatricNo == Identity.MatricNo;
 
+            // If a student joined an ended session, forward them to the live session for their class
+            if (!State.IsLecturer && CurrentSession.ClassId is int classId && CurrentSession.Status == SessionStatus.Ended)
+            {
+                var liveSessions = await SessionService.GetLiveSessionsForClassAsync(classId);
+                var activeSession = liveSessions.FirstOrDefault();
+                if (activeSession != null && activeSession.SessionId != SessionId)
+                {
+                    Console.WriteLine($"[SessionView C#] Student entered ended session {SessionId}; redirecting to active class session {activeSession.SessionId}");
+                    _isNavigating = true;
+                    Navigation.NavigateTo($"/session/{activeSession.SessionId}", forceLoad: true);
+                    return;
+                }
+            }
+
             if (State.IsLecturer)
             {
                 await RefreshParticipantsFromSessionAsync(CurrentSession);
@@ -617,6 +636,12 @@ else
                     Console.WriteLine($"[SessionView C#] Student view - setting up tab visibility listener");
                     await SessionJsInterop.SetupTabVisibilityListenerAsync();
                 }
+
+                // Bring up the LiveKit room. Deliberately after the PeerJS
+                // initialisation above, and not instead of it: the two report into the
+                // same diagnostics panel with distinct prefixes, so the first phone
+                // test shows which of them got further.
+                await StartLiveKitAsync();
 
                 // If student and session already started, setup peer
                 if (!State.IsLecturer && State.IsSessionStarted)
@@ -839,6 +864,20 @@ else
                 Console.WriteLine($"[SessionView C#] [Lecturer] Session status updated to: {CurrentSession.Status}");
             }
 
+            // Broadcast session started to all connected students via SignalR
+            if (_hubConnection != null && _hubConnection.State == HubConnectionState.Connected)
+            {
+                Console.WriteLine($"[SessionView C#] [Lecturer] Broadcasting SessionStarted to hub for SessionId: {SessionId}");
+                try
+                {
+                    await _hubConnection.SendAsync("SessionStarted", SessionId);
+                }
+                catch (Exception hubEx)
+                {
+                    Console.WriteLine($"[SessionView C#] [Lecturer] Failed to broadcast SessionStarted via SignalR: {hubEx.Message}");
+                }
+            }
+
             StateHasChanged();
             await Task.Yield();
 
@@ -861,6 +900,16 @@ else
                         State.StopLoading();
                         State.ClearError();
                         Console.WriteLine("[SessionView C#] [Lecturer] Webcam started successfully on client side");
+
+                        // Publish camera to LiveKit room for students
+                        try
+                        {
+                            await JSRuntime.InvokeAsync<object>("livekitInterop.publishCamera");
+                        }
+                        catch (Exception lkEx)
+                        {
+                            Console.WriteLine($"[SessionView C#] [Lecturer] LiveKit publishCamera threw: {lkEx.Message}");
+                        }
                     }
                     else
                     {
@@ -903,9 +952,17 @@ else
 
             if (State.IsScreenSharing)
             {
-                // Switch back to webcam - JS will handle this automatically when screen share stops
+                // Switch back to webcam
                 State.IsScreenSharing = false;
                 Console.WriteLine("[SessionView C#] [Lecturer] Disabling ScreenShare flag (reverting to webcam)");
+                try
+                {
+                    await JSRuntime.InvokeAsync<object>("livekitInterop.stopScreenShare");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[SessionView C#] [Lecturer] LiveKit stopScreenShare error: {ex.Message}");
+                }
             }
             else
             {
@@ -925,6 +982,14 @@ else
                         {
                             State.IsScreenSharing = true;
                             Console.WriteLine("[SessionView C#] [Lecturer] Screen share started successfully on client side");
+                            try
+                            {
+                                await JSRuntime.InvokeAsync<object>("livekitInterop.startScreenShare");
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"[SessionView C#] [Lecturer] LiveKit startScreenShare error: {ex.Message}");
+                            }
                         }
                         else
                         {
@@ -976,6 +1041,11 @@ else
             // Cleanup JS resources
             Console.WriteLine($"[SessionView C#] [Lecturer] Cleaning up JS media/peer resources...");
             await SessionJsInterop.CleanupAsync();
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("livekitInterop.disconnect");
+            }
+            catch { }
 
             State.StopLoading();
 
@@ -1034,11 +1104,7 @@ else
         Console.WriteLine("[SessionView C#] [Student] PlayVideo invoked (user clicked mobile overlay to play remote stream)");
         try
         {
-            await JSRuntime.InvokeVoidAsync("eval", @"
-                const video = document.getElementById('sessionVideo');
-                if (video) video.play();
-            ");
-
+            await JSRuntime.InvokeVoidAsync("livekitInterop.playVideo");
             State.ShowMobilePlayOverlay = false;
             StateHasChanged();
         }
@@ -1054,6 +1120,64 @@ else
         State.ClearError();
         State.ConnectionAttempts = 0;
         await SetupStudentPeerConnectionAsync();
+    }
+
+    // ---------------------------------------------------------------------
+    // LiveKit media. Separate from the PeerJS path above on purpose: this runs
+    // alongside it so a failure here costs nothing, and the diagnostics panel is
+    // reused so a phone shows the same stage text whichever path is reporting.
+    // ---------------------------------------------------------------------
+
+    private async Task StartLiveKitAsync()
+    {
+        if (_liveKitStarted)
+        {
+            return;
+        }
+        _liveKitStarted = true;
+
+        try
+        {
+            // SessionId is passed in explicitly. The JS module holds no route state of
+            // its own, so omitting it here produced "not configured" while PeerJS,
+            // which receives the same id separately, carried on working.
+            var result = await JSRuntime.InvokeAsync<object>(
+                "livekitInterop.connect", SessionId, State.IsLecturer, DotNetObjectReference.Create(this));
+
+            // The result arrives as a JsonElement from JS interop; logged raw because
+            // the useful detail is already reported stage by stage via OnMediaState.
+            Console.WriteLine($"[SessionView C#] LiveKit connect returned: {result}");
+        }
+        catch (Exception ex)
+        {
+            _liveKitStarted = false;
+            Console.WriteLine($"[SessionView C#] LiveKit connect threw: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Reports LiveKit's progress into the existing diagnostics panel, so the stage a
+    /// student reads on their phone is identical whichever media path produced it.
+    /// </summary>
+    /// <summary>
+    /// Media progress from either path, so a phone shows one stage line whichever
+    /// media stack produced it.
+    /// <para>
+    /// The source is passed in rather than inferred from the stage text. Inferring it
+    /// by prefixing anything unrecognised meant a PeerJS message arrived wearing the
+    /// LiveKit prefix, which is how a stale PeerJS stall was read as a LiveKit fault.
+    /// The stack that reports is now the stack that says so.
+    /// </para>
+    /// </summary>
+    [JSInvokable]
+    public Task OnMediaState(string stage, string detail, string source)
+    {
+        var label = string.IsNullOrWhiteSpace(source) ? "media" : source;
+        State.MediaStage = stage;
+        State.MediaDetail = (string.IsNullOrWhiteSpace(detail) ? string.Empty : detail) + $"  [{label}]";
+
+        Console.WriteLine($"[SessionView C#] Media state ({label}): {stage} {detail}");
+        return InvokeAsync(StateHasChanged);
     }
 
     private void RefreshPage()
@@ -1261,18 +1385,6 @@ else
     /// </para>
     /// </summary>
     [JSInvokable]
-    public Task OnMediaState(string stage, string detail)
-    {
-        State.MediaStage = stage;
-        State.MediaDetail = detail;
-
-        Console.WriteLine($"[SessionView C#] Media state: {stage} {detail}");
-
-        StateHasChanged();
-        return Task.CompletedTask;
-    }
-
-    [JSInvokable]
     public async Task OnLecturerPeerReady(string peerId)
     {
         Console.WriteLine($"[SessionView C#] [JSInvokable] OnLecturerPeerReady: PeerId={peerId}. Setting MyPeerId, IsPeerConnected=true, and triggering SessionStarted SignalR event.");
@@ -1370,12 +1482,34 @@ else
     public void OnStreamReceived()
     {
         Console.WriteLine($"[SessionView C#] [JSInvokable] OnStreamReceived: Media stream received from lecturer. Setting IsStreamLoaded=true, IsPeerConnected=true, stopping loading state.");
+        State.IsSessionStarted = true;
+        if (CurrentSession != null)
+        {
+            CurrentSession.IsSessionStarted = true;
+            CurrentSession.Status = SessionStatus.Started;
+        }
         State.IsStreamLoaded = true;
         State.IsPeerConnected = true;
         State.HasStream = true;
         State.MediaStage = "stream received";
         State.ShowMobilePlayOverlay = State.IsMobileDevice;
         State.StopLoading();
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void OnVideoPlaying()
+    {
+        Console.WriteLine("[SessionView C#] [JSInvokable] OnVideoPlaying: video element is actively playing frames.");
+        State.IsSessionStarted = true;
+        if (CurrentSession != null)
+        {
+            CurrentSession.IsSessionStarted = true;
+            CurrentSession.Status = SessionStatus.Started;
+        }
+        State.IsStreamLoaded = true;
+        State.HasStream = true;
+        State.ShowMobilePlayOverlay = false;
         StateHasChanged();
     }
 
@@ -1461,6 +1595,12 @@ else
         {
             await _hubConnection.DisposeAsync();
         }
+
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("livekitInterop.disconnect");
+        }
+        catch { }
     }
 }
 

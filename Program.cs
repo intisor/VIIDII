@@ -54,6 +54,17 @@ builder.Services.AddScoped<RosterService>();
 builder.Services.AddScoped<ClassService>();
 builder.Services.AddScoped<ISessionJsInterop, SessionJsInterop>();
 
+// LiveKit media server. The signing secret is deliberately kept out of the
+// repository: it arrives from a file outside it, or from configuration when a
+// deployment supplies its own. Absent values are not an error - the app runs
+// perfectly well without video and says so plainly when asked for a token, rather
+// than failing at startup and taking the attendance and join flows down with it.
+var liveKitOptions = new LiveKitOptions();
+builder.Configuration.GetSection("LiveKit").Bind(liveKitOptions);
+ReadLiveKitCredentialsFile(liveKitOptions);
+builder.Services.AddSingleton(liveKitOptions);
+builder.Services.AddSingleton<LiveKitTokenService>();
+
 // Add hosted service for participant ping
 builder.Services.AddHostedService<ParticipantPingService>();
 // Add hosted service for session cleanup
@@ -392,6 +403,7 @@ app.MapClassEndpoints();
 app.MapPublicClassEndpoints();
 app.MapAccountEndpoints();
 app.MapJoinEndpoints();
+app.MapLiveKitEndpoints();
 
 // ---------------------------------------------------------------------------
 // ICE / TURN configuration for the browser.
@@ -496,6 +508,70 @@ static string SafeReturnUrl(string? candidate, Role role)
     }
 
     return candidate;
+}
+
+/// <summary>
+/// Reads LiveKit credentials from a plain text file outside the repository.
+/// <para>
+/// Three lines, <c>url=</c>, <c>key=</c>, <c>secret=</c>. Anything already set by
+/// configuration wins, so a deployment can override anything here without editing
+/// the file. A missing file is not an error: it simply means video is not set up on
+/// this machine, which is a normal state for the test suite and for local work.
+/// </para>
+/// <para>
+/// The secret signs join tokens. Anyone holding it can mint a token for any room,
+/// so it stays here rather than in appsettings.json, where it would be committed
+/// alongside the code that uses it.
+/// </para>
+/// </summary>
+static void ReadLiveKitCredentialsFile(LiveKitOptions options)
+{
+    var path = Environment.GetEnvironmentVariable("VIIDII_LIVEKIT_FILE");
+
+    if (string.IsNullOrWhiteSpace(path))
+    {
+        var profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (!string.IsNullOrWhiteSpace(profile))
+        {
+            path = Path.Combine(profile, ".viidii", "livekit.txt");
+        }
+    }
+
+    if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+    {
+        return;
+    }
+
+    foreach (var line in File.ReadAllLines(path))
+    {
+        var trimmed = line.Trim();
+        if (trimmed.Length == 0 || trimmed.StartsWith('#'))
+        {
+            continue;
+        }
+
+        var separator = trimmed.IndexOf('=');
+        if (separator <= 0)
+        {
+            continue;
+        }
+
+        var key = trimmed[..separator].Trim();
+        var value = trimmed[(separator + 1)..].Trim();
+
+        switch (key.ToLowerInvariant())
+        {
+            case "url" when string.IsNullOrWhiteSpace(options.Url):
+                options.Url = value;
+                break;
+            case "key" when string.IsNullOrWhiteSpace(options.ApiKey):
+                options.ApiKey = value;
+                break;
+            case "secret" when string.IsNullOrWhiteSpace(options.ApiSecret):
+                options.ApiSecret = value;
+                break;
+        }
+    }
 }
 
 /// <summary>

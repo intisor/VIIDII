@@ -114,7 +114,8 @@ public class SessionService
             .Where(s => s.ClassId == classId
                         && (s.Status == SessionStatus.Active || s.Status == SessionStatus.Started)
                         && s.ExpiresAt > UtcNow)
-            .OrderByDescending(s => s.StartTime)
+            .OrderByDescending(s => s.CreatedAt)
+            .ThenByDescending(s => s.Id)
             .ToListAsync();
     }
 

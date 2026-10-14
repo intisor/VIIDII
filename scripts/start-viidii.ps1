@@ -89,6 +89,7 @@ $env:ConnectionStrings__DefaultConnection      = "Data Source=$dbPath"
 $env:ASPNETCORE_ENVIRONMENT                    = 'Development'
 $env:Logging__LogLevel__Default                = 'Information'
 $env:Logging__LogLevel__Microsoft              = 'Warning'
+$env:GODEBUG                                   = 'netdns=go'
 
 $dll = Join-Path $repo 'bin\Debug\net10.0\VIIDII.dll'
 if (-not (Test-Path $dll)) { Write-Log "Missing $dll. Run without -SkipBuild."; exit 1 }
@@ -107,7 +108,7 @@ if (-not $NoTunnel) {
         if (-not $cf) { $cf = "${env:ProgramFiles(x86)}\cloudflared\cloudflared.exe" }
 
         Write-Log 'Starting tunnel connector'
-        $tunnel = Start-Process $cf -ArgumentList @('tunnel', '--no-autoupdate', 'run', '--token', $token) `
+        $tunnel = Start-Process $cf -ArgumentList @('tunnel', '--no-autoupdate', '--protocol', 'http2', 'run', '--token', $token) `
             -PassThru -WindowStyle Hidden `
             -RedirectStandardOutput (Join-Path $logDir 'cloudflared.log') `
             -RedirectStandardError  (Join-Path $logDir 'cloudflared.err')
@@ -168,7 +169,7 @@ while ($true) {
         # catches the process being gone altogether.
         if ($tunnel -and $tunnel.HasExited) {
             Write-Log 'Tunnel connector exited, restarting.'
-            $tunnel = Start-Process $cf -ArgumentList @('tunnel', '--no-autoupdate', 'run', '--token', $token) `
+            $tunnel = Start-Process $cf -ArgumentList @('tunnel', '--no-autoupdate', '--protocol', 'http2', 'run', '--token', $token) `
                 -PassThru -WindowStyle Hidden `
                 -RedirectStandardOutput (Join-Path $logDir 'cloudflared.log') `
                 -RedirectStandardError  (Join-Path $logDir 'cloudflared.err')

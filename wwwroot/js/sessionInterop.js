@@ -59,9 +59,12 @@ window.sessionInterop = (function () {
 
     function reportMediaState(stage, detail) {
         mediaState = { stage, detail: detail || "", at: Date.now() };
-        console.log("[sessionInterop JS] [Student] Media state:", stage, detail);
+        console.log("[sessionInterop JS] Media state:", stage, detail);
         if (dotNetRef) {
-            dotNetRef.invokeMethodAsync('OnMediaState', stage, detail || "");
+            // The source is sent so the panel can say which stack reported. The
+            // LiveKit path shares this callback, and a stage text without a source
+            // cannot be attributed reliably.
+            dotNetRef.invokeMethodAsync('OnMediaState', stage, detail || "", "peerjs");
         }
     }
 
@@ -69,16 +72,70 @@ window.sessionInterop = (function () {
         return mediaState;
     }
 
+    // Counts the local candidates the browser actually produced. This is the
+    // single most useful fact when a connection will not come up:
+    //   host only, no "public"  -> no STUN server answered, we never learnt our
+    //                              own address, so there is no path off the LAN
+    //   relay > 0                -> it went through TURN and can work anywhere
+    //   none at all              -> gathering never even started
+    async function describeCandidates(pc) {
+        if (!pc || !pc.getStats) return "";
+        try {
+            const report = await pc.getStats();
+            const counts = { host: 0, srflx: 0, prflx: 0, relay: 0 };
+            let seen = 0;
+            report.forEach((entry) => {
+                if (entry && entry.type === "local-candidate" && entry.candidateType) {
+                    if (counts[entry.candidateType] !== undefined) counts[entry.candidateType]++;
+                    seen++;
+                }
+            });
+            if (!seen) return "none found";
+            const parts = [];
+            if (counts.host) parts.push("host " + counts.host);
+            if (counts.srflx) parts.push("public " + counts.srflx);
+            if (counts.relay) parts.push("relay " + counts.relay);
+            return parts.join(", ");
+        } catch (err) {
+            return "";
+        }
+    }
+
+    // Finds the underlying RTCPeerConnection on a PeerJS DataConnection or
+    // MediaConnection.
+    //
+    // PeerJS 1.5.4 does not expose it as "_pc". That was verified against the
+    // real library: the connection object carries no "_pc" property at all, and
+    // an earlier version of this code read "_pc", found nothing, and reported
+    // "PeerJS never created a peer connection" on every single attempt whether
+    // the connection was healthy or not. The property is "peerConnection".
+    function getPeerConnection(conn) {
+        if (!conn) return null;
+        if (conn.peerConnection) return conn.peerConnection;
+        if (conn._pc) return conn._pc;
+        if (conn.pc) return conn.pc;
+        const negotiator = conn._negotiator;
+        if (negotiator) {
+            if (negotiator.peerConnection) return negotiator.peerConnection;
+            if (negotiator.pc) return negotiator.pc;
+            const inner = negotiator.connection;
+            if (inner) {
+                if (inner.peerConnection) return inner.peerConnection;
+                if (inner._pc) return inner._pc;
+            }
+        }
+        return null;
+    }
+
     // Reads the underlying RTCPeerConnection so we can say which kind of path was
     // negotiated. "relay" means it had to go through a TURN server, which is the
     // thing that breaks under real student traffic on the public relays.
     function describeIce(call) {
         try {
-            const pc = call && (call._pc || call.pc);
+            const pc = getPeerConnection(call);
             if (!pc) return "";
 
             const stats = [];
-            (pc.getStats ? null : null);
 
             if (pc.iceConnectionState) {
                 stats.push("ice=" + pc.iceConnectionState);
@@ -86,11 +143,77 @@ window.sessionInterop = (function () {
             if (pc.iceGatheringState) {
                 stats.push("gathering=" + pc.iceGatheringState);
             }
+            if (pc.connectionState) {
+                stats.push("rtc=" + pc.connectionState);
+            }
 
             return stats.join(" ");
         } catch (err) {
             return "";
         }
+    }
+
+    // PeerJS creates the RTCPeerConnection after it hands us the connection, so
+    // there is a window where it does not exist yet. Poll for it, generously:
+    // the previous window was 2.4s, which on a phone over mobile data expires
+    // before the signalling round-trip has even finished, so a slow connection
+    // and a dead one were indistinguishable.
+    function waitForPeerConnection(conn, attempts = 150, delayMs = 200) {
+        return new Promise((resolve) => {
+            let tries = 0;
+            const tick = () => {
+                const pc = getPeerConnection(conn);
+                if (pc) return resolve(pc);
+                if (tries++ >= attempts) return resolve(null);
+                setTimeout(tick, delayMs);
+            };
+            tick();
+        });
+    }
+
+    // Reports the ICE states and a watchdog. This is the instrument the video
+    // failure never had. Without it a connection that stalls in "checking" is
+    // indistinguishable from a slow one: "open", "data" and "error" all stay
+    // silent, so the panel just stops on one line and nobody learns anything.
+    // States go to the console to keep the panel readable; the panel gets the
+    // failure and the stall, which are the two that matter.
+    async function watchIce(conn, label, report, stallMs = 20000) {
+        const pc = await waitForPeerConnection(conn);
+        if (!pc) {
+            console.warn(`[sessionInterop JS] ${label} never got an RTCPeerConnection`);
+            report("connection stalled", "PeerJS never created a peer connection");
+            return;
+        }
+
+        const snap = () => console.log(`[sessionInterop JS] ${label} ICE:`, describeIce(conn));
+        pc.addEventListener("iceconnectionstatechange", () => {
+            snap();
+            if (pc.iceConnectionState === "failed") {
+                report("connection failed", "ice=failed, no route between the two devices");
+            }
+        });
+        pc.addEventListener("icegatheringstatechange", snap);
+        pc.addEventListener("icecandidate", (e) => {
+            if (e.candidate) {
+                console.log(`[sessionInterop JS] ${label} candidate:`, e.candidate.type, e.candidate.protocol || "?");
+            }
+        });
+
+        snap();
+
+        setTimeout(async () => {
+            const state = pc.iceConnectionState;
+            if (state === "connected" || state === "completed") return;
+            const candidates = await describeCandidates(pc);
+            const detail = `still ${describeIce(conn) || state || "unknown"} after ${Math.round(stallMs / 1000)}s, candidates: ${candidates || "none found"}`;
+
+            // ICE stuck on "new" with gathering already complete means the offer
+            // and answer were never exchanged, so no media path was ever even
+            // attempted. Adding a TURN server cannot fix that, because TURN is
+            // only consulted once two peers have agreed to talk. The signalling
+            // server is what is refusing.
+            report(state === "new" ? "signalling never completed" : "connection stalled", detail);
+        }, stallMs);
     }
 
     const PUBLIC_FALLBACK_ICE = [
@@ -186,38 +309,21 @@ window.sessionInterop = (function () {
             await video.play();
             console.log("[sessionInterop JS] [Lecturer] Local video play started");
 
-            // Initialize PeerJS as lecturer (using sessionId as peer ID)
-            console.log("[sessionInterop JS] [Lecturer] Initializing PeerJS with ID:", sessionId);
-            const iceServers = await getIceServers();
-            peer = new Peer(sessionId, {
-                config: {
-                    iceServers: iceServers,
-                    // "all" keeps host candidates alive so relay candidates remain
-                    // reachable behind symmetric NAT — required on Nigerian mobile networks.
-                    iceTransportPolicy: "all"
-                }
-            });
+            // No PeerJS peer is created here any more. This function now only obtains
+            // the local camera stream so the lecturer can see themselves; publishing is
+            // LiveKit's job (livekitInterop.js). It used to also register a PeerJS peer
+            // named after the session and open a peer-to-peer mesh with every student,
+            // which required the free public 0.peerjs.com cloud to carry the signalling
+            // and had no relay fallback. That failed on every real phone and the code
+            // had no way to point PeerJS anywhere else. Removing it here is what stops
+            // a second, competing media stack from stalling behind LiveKit.
+            console.log("[sessionInterop JS] [Lecturer] Local preview ready; publishing is handled by LiveKit.");
 
-            peer.on("open", (id) => {
-                console.log("[sessionInterop JS] [Lecturer] PeerJS server connection established. Peer ID:", id);
-                // Notify Blazor that peer is ready
-                if (dotNetRef) {
-                    console.log("[sessionInterop JS] [Lecturer] Invoking Blazor callback: OnLecturerPeerReady");
-                    dotNetRef.invokeMethodAsync('OnLecturerPeerReady', id);
-                }
-            });
+            if (dotNetRef) {
+                dotNetRef.invokeMethodAsync('OnLecturerPeerReady', 'livekit');
+            }
 
-            peer.on("connection", (conn) => {
-                console.log("[sessionInterop JS] [Lecturer] PeerJS connection request received from student:", conn.peer);
-                handleStudentConnection(conn);
-            });
-
-            peer.on("error", (err) => {
-                console.error("[sessionInterop JS] [Lecturer] PeerJS error occurred:", err);
-                handlePeerError(err);
-            });
-
-            return { success: true, peerId: sessionId };
+            return { success: true };
 
         } catch (error) {
             console.error("[sessionInterop JS] [Lecturer] Failed to obtain local stream or initialize peer:", error);
@@ -227,6 +333,12 @@ window.sessionInterop = (function () {
 
     function handleStudentConnection(conn) {
         console.log("[sessionInterop JS] [Lecturer] handleStudentConnection called for student peer:", conn.peer);
+
+        // Same reasoning as the student side. The lecturer never places the media
+        // call unless this data channel opens, so a stall here means no video at
+        // all, for that student, with nothing on screen to say why.
+        watchIce(conn, "[Lecturer]", (stage, detail) => reportMediaState(stage, detail));
+
         conn.on("open", () => {
             console.log("[sessionInterop JS] [Lecturer] Data channel open with student:", conn.peer);
             if (!conn.peer) {
@@ -374,73 +486,13 @@ window.sessionInterop = (function () {
     async function setupStudentPeer() {
         console.log("[sessionInterop JS] [Student] setupStudentPeer called");
 
-        let video = document.getElementById("sessionVideo");
-        if (!video) {
-            console.log("[sessionInterop JS] [Student] #sessionVideo element not found on first check. Checking in loop...");
-            for (let i = 0; i < 20 && !video; i++) {
-                await new Promise(resolve => setTimeout(resolve, 100));
-                video = document.getElementById("sessionVideo");
-            }
-        }
-        if (!video) {
-            console.error("[sessionInterop JS] [Student] Critical: Video element #sessionVideo not found after retry loop");
-            throw new Error("Video element #sessionVideo not found");
-        }
-
-        if (peer && !peer.disconnected) {
-            console.log("[sessionInterop JS] [Student] Student peer already exists and is active:", peer.id);
-            return { success: true, peerId: peer.id };
-        }
-
-        console.log("[sessionInterop JS] [Student] Creating PeerJS instance for student...");
-        const studentIceServers = await getIceServers();
-        peer = new Peer({
-            config: {
-                iceServers: studentIceServers,
-                iceTransportPolicy: "all"
-            }
-        });
-
-        return new Promise((resolve, reject) => {
-            peer.on("open", (id) => {
-                console.log("[sessionInterop JS] [Student] PeerJS connection established. Student Peer ID:", id);
-                
-                // Notify Blazor with peer ID so it can send to SignalR
-                if (dotNetRef) {
-                    console.log("[sessionInterop JS] [Student] Invoking Blazor callback: OnStudentPeerReady");
-                    dotNetRef.invokeMethodAsync('OnStudentPeerReady', id);
-                }
-
-                // Reported from here as well as from the incoming call handler. If the
-                // lecturer never places a call there is no handler to report from, so
-                // the panel stayed blank and "no video" was indistinguishable from
-                // "the lecturer never called me". Those are different faults with
-                // different fixes.
-                reportMediaState("registered with the signalling server", "waiting for the lecturer to send their stream");
-
-                // Connect to lecturer to open the data channel.
-                if (currentSessionId) {
-                    console.log("[sessionInterop JS] [Student] Automatically connecting to lecturer peer ID:", currentSessionId);
-                    reportMediaState("connecting to lecturer", currentSessionId);
-                    connectToLecturer(currentSessionId);
-                } else {
-                    console.warn("[sessionInterop JS] [Student] Warning: currentSessionId not set, cannot connect to lecturer");
-                }
-
-                resolve({ success: true, peerId: id });
-            });
-
-            peer.on("call", (call) => {
-                console.log("[sessionInterop JS] [Student] Incoming media call received from lecturer:", call.peer);
-                handleIncomingCall(call, video);
-            });
-
-            peer.on("error", (err) => {
-                console.error("[sessionInterop JS] [Student] PeerJS error in setupStudentPeer:", err);
-                handlePeerError(err);
-                reject(err);
-            });
-        });
+        // Retained only so the call sites in SessionView.razor keep working. There is
+        // no PeerJS peer to set up: this used to register with 0.peerjs.com and dial
+        // the lecturer's peer directly, which is the path that failed on every real
+        // phone. Subscription now belongs to LiveKit, which supplies its own signalling
+        // and relays. Returning a distinct peerId stops the lecturer treating this as a
+        // PeerJS peer in the participant list.
+        return { success: true, peerId: null };
     }
 
     function handleIncomingCall(call, video) {
@@ -533,72 +585,15 @@ window.sessionInterop = (function () {
     }
 
     // Connect student to lecturer peer
-    function connectToLecturer(lecturerPeerId, attempt = 1, maxAttempts = 15) {
-        console.log(`[sessionInterop JS] [Student] connectToLecturer: lecturerPeerId=${lecturerPeerId}, attempt ${attempt}/${maxAttempts}`);
-
-        if (!peer || peer.disconnected) {
-            console.warn("[sessionInterop JS] [Student] Student peer not initialized or is disconnected");
-            return { success: false, error: "Peer not initialized" };
-        }
-
-        console.log("[sessionInterop JS] [Student] Establishing data connection to lecturer peer ID:", lecturerPeerId);
-        const conn = peer.connect(lecturerPeerId);
-
-        conn.on("open", () => {
-            console.log("[sessionInterop JS] [Student] Data connection open to lecturer:", lecturerPeerId);
-            console.log("[sessionInterop JS] [Student] Sending 'studentReady' handshake packet");
-            conn.send({ type: "studentReady", studentId: peer.id });
-            reportMediaState("reached the lecturer", "waiting for their video");
-
-            // Notify Blazor of successful connection
-            if (dotNetRef) {
-                console.log("[sessionInterop JS] [Student] Invoking Blazor callback: OnConnectedToLecturer");
-                dotNetRef.invokeMethodAsync('OnConnectedToLecturer', lecturerPeerId);
-            }
-        });
-
-        conn.on("data", (data) => {
-            console.log("[sessionInterop JS] [Student] Received data from lecturer:", data);
-            
-            // Handle file chunks
-            if (data.type === "fileChunk") {
-                console.log("[sessionInterop JS] [Student] Received file chunk, processing...");
-                handleFileChunk(data);
-            }
-
-            // Forward data to Blazor for handling
-            if (dotNetRef && data.type === "fileChunk") {
-                console.log("[sessionInterop JS] [Student] Forwarding file chunk received callback to Blazor");
-                dotNetRef.invokeMethodAsync('OnFileChunkReceived', JSON.stringify(data));
-            }
-        });
-
-        conn.on("error", (err) => {
-            console.error("[sessionInterop JS] [Student] Data connection error with lecturer:", err);
-            if (attempt < maxAttempts && err.type === "peer-unavailable") {
-                // Reported, because this used to retry in silence. A student sat on
-                // "connecting to lecturer" for the best part of a minute with nothing
-                // on screen, and the reason was never surfaced anywhere.
-                reportMediaState(
-                    "cannot reach the lecturer, retrying",
-                    `${err.type}, try ${attempt + 1} of ${maxAttempts}`
-                );
-                console.warn(`[sessionInterop JS] [Student] Lecturer peer unavailable. Retrying connection (attempt ${attempt + 1}/${maxAttempts}) in 3000ms...`);
-                setTimeout(() => connectToLecturer(lecturerPeerId, attempt + 1, maxAttempts), 3000);
-            } else {
-                console.error("[sessionInterop JS] [Student] Max connection attempts reached or fatal data channel error:", err);
-                reportMediaState(
-                    attempt >= maxAttempts ? "gave up reaching the lecturer" : "connection failed",
-                    err.type || 'unknown'
-                );
-                if (dotNetRef) {
-                    console.log("[sessionInterop JS] [Student] Invoking Blazor callback: OnConnectionFailed");
-                    dotNetRef.invokeMethodAsync('OnConnectionFailed', err.type || 'unknown');
-                }
-            }
-        });
-
-        return { success: true };
+    function connectToLecturer(lecturerPeerId) {
+        // Deliberately inert. This opened a direct data channel to the lecturer's
+        // PeerJS peer and is the call site that produced
+        // "connection stalled ... ice=disconnected" on every real phone. It is kept as
+        // a no-op because SessionView.razor still calls it, and a removed export would
+        // fail loudly at runtime rather than quietly. Nothing dials anybody from here:
+        // LiveKit handles both signalling and relays.
+        console.warn("[sessionInterop JS] [Student] connectToLecturer is disabled. LiveKit handles media.");
+        return { success: false, error: "Peer-to-peer connections are no longer used." };
     }
 
     // Handle stream change notification from Blazor (when lecturer switches)
