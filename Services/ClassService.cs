@@ -18,32 +18,38 @@ public class ClassService
     public ClassService(ViidiiDbContext context) => _context = context;
 
     /// <summary>
-    /// Creates a class. The code is upper-cased and stripped to letters and digits,
+    /// Creates a space / class. The code is upper-cased and stripped to letters and digits,
     /// so "cs 100-a" and "CS100A" are the same class.
     /// </summary>
-    public async Task<(Class? Created, string? Error)> CreateAsync(int lecturerId, string code, string name)
+    public async Task<(Class? Created, string? Error)> CreateAsync(
+        int lecturerId,
+        string code,
+        string name,
+        string? presetType = null,
+        string? joinPrompt = null,
+        bool enableWatermark = true)
     {
         code = NormaliseCode(code);
         name = name?.Trim() ?? string.Empty;
 
         if (code.Length == 0)
         {
-            return (null, "Enter a code for the class, for example CS100.");
+            return (null, "Enter a code for the space, for example CS100 or ICAN-TAX.");
         }
 
         if (code.Length > 32)
         {
-            return (null, "Class codes are limited to 32 characters.");
+            return (null, "Codes are limited to 32 characters.");
         }
 
         if (name.Length == 0)
         {
-            return (null, "Give the class a name, for example 100 Level Computer Science.");
+            return (null, "Give the space a name, for example 100 Level Computer Science or ICAN Skills Taxation.");
         }
 
         if (name.Length > 200)
         {
-            return (null, "Class names are limited to 200 characters.");
+            return (null, "Names are limited to 200 characters.");
         }
 
         if (await _context.Classes.AnyAsync(c => c.Code == code))
@@ -51,18 +57,55 @@ public class ClassService
             return (null, $"The code '{code}' is already in use. Try another.");
         }
 
+        var presetMeta = SpacePreset.GetMeta(presetType);
+        var finalPrompt = string.IsNullOrWhiteSpace(joinPrompt) ? presetMeta.DefaultPrompt : joinPrompt.Trim();
+
         var created = new Class
         {
             Code = code,
             Name = name,
             LecturerId = lecturerId,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = DateTime.UtcNow,
+            PresetType = presetMeta.Key,
+            JoinPrompt = finalPrompt,
+            EnableWatermark = enableWatermark
         };
 
         _context.Classes.Add(created);
         await _context.SaveChangesAsync();
 
         return (created, null);
+    }
+
+    /// <summary>
+    /// Updates configuration, presets, and security settings for an existing space.
+    /// </summary>
+    public async Task<bool> UpdatePresetAsync(
+        int classId,
+        string? presetType,
+        string? joinPrompt,
+        bool? enableWatermark)
+    {
+        var target = await _context.Classes.FindAsync(classId);
+        if (target is null) return false;
+
+        if (!string.IsNullOrWhiteSpace(presetType))
+        {
+            target.PresetType = SpacePreset.GetMeta(presetType).Key;
+        }
+
+        if (joinPrompt is not null)
+        {
+            target.JoinPrompt = joinPrompt.Trim();
+        }
+
+        if (enableWatermark.HasValue)
+        {
+            target.EnableWatermark = enableWatermark.Value;
+        }
+
+        await _context.SaveChangesAsync();
+        return true;
     }
 
     /// <summary>

@@ -29,7 +29,7 @@ else if (Waiting)
                 <h1 class="auth-title">You are on the list</h1>
                 <p class="auth-sub">
                     Nothing is running for @Target.Name at the moment. Refresh this page once your
-                    lecturer starts, and you will go straight in.
+                    @HostTitle.ToLowerInvariant() starts, and you will go straight in.
                 </p>
             </div>
 
@@ -191,18 +191,22 @@ else
 
     private string SeatDisplayName => Seat?.DisplayName ?? Name;
 
+    private SpacePreset.PresetMeta Preset => SpacePreset.GetMeta(Target?.PresetType);
+    private string HostTitle => Preset.HostLabel;
+    private string AttendeeTitle => Preset.AttendeeLabel;
+
     private string? Error => ErrorCode switch
     {
-        "not-found" => "Those details were not on the class list. Check them and try again.",
-        "no-list" => "Your lecturer has not added a class list yet. Try again once they have.",
-        "already-claimed" => "This place is held from another device. Ask your lecturer to release it for you on the class page, then try again here.",
+        "not-found" => $"Those details were not on the list for {Target?.Name ?? "this space"}. Check them and try again.",
+        "no-list" => $"Your {HostTitle.ToLowerInvariant()} has not added an attendee list yet. Try again once they have.",
+        "already-claimed" => $"This place is held from another device. Ask your {HostTitle.ToLowerInvariant()} to release it for you, then try again here.",
         _ => null
     };
 
     private string Prompt => Target is null
         ? string.Empty
         : string.IsNullOrWhiteSpace(Target.JoinPrompt)
-            ? "Enter your details to join"
+            ? Preset.DefaultPrompt
             : Target.JoinPrompt;
 
     private (string? Identifier, string? Name) ReadRosterMapping()
@@ -250,7 +254,14 @@ else
         get
         {
             var (id, _) = ReadRosterMapping();
-            return string.IsNullOrWhiteSpace(id) ? "Your identifier" : id;
+            if (!string.IsNullOrWhiteSpace(id)) return id;
+            return Preset.Key switch
+            {
+                SpacePreset.Professional => "Registration / Phone Number",
+                SpacePreset.Corporate => "Shareholder ID / CSCS No.",
+                SpacePreset.Masterclass => "Ticket Reference / Phone",
+                _ => "Matric Number / Phone"
+            };
         }
     }
 

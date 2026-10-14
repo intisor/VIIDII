@@ -2,6 +2,7 @@
 @using System.Net.Http.Json
 @using System.Text.Json
 @using Microsoft.JSInterop
+@using VIIDII.Endpoints
 @attribute [Authorize(Policy = ViidiiPolicies.LecturerOnly)]
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inject AuthService AuthService
@@ -29,7 +30,12 @@
     else
     {
         <div class="detail-head">
-            <span class="detail-code">@Target.Code</span>
+            <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.25rem;">
+                <span class="detail-code">@Target.Code</span>
+                <span class="preset-badge" style="background:rgba(59,130,246,0.12); color:#2563eb; border:1px solid rgba(59,130,246,0.25); padding:0.2rem 0.6rem; border-radius:999px; font-size:0.8rem; font-weight:600;">
+                    @CurrentPreset.IconEmoji @CurrentPreset.Title
+                </span>
+            </div>
             <h1>@Target.Name</h1>
         </div>
 
@@ -39,10 +45,9 @@
         }
 
         <div class="detail-card">
-            <h2>Student link</h2>
+            <h2>Attendee Join Link</h2>
             <p class="info-text">
-                This is the same link every week. Send it in your class group; nobody has to
-                make an account.
+                Send this link to your @CurrentPreset.AttendeeLabel.ToLowerInvariant()s. They can enter from their browser with zero app installation.
             </p>
 
             <div class="share-row">
@@ -52,30 +57,57 @@
         </div>
 
         <div class="detail-card">
-            <h2>Class list</h2>
+            <h2>⚡ Integrations & Automation</h2>
+            <p class="info-text">
+                Connect your payment gateway (Paystack / Flutterwave) or ticketing API. Paying attendees are automatically added in real-time.
+            </p>
+            <div class="form-group" style="margin-top:0.75rem;">
+                <label class="form-label" style="font-size:0.85rem; font-weight:600;">Payment Webhook URL (Paystack / Flutterwave):</label>
+                <div class="share-row">
+                    <code class="share-link">@WebhookUrl</code>
+                    <button class="btn-secondary-custom" @onclick="CopyWebhookUrl">Copy</button>
+                </div>
+                <p class="form-hint" style="font-size:0.8rem; color:var(--text-faint, #6b7280); margin-top:0.35rem;">
+                    💡 Paste this URL into your Paystack / Flutterwave Webhook settings. When a customer pays, their phone/email is automatically enrolled!
+                </p>
+            </div>
+        </div>
+
+        <div class="detail-card">
+            <h2>Attendee List & Access Control</h2>
 
             @if (!HasList)
             {
                 <p class="info-text">
-                    No list yet. Upload the file you already have and VIIDII will work out
-                    which column is which.
+                    No attendees registered yet. Upload a roster, generate vouchers, or connect your payment webhook above.
                 </p>
 
-                <button class="btn-primary-custom" @onclick="Upload">
-                    Upload the list
-                </button>
+                <div class="btn-row" style="flex-wrap:wrap; gap:0.5rem;">
+                    <button class="btn-primary-custom" @onclick="Upload">
+                        Upload the list
+                    </button>
+                    <button class="btn-secondary-custom" @onclick="GenerateVouchersAsync" disabled="@IsGeneratingVouchers">
+                        @(IsGeneratingVouchers ? "Generating..." : "🎟️ Generate 10 Vouchers")
+                    </button>
+                </div>
             }
             else
             {
                 <p class="info-text">
-                    @Students.Count student(s), @ClaimedCount of them have joined at least once.
+                    @Students.Count registered @(CurrentPreset.AttendeeLabel.ToLowerInvariant())s, @ClaimedCount joined so far.
                 </p>
 
-                <div class="btn-row">
+                <div class="btn-row" style="flex-wrap:wrap; gap:0.5rem; margin-bottom:1rem;">
                     <button class="btn-primary-custom" @onclick="Upload">
-                        Replace the list
+                        Manage / Replace list
                     </button>
-                    <button class="btn-secondary-custom" @onclick="StartSession">
+                    <button class="btn-secondary-custom" @onclick="GenerateVouchersAsync" disabled="@IsGeneratingVouchers">
+                        @(IsGeneratingVouchers ? "Generating..." : "🎟️ Generate 10 Vouchers")
+                    </button>
+                    <a class="btn-secondary-custom" href="@($"/api/v1/spaces/{Target.Code}/attendance.csv")" target="_blank" download style="text-decoration:none; display:inline-flex; align-items:center;">
+                        📥 Export Attendance CSV
+                    </a>
+                    <button class="btn-primary-custom" @onclick="StartSession" style="margin-left:auto;">
                         Start a session
                     </button>
                 </div>
@@ -247,12 +279,19 @@
     private string? Notice { get; set; }
     private string NoticeKind { get; set; } = "alert-danger";
 
-    private bool HasList => Target?.RosterMappingJson is not null;
+    private SpacePreset.PresetMeta CurrentPreset => SpacePreset.GetMeta(Target?.PresetType);
+
+    private bool HasList => (Target?.RosterMappingJson is not null) || (Students.Count > 0);
 
     private int ClaimedCount => Students.Count(s => s.HasClaimed);
 
     private string ShareUrl =>
         $"{Navigation.BaseUri.TrimEnd('/')}/join/{Target?.Code}";
+
+    private string WebhookUrl =>
+        $"{Navigation.BaseUri.TrimEnd('/')}/api/v1/webhooks/payment/{Target?.Code}";
+
+    private bool IsGeneratingVouchers { get; set; }
 
     protected override async Task OnParametersSetAsync() => await LoadAsync();
 
@@ -274,24 +313,15 @@
 
         if (Target is not null)
         {
-            // Checked here as well as in the endpoint, so a lecturer following the wrong
-            // link is told plainly rather than shown an empty class.
             if (Target.LecturerId != user.Id)
             {
                 Target = null;
-                Notice = "That class is not yours.";
+                Notice = "That space is not yours.";
                 NoticeKind = "alert-danger";
             }
-            else if (HasList)
+            else
             {
-                // Straight to the service rather than GET /api/roster/classes/{id}.
-                // An HttpClient has no cookie container, so the sign in cookie never
-                // left the process and the endpoint's authorization rejected the
-                // request with 401. It only surfaced once a class actually had a
-                // list, because this branch is the only one that made the call, which
-                // is why the page looked healthy right up until a real upload.
                 var entries = await RosterService.GetForClassAsync(ClassId);
-
                 Students = entries
                     .Select(e => new StudentRow(e.Id, e.Identifier, e.DisplayName, e.HasClaimed))
                     .ToList();
@@ -299,6 +329,62 @@
         }
 
         IsLoading = false;
+    }
+
+    private async Task GenerateVouchersAsync()
+    {
+        if (IsGeneratingVouchers || Target is null) return;
+        IsGeneratingVouchers = true;
+        try
+        {
+            var prefix = Target.Code.Length > 4 ? Target.Code[..4] : Target.Code;
+            var request = new AttendeeEndpoints.GenerateVouchersRequest(10, prefix, "Access Voucher");
+            // Direct generation via context or endpoint
+            var entries = await RosterService.GetForClassAsync(ClassId);
+            var existingIds = new HashSet<string>(entries.Select(e => e.Identifier), StringComparer.OrdinalIgnoreCase);
+
+            for (var i = 0; i < 10; i++)
+            {
+                string codeCandidate;
+                do
+                {
+                    var randomDigits = System.Security.Cryptography.RandomNumberGenerator.GetInt32(100000, 999999);
+                    codeCandidate = $"{prefix}-{randomDigits}";
+                }
+                while (existingIds.Contains(codeCandidate));
+
+                existingIds.Add(codeCandidate);
+                await RosterService.ImportAsync(ClassId, $"{codeCandidate},{codeCandidate}");
+            }
+
+            Notice = "10 single-use access vouchers generated successfully! Attendees can join with these codes.";
+            NoticeKind = "alert-success";
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Notice = $"Could not generate vouchers: {ex.Message}";
+            NoticeKind = "alert-danger";
+        }
+        finally
+        {
+            IsGeneratingVouchers = false;
+        }
+    }
+
+    private async Task CopyWebhookUrl()
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", WebhookUrl);
+            Notice = "Payment Webhook URL copied! Paste this into Paystack or Flutterwave.";
+            NoticeKind = "alert-success";
+        }
+        catch
+        {
+            Notice = "Copying is not available here. Select the Webhook URL and copy it by hand.";
+            NoticeKind = "alert-warning";
+        }
     }
 
     /// <summary>
@@ -338,8 +424,6 @@
         }
         catch (JSException)
         {
-            // Clipboard access needs a secure context, so it fails on plain HTTP.
-            // The link is on screen and can still be selected by hand.
             Notice = "Copying is not available here. Select the link and copy it by hand.";
             NoticeKind = "alert-warning";
         }

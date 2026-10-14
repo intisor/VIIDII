@@ -414,6 +414,83 @@ window.livekitInterop = (function () {
         await startAudio();
     }
 
+    function setAudioOnly(isAudioOnly) {
+        console.log('[livekit JS] setAudioOnly:', isAudioOnly);
+        const video = document.getElementById('sessionVideo');
+        if (activeVideoTrack) {
+            if (isAudioOnly) {
+                if (video) try { activeVideoTrack.detach(video); } catch (e) {}
+            } else {
+                if (video) {
+                    try {
+                        activeVideoTrack.attach(video);
+                        video.play();
+                    } catch (e) {}
+                }
+            }
+        }
+        if (room) {
+            room.remoteParticipants.forEach(function (participant) {
+                participant.trackPublications.forEach(function (pub) {
+                    if (pub.kind === 'video') {
+                        try { pub.setEnabled(!isAudioOnly); } catch (e) {}
+                    }
+                });
+            });
+        }
+        return { success: true, audioOnly: isAudioOnly };
+    }
+
+    let watermarkInterval = null;
+    function enableWatermark(identifierText) {
+        if (!identifierText) return;
+        const video = document.getElementById('sessionVideo');
+        const container = video ? video.parentElement : null;
+        if (!container) return;
+
+        let existing = document.getElementById('viidii-watermark-overlay');
+        if (!existing) {
+            existing = document.createElement('div');
+            existing.id = 'viidii-watermark-overlay';
+            existing.style.position = 'absolute';
+            existing.style.pointerEvents = 'none';
+            existing.style.userSelect = 'none';
+            existing.style.zIndex = '25';
+            existing.style.color = 'rgba(255, 255, 255, 0.28)';
+            existing.style.fontSize = '12px';
+            existing.style.fontWeight = '700';
+            existing.style.fontFamily = 'monospace';
+            existing.style.letterSpacing = '1px';
+            existing.style.textShadow = '0 1px 2px rgba(0,0,0,0.6)';
+            existing.style.transition = 'all 2.5s ease-in-out';
+            container.style.position = 'relative';
+            container.appendChild(existing);
+        }
+
+        const updatePosition = function() {
+            const top = Math.floor(Math.random() * 75) + 10;
+            const left = Math.floor(Math.random() * 70) + 10;
+            existing.style.top = top + '%';
+            existing.style.left = left + '%';
+            existing.textContent = '🔒 ' + identifierText + ' • VIIDII SECURE';
+        };
+
+        updatePosition();
+        if (watermarkInterval) clearInterval(watermarkInterval);
+        watermarkInterval = setInterval(updatePosition, 7000);
+    }
+
+    function disableWatermark() {
+        if (watermarkInterval) {
+            clearInterval(watermarkInterval);
+            watermarkInterval = null;
+        }
+        const existing = document.getElementById('viidii-watermark-overlay');
+        if (existing && existing.parentElement) {
+            existing.parentElement.removeChild(existing);
+        }
+    }
+
     function getMediaState() {
         return mediaState;
     }
@@ -427,6 +504,9 @@ window.livekitInterop = (function () {
         stopScreenShare: stopScreenShare,
         startAudio: startAudio,
         playVideo: playVideo,
+        setAudioOnly: setAudioOnly,
+        enableWatermark: enableWatermark,
+        disableWatermark: disableWatermark,
         getMediaState: getMediaState,
         isConfigured: function () { return true; },
     };

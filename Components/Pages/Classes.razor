@@ -76,25 +76,36 @@
     }
 
     <div class="class-card">
-        <h2>New class</h2>
+        <h2>New space / class</h2>
 
         <div class="form-group">
-            <label class="form-label" for="new-code">Short code</label>
+            <label class="form-label" for="preset-select">Industry & Preset</label>
+            <select id="preset-select" class="form-control" @bind="SelectedPreset">
+                @foreach (var preset in SpacePreset.All)
+                {
+                    <option value="@preset.Key">@preset.IconEmoji @preset.Title (@preset.HostLabel / @preset.AttendeeLabel)</option>
+                }
+            </select>
+            <p class="form-hint">@CurrentPresetMeta.Description</p>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label" for="new-code">Short join code</label>
             <input id="new-code" class="form-control" @bind="NewCode" @bind:event="oninput"
-                   placeholder="e.g. CS100" maxlength="20" />
+                   placeholder="@CodePlaceholder" maxlength="20" />
             <p class="form-hint">
-                Students type this in the link, so keep it short and easy to read out.
+                Attendees use this code in the join link, so keep it short and easy to read out.
             </p>
         </div>
 
         <div class="form-group">
-            <label class="form-label" for="new-name">Class name</label>
+            <label class="form-label" for="new-name">Space name</label>
             <input id="new-name" class="form-control" @bind="NewName" @bind:event="oninput"
-                   placeholder="e.g. 100 Level Computer Science" maxlength="100" />
+                   placeholder="@NamePlaceholder" maxlength="100" />
         </div>
 
         <button class="btn-primary-custom" disabled="@IsSaving" @onclick="CreateClassAsync">
-            @(IsSaving ? "Creating..." : "Create class")
+            @(IsSaving ? "Creating..." : "Create space")
         </button>
     </div>
 
@@ -193,9 +204,28 @@
 </style>
 
 @code {
-    private sealed record ClassRow(int Id, string Code, string Name, bool HasList, int StudentCount);
+    private sealed record ClassRow(int Id, string Code, string Name, bool HasList, int StudentCount, string PresetType);
 
     private List<ClassRow> Items { get; set; } = new();
+
+    private string SelectedPreset { get; set; } = SpacePreset.Academic;
+    private SpacePreset.PresetMeta CurrentPresetMeta => SpacePreset.GetMeta(SelectedPreset);
+
+    private string CodePlaceholder => SelectedPreset switch
+    {
+        SpacePreset.Professional => "e.g. ICAN-TAX",
+        SpacePreset.Corporate => "e.g. AGM-2026",
+        SpacePreset.Masterclass => "e.g. DEV-BOOTCAMP",
+        _ => "e.g. CS100"
+    };
+
+    private string NamePlaceholder => SelectedPreset switch
+    {
+        SpacePreset.Professional => "e.g. ICAN Skills Taxation Weekend",
+        SpacePreset.Corporate => "e.g. 2026 Annual General Meeting",
+        SpacePreset.Masterclass => "e.g. Full-Stack Fellowship Cohort 4",
+        _ => "e.g. 100 Level Computer Science"
+    };
 
     private string NewCode { get; set; } = string.Empty;
     private string NewName { get; set; } = string.Empty;
@@ -238,7 +268,8 @@
                 item.Code,
                 item.Name,
                 item.RosterMappingJson is not null,
-                await ClassService.GetStudentCountAsync(item.Id)));
+                await ClassService.GetStudentCountAsync(item.Id),
+                item.PresetType));
         }
 
         IsLoading = false;
@@ -254,7 +285,11 @@
         IsSaving = true;
         Notice = null;
 
-        var (created, error) = await ClassService.CreateAsync(CurrentUser!.Id, NewCode, NewName);
+        var (created, error) = await ClassService.CreateAsync(
+            CurrentUser!.Id,
+            NewCode,
+            NewName,
+            SelectedPreset);
 
         IsSaving = false;
 
@@ -265,7 +300,7 @@
             return;
         }
 
-        Notice = $"{created.Code} is ready. Share the link below with your students.";
+        Notice = $"{created.Code} is ready. Share the join link with your attendees.";
         NoticeKind = "alert-success";
 
         NewCode = string.Empty;

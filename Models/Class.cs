@@ -38,6 +38,17 @@ public class Class
     [StringLength(120)]
     public string? JoinPrompt { get; set; }
 
+    /// <summary>
+    /// Industry / use-case preset: "academic", "professional", "corporate", "masterclass", "custom".
+    /// </summary>
+    [StringLength(32)]
+    public string PresetType { get; set; } = SpacePreset.Academic;
+
+    /// <summary>
+    /// Whether dynamic anti-piracy screen watermarking is active during live sessions.
+    /// </summary>
+    public bool EnableWatermark { get; set; } = true;
+
     /// <summary>Confirmed class list column mapping as JSON.</summary>
     [System.Text.Json.Serialization.JsonIgnore]
     public string? RosterMappingJson { get; set; }

@@ -38,7 +38,9 @@ public static class ClassEndpoints
                     item.Id,
                     item.Code,
                     item.Name,
+                    item.PresetType,
                     item.JoinPrompt,
+                    item.EnableWatermark,
                     hasList = item.RosterMappingJson is not null,
                     studentCount = await classService.GetStudentCountAsync(item.Id),
                     sessionCount = await classService.GetSessionCountAsync(item.Id)
@@ -66,15 +68,48 @@ public static class ClassEndpoints
             var (created, error) = await classService.CreateAsync(
                 user.Id,
                 request.Code ?? string.Empty,
-                request.Name ?? string.Empty);
+                request.Name ?? string.Empty,
+                request.PresetType,
+                request.JoinPrompt,
+                request.EnableWatermark ?? true);
 
             if (created is null)
             {
                 return Results.BadRequest(new { error });
             }
 
-            return Results.Ok(new { created.Id, created.Code, created.Name });
+            return Results.Ok(new
+            {
+                created.Id,
+                created.Code,
+                created.Name,
+                created.PresetType,
+                created.JoinPrompt,
+                created.EnableWatermark
+            });
         }).RequireAuthorization();
+
+        group.MapPatch("/{classId:int}", async (
+            int classId,
+            UpdateClassRequest request,
+            ClassService classService,
+            CurrentUserAccessor currentUser,
+            ViidiiDbContext context) =>
+        {
+            var user = await ResolveUserAsync(context, currentUser.MatricNo);
+            if (user is null) return Results.Unauthorized();
+
+            var item = await classService.GetByIdAsync(classId);
+            if (item is null) return Results.NotFound(new { error = "Class not found." });
+
+            if (user.Role != Role.Admin && item.LecturerId != user.Id)
+            {
+                return Results.Forbid();
+            }
+
+            await classService.UpdatePresetAsync(classId, request.PresetType, request.JoinPrompt, request.EnableWatermark);
+            return Results.Ok(new { success = true });
+        });
 
         group.MapGet("/suggest-code", async (string? baseCode, ClassService classService) =>
             Results.Ok(new { code = await classService.SuggestCodeAsync(baseCode ?? string.Empty) }));
@@ -101,7 +136,9 @@ public static class ClassEndpoints
                 item.Id,
                 item.Code,
                 item.Name,
+                item.PresetType,
                 item.JoinPrompt,
+                item.EnableWatermark,
                 hasList = item.RosterMappingJson is not null,
                 studentCount = await classService.GetStudentCountAsync(classId),
                 sessionCount = await classService.GetSessionCountAsync(classId),
@@ -147,12 +184,18 @@ public static class ClassEndpoints
                 return Results.NotFound(new { error = "No class was found with that code." });
             }
 
+            var preset = SpacePreset.GetMeta(item.PresetType);
+
             return Results.Ok(new
             {
                 item.Code,
                 item.Name,
+                item.PresetType,
+                item.EnableWatermark,
+                hostLabel = preset.HostLabel,
+                attendeeLabel = preset.AttendeeLabel,
                 prompt = string.IsNullOrWhiteSpace(item.JoinPrompt)
-                    ? "Enter your details to join"
+                    ? preset.DefaultPrompt
                     : item.JoinPrompt,
                 hasList = item.RosterMappingJson is not null
             });
@@ -169,5 +212,15 @@ public static class ClassEndpoints
     {
         public string? Code { get; set; }
         public string? Name { get; set; }
+        public string? PresetType { get; set; }
+        public string? JoinPrompt { get; set; }
+        public bool? EnableWatermark { get; set; }
+    }
+
+    private sealed class UpdateClassRequest
+    {
+        public string? PresetType { get; set; }
+        public string? JoinPrompt { get; set; }
+        public bool? EnableWatermark { get; set; }
     }
 }

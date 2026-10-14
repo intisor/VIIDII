@@ -180,7 +180,17 @@ using (var scope = app.Services.CreateScope())
     if (providerName == DatabaseProvider.Sqlite && !builder.Environment.IsProduction())
     {
         dbContext.Database.EnsureCreated();
-        app.Logger.LogInformation("SQLite schema created from the model (development).");
+        try
+        {
+            dbContext.Database.ExecuteSqlRaw("ALTER TABLE Classes ADD COLUMN PresetType TEXT DEFAULT 'academic';");
+        }
+        catch { /* Column already exists */ }
+        try
+        {
+            dbContext.Database.ExecuteSqlRaw("ALTER TABLE Classes ADD COLUMN EnableWatermark INTEGER DEFAULT 1;");
+        }
+        catch { /* Column already exists */ }
+        app.Logger.LogInformation("SQLite schema verified from the model (development).");
     }
     else
     {
@@ -404,6 +414,8 @@ app.MapPublicClassEndpoints();
 app.MapAccountEndpoints();
 app.MapJoinEndpoints();
 app.MapLiveKitEndpoints();
+app.MapAttendeeEndpoints();
+app.MapPaymentWebhookEndpoints();
 
 // ---------------------------------------------------------------------------
 // ICE / TURN configuration for the browser.

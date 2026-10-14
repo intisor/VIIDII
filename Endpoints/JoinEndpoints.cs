@@ -30,17 +30,19 @@ public static class JoinEndpoints
                 return Results.NotFound(new { error = "No class was found with that code." });
             }
 
+            var studentCount = await classService.GetStudentCountAsync(target.Id);
+            var hasList = target.RosterMappingJson is not null || studentCount > 0;
+
             return Results.Ok(new
             {
                 target.Code,
                 target.Name,
+                target.PresetType,
                 prompt = string.IsNullOrWhiteSpace(target.JoinPrompt)
-                    ? "Enter your details to join"
+                    ? SpacePreset.GetMeta(target.PresetType).DefaultPrompt
                     : target.JoinPrompt,
-                hasList = target.RosterMappingJson is not null,
-                // Signals to the UI that a list exists, so it can ask for two fields
-                // rather than pretending a login is needed.
-                requiresList = target.RosterMappingJson is not null
+                hasList,
+                requiresList = hasList
             });
         });
 
@@ -82,7 +84,7 @@ public static class JoinEndpoints
                 return Results.NotFound();
             }
 
-            if (target.RosterMappingJson is null)
+            if (target.RosterMappingJson is null && await classService.GetStudentCountAsync(target.Id) == 0)
             {
                 return Results.Redirect($"/join/{Uri.EscapeDataString(code)}?error=no-list");
             }
