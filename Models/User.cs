@@ -13,6 +13,8 @@ namespace VIIDII.Models
         /// single roster import for a credential nobody would ever use.
         /// </summary>
         public string? PasswordHash { get; set; }
+        public string? Email { get; set; }
+        public string? GoogleSubjectId { get; set; }
         public Role Role { get; set; }
         public Departments? Department { get; set; }
         public Levels? Level { get; set; }

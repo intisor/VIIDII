@@ -7,6 +7,8 @@ using VIIDII.Services;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authentication.Google;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Components;
 using Microsoft.EntityFrameworkCore;
@@ -85,7 +87,7 @@ builder.Services.AddSession(options =>
 // Add authentication + authorization.
 // Cookie auth is issued by the /auth/login endpoint, NOT from inside a Blazor
 // Server circuit — cookies cannot be written once a circuit is established.
-builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+var authBuilder = builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
     {
         options.Cookie.Name = ".VIIDII.Auth";
@@ -137,6 +139,70 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
             return Task.CompletedTask;
         };
     });
+
+var googleClientId = builder.Configuration["Authentication:Google:ClientId"]
+    ?? builder.Configuration["Google:ClientId"];
+var googleClientSecret = builder.Configuration["Authentication:Google:ClientSecret"]
+    ?? builder.Configuration["Google:ClientSecret"];
+
+if (!string.IsNullOrWhiteSpace(googleClientId) && !string.IsNullOrWhiteSpace(googleClientSecret))
+{
+    authBuilder.AddGoogle(GoogleDefaults.AuthenticationScheme, googleOptions =>
+    {
+        googleOptions.ClientId = googleClientId;
+        googleOptions.ClientSecret = googleClientSecret;
+        googleOptions.SignInScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+
+        googleOptions.Events.OnTicketReceived = async context =>
+        {
+            var email = context.Principal?.FindFirst(ClaimTypes.Email)?.Value
+                ?? context.Principal?.FindFirst("email")?.Value;
+            var name = context.Principal?.FindFirst(ClaimTypes.Name)?.Value
+                ?? email ?? "Google User";
+            var googleId = context.Principal?.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                ?? context.Principal?.FindFirst("sub")?.Value;
+
+            if (string.IsNullOrWhiteSpace(email))
+            {
+                context.Response.Redirect("/login?error=google_no_email");
+                context.HandleResponse();
+                return;
+            }
+
+            var db = context.HttpContext.RequestServices.GetRequiredService<ViidiiDbContext>();
+            var user = await db.Users.FirstOrDefaultAsync(u => u.GoogleSubjectId == googleId || u.MatricNo == email);
+
+            if (user is null)
+            {
+                user = new User
+                {
+                    Name = name,
+                    MatricNo = email,
+                    Email = email,
+                    GoogleSubjectId = googleId,
+                    Role = Role.Lecturer,
+                    CreatedAt = DateTime.UtcNow
+                };
+                db.Users.Add(user);
+                await db.SaveChangesAsync();
+            }
+            else
+            {
+                if (string.IsNullOrWhiteSpace(user.GoogleSubjectId) && !string.IsNullOrWhiteSpace(googleId))
+                {
+                    user.GoogleSubjectId = googleId;
+                }
+                if (string.IsNullOrWhiteSpace(user.Email))
+                {
+                    user.Email = email;
+                }
+                await db.SaveChangesAsync();
+            }
+
+            context.Principal = ViidiiPrincipalBuilder.Build(user);
+        };
+    });
+}
 
 static bool IsApiRequest(HttpRequest request) =>
     request.Path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase);
@@ -198,6 +264,16 @@ using (var scope = app.Services.CreateScope())
         try
         {
             dbContext.Database.ExecuteSqlRaw("ALTER TABLE Classes ADD COLUMN AllowSelfRegistration INTEGER DEFAULT 1;");
+        }
+        catch { /* Column already exists */ }
+        try
+        {
+            dbContext.Database.ExecuteSqlRaw("ALTER TABLE Users ADD COLUMN Email TEXT NULL;");
+        }
+        catch { /* Column already exists */ }
+        try
+        {
+            dbContext.Database.ExecuteSqlRaw("ALTER TABLE Users ADD COLUMN GoogleSubjectId TEXT NULL;");
         }
         catch { /* Column already exists */ }
         app.Logger.LogInformation("SQLite schema verified from the model (development).");
@@ -406,6 +482,22 @@ app.MapPost("/auth/logout", async (HttpContext http) =>
 {
     await http.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
     return Results.Redirect("/");
+});
+
+app.MapGet("/auth/google", (HttpContext http, IConfiguration config) =>
+{
+    var clientId = config["Authentication:Google:ClientId"] ?? config["Google:ClientId"];
+    var clientSecret = config["Authentication:Google:ClientSecret"] ?? config["Google:ClientSecret"];
+    if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(clientSecret))
+    {
+        return Results.Redirect("/login?error=google_unconfigured");
+    }
+
+    var properties = new AuthenticationProperties
+    {
+        RedirectUri = "/classes"
+    };
+    return Results.Challenge(properties, [GoogleDefaults.AuthenticationScheme]);
 });
 
 // Map SignalR hub.

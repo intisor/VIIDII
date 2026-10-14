@@ -451,4 +451,59 @@ public class AuthFlowTests : IClassFixture<WebApplicationFactory<Program>>
         Assert.Contains("#blazor-error-ui", css);
         Assert.Matches(@"#blazor-error-ui\s*\{[^}]*display:\s*none", css);
     }
+
+    [Fact]
+    public async Task SignInAndSignUpPages_RenderGoogleButton()
+    {
+        using var app = CreateApp();
+        using var client = app.CreateClient();
+
+        var loginHtml = await client.GetStringAsync("/login");
+        Assert.Contains("href=\"/auth/google\"", loginHtml);
+        Assert.Contains("Continue with Google", loginHtml);
+
+        var signupHtml = await client.GetStringAsync("/signup");
+        Assert.Contains("href=\"/auth/google\"", signupHtml);
+        Assert.Contains("Sign up with Google", signupHtml);
+    }
+
+    [Fact]
+    public async Task GoogleAuthEndpoint_RedirectsGracefully_WhenUnconfigured()
+    {
+        using var app = CreateApp();
+        using var client = app.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        var resp = await client.GetAsync("/auth/google");
+        Assert.Equal(HttpStatusCode.Redirect, resp.StatusCode);
+        Assert.Equal("/login?error=google_unconfigured", resp.Headers.Location?.OriginalString);
+    }
+
+    [Fact]
+    public async Task GoogleAuthEndpoint_TriggersChallenge_WhenConfigured()
+    {
+        using var app = _factory.WithWebHostBuilder(builder =>
+        {
+            builder.UseSetting("Database:Provider", "Sqlite");
+            builder.UseSetting(
+                "ConnectionStrings:DefaultConnection",
+                $"Data Source=file:viidii-google-{Guid.NewGuid():N}?mode=memory&cache=shared");
+            builder.UseSetting("Authentication:Google:ClientId", "mock-google-client-id");
+            builder.UseSetting("Authentication:Google:ClientSecret", "mock-google-client-secret");
+            builder.UseEnvironment("Development");
+        });
+
+        using var client = app.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        var resp = await client.GetAsync("/auth/google");
+        Assert.Equal(HttpStatusCode.Redirect, resp.StatusCode);
+        Assert.NotNull(resp.Headers.Location);
+        Assert.Contains("accounts.google.com", resp.Headers.Location.OriginalString);
+        Assert.Contains("client_id=mock-google-client-id", resp.Headers.Location.OriginalString);
+    }
 }
