@@ -222,6 +222,8 @@ namespace VIIDII.Data
                 entity.Property(e => e.JoinPrompt).HasMaxLength(120);
                 entity.Property(e => e.PresetType).HasMaxLength(32).HasDefaultValue(SpacePreset.Academic);
                 entity.Property(e => e.EnableWatermark).HasDefaultValue(true);
+                entity.Property(e => e.PaymentLink).HasMaxLength(500);
+                entity.Property(e => e.AllowSelfRegistration).HasDefaultValue(true);
                 entity.Property(e => e.RosterMappingJson).HasMaxLength(2000);
                 entity.Property(e => e.CreatedAt).HasDefaultValueSql(utcNowDefault);
 

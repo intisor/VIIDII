@@ -49,6 +49,18 @@ public class Class
     /// </summary>
     public bool EnableWatermark { get; set; } = true;
 
+    /// <summary>
+    /// Optional external payment link (Paystack, Flutterwave, Selar).
+    /// 100% of funds go directly to the host's account; VIIDII never touches money.
+    /// </summary>
+    [StringLength(500)]
+    public string? PaymentLink { get; set; }
+
+    /// <summary>
+    /// Whether public sign-up / RSVP is active at /register/{code}.
+    /// </summary>
+    public bool AllowSelfRegistration { get; set; } = true;
+
     /// <summary>Confirmed class list column mapping as JSON.</summary>
     [System.Text.Json.Serialization.JsonIgnore]
     public string? RosterMappingJson { get; set; }

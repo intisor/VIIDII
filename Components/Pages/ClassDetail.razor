@@ -45,9 +45,21 @@
         }
 
         <div class="detail-card">
-            <h2>Attendee Join Link</h2>
+            <h2>Public Sign-Up / RSVP Link</h2>
             <p class="info-text">
-                Send this link to your @CurrentPreset.AttendeeLabel.ToLowerInvariant()s. They can enter from their browser with zero app installation.
+                Share this link on WhatsApp, email, or social media for people to register in advance for your upcoming session.
+            </p>
+
+            <div class="share-row">
+                <code class="share-link">@RegisterUrl</code>
+                <button class="btn-secondary-custom" @onclick="CopyRegisterLink">Copy</button>
+            </div>
+        </div>
+
+        <div class="detail-card">
+            <h2>Direct Join Link (For Enrolled Attendees)</h2>
+            <p class="info-text">
+                Attendees already registered or on the list can enter directly from this link with zero app downloads.
             </p>
 
             <div class="share-row">
@@ -57,18 +69,35 @@
         </div>
 
         <div class="detail-card">
-            <h2>⚡ Integrations & Automation</h2>
+            <h2>⚡ Integrations & Payments</h2>
             <p class="info-text">
-                Connect your payment gateway (Paystack / Flutterwave) or ticketing API. Paying attendees are automatically added in real-time.
+                Connect your payment gateway. 100% of money goes straight to your account; VIIDII handles ₦0.
             </p>
+
             <div class="form-group" style="margin-top:0.75rem;">
-                <label class="form-label" style="font-size:0.85rem; font-weight:600;">Payment Webhook URL (Paystack / Flutterwave):</label>
+                <label class="form-label" style="font-size:0.85rem; font-weight:600;">Optional: Your Direct Payment Page Link (Paystack / Flutterwave / Selar):</label>
+                <div style="display:flex; gap:0.5rem; margin-top:0.25rem;">
+                    <input class="form-control"
+                           placeholder="e.g. https://paystack.com/pay/your-course"
+                           @bind="HostPaymentLink"
+                           style="flex:1;" />
+                    <button class="btn-primary-custom" disabled="@IsSavingPaymentLink" @onclick="SavePaymentLinkAsync">
+                        @(IsSavingPaymentLink ? "Saving..." : "Save")
+                    </button>
+                </div>
+                <p class="form-hint" style="font-size:0.8rem; color:var(--text-faint, #6b7280); margin-top:0.35rem;">
+                    If provided, attendees clicking "Register" on your sign-up page will be directed straight to your Paystack/Flutterwave link.
+                </p>
+            </div>
+
+            <div class="form-group" style="margin-top:1rem;">
+                <label class="form-label" style="font-size:0.85rem; font-weight:600;">Payment Webhook URL:</label>
                 <div class="share-row">
                     <code class="share-link">@WebhookUrl</code>
                     <button class="btn-secondary-custom" @onclick="CopyWebhookUrl">Copy</button>
                 </div>
                 <p class="form-hint" style="font-size:0.8rem; color:var(--text-faint, #6b7280); margin-top:0.35rem;">
-                    💡 Paste this URL into your Paystack / Flutterwave Webhook settings. When a customer pays, their phone/email is automatically enrolled!
+                    💡 Paste this URL into your Paystack / Flutterwave Webhook settings. When a customer pays, they are automatically enrolled!
                 </p>
             </div>
         </div>
@@ -288,9 +317,14 @@
     private string ShareUrl =>
         $"{Navigation.BaseUri.TrimEnd('/')}/join/{Target?.Code}";
 
+    private string RegisterUrl =>
+        $"{Navigation.BaseUri.TrimEnd('/')}/register/{Target?.Code}";
+
     private string WebhookUrl =>
         $"{Navigation.BaseUri.TrimEnd('/')}/api/v1/webhooks/payment/{Target?.Code}";
 
+    private string? HostPaymentLink { get; set; }
+    private bool IsSavingPaymentLink { get; set; }
     private bool IsGeneratingVouchers { get; set; }
 
     protected override async Task OnParametersSetAsync() => await LoadAsync();
@@ -325,6 +359,7 @@
                 Students = entries
                     .Select(e => new StudentRow(e.Id, e.Identifier, e.DisplayName, e.HasClaimed))
                     .ToList();
+                HostPaymentLink = Target.PaymentLink;
             }
         }
 
@@ -369,6 +404,58 @@
         finally
         {
             IsGeneratingVouchers = false;
+        }
+    }
+
+    private async Task SavePaymentLinkAsync()
+    {
+        if (Target is null || IsSavingPaymentLink) return;
+        IsSavingPaymentLink = true;
+        try
+        {
+            var cleanLink = string.IsNullOrWhiteSpace(HostPaymentLink) ? null : HostPaymentLink.Trim();
+            var ok = await ClassService.UpdatePresetAsync(
+                Target.Id,
+                presetType: null,
+                joinPrompt: null,
+                enableWatermark: null,
+                paymentLink: cleanLink);
+
+            if (ok)
+            {
+                Target.PaymentLink = cleanLink;
+                Notice = "Payment link saved successfully!";
+                NoticeKind = "alert-success";
+            }
+            else
+            {
+                Notice = "Could not update payment link.";
+                NoticeKind = "alert-danger";
+            }
+        }
+        catch (Exception ex)
+        {
+            Notice = $"Error saving payment link: {ex.Message}";
+            NoticeKind = "alert-danger";
+        }
+        finally
+        {
+            IsSavingPaymentLink = false;
+        }
+    }
+
+    private async Task CopyRegisterLink()
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", RegisterUrl);
+            Notice = "Sign-up / RSVP link copied!";
+            NoticeKind = "alert-success";
+        }
+        catch
+        {
+            Notice = "Copying is not available here. Select the link and copy it by hand.";
+            NoticeKind = "alert-warning";
         }
     }
 

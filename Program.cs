@@ -190,6 +190,16 @@ using (var scope = app.Services.CreateScope())
             dbContext.Database.ExecuteSqlRaw("ALTER TABLE Classes ADD COLUMN EnableWatermark INTEGER DEFAULT 1;");
         }
         catch { /* Column already exists */ }
+        try
+        {
+            dbContext.Database.ExecuteSqlRaw("ALTER TABLE Classes ADD COLUMN PaymentLink TEXT NULL;");
+        }
+        catch { /* Column already exists */ }
+        try
+        {
+            dbContext.Database.ExecuteSqlRaw("ALTER TABLE Classes ADD COLUMN AllowSelfRegistration INTEGER DEFAULT 1;");
+        }
+        catch { /* Column already exists */ }
         app.Logger.LogInformation("SQLite schema verified from the model (development).");
     }
     else

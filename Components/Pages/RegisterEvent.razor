@@ -1,0 +1,443 @@
+@page "/register/{Code}"
+@using VIIDII.Models
+@using VIIDII.Services
+@using Microsoft.JSInterop
+@inject ClassService ClassService
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+<PageTitle>@(Target?.Name ?? "Register") - VIIDII</PageTitle>
+
+<div class="reg-wrap">
+    @if (IsLoading)
+    {
+        <div class="reg-card">
+            <p class="reg-sub">Loading event details...</p>
+        </div>
+    }
+    else if (Target is null)
+    {
+        <div class="reg-card">
+            <div class="reg-head">
+                <span class="reg-eyebrow">Event</span>
+                <h1 class="reg-title">Event link not found</h1>
+                <p class="reg-sub">Check the link or contact the host for the correct registration link.</p>
+            </div>
+            <a href="/" class="reg-btn reg-btn-quiet">Back to Home</a>
+        </div>
+    }
+    else if (!Target.AllowSelfRegistration)
+    {
+        <div class="reg-card">
+            <div class="reg-head">
+                <span class="reg-eyebrow">@Target.Code</span>
+                <h1 class="reg-title">Registration Closed</h1>
+                <p class="reg-sub">Self-registration is currently closed for @Target.Name.</p>
+            </div>
+            <a href="@($"/join/{Target.Code}")" class="reg-btn">Already registered? Go to Join</a>
+        </div>
+    }
+    else if (IsSuccess)
+    {
+        <div class="reg-card">
+            <div class="reg-head">
+                <div class="reg-success-icon">🎉</div>
+                <h1 class="reg-title">You're on the list!</h1>
+                <p class="reg-sub">
+                    Your seat for <strong>@Target.Name</strong> has been reserved for <strong>@AttendeePhone</strong>.
+                </p>
+            </div>
+
+            <div class="reg-ticket">
+                <div class="reg-ticket-row">
+                    <span class="ticket-label">Event</span>
+                    <span class="ticket-val">@Target.Name</span>
+                </div>
+                <div class="reg-ticket-row">
+                    <span class="ticket-label">Registered Identifier</span>
+                    <span class="ticket-val mono">@AttendeePhone</span>
+                </div>
+                <div class="reg-ticket-row">
+                    <span class="ticket-label">Attendee Name</span>
+                    <span class="ticket-val">@AttendeeName</span>
+                </div>
+            </div>
+
+            <div class="reg-actions">
+                <a class="reg-btn" href="@JoinUrl">
+                    Enter Event Room &rarr;
+                </a>
+                <button class="reg-btn reg-btn-quiet" @onclick="ShareToWhatsApp">
+                    <i class="fab fa-whatsapp"></i> Share on WhatsApp
+                </button>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(Target.PaymentLink))
+            {
+                <div class="reg-pay-notice">
+                    <p>
+                        💡 <strong>Payment Required:</strong> If you haven't completed payment yet, please finish on the host's direct payment page below:
+                    </p>
+                    <a href="@Target.PaymentLink" target="_blank" class="reg-pay-link">
+                        Complete Payment with Host &rarr;
+                    </a>
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="reg-card">
+            <div class="reg-head">
+                <div class="reg-badge-row">
+                    <span class="reg-eyebrow">@Target.Code</span>
+                    <span class="preset-pill">@CurrentPreset.IconEmoji @CurrentPreset.Title</span>
+                </div>
+                <h1 class="reg-title">@Target.Name</h1>
+                <p class="reg-sub">
+                    Reserve your seat for this live session. Instant access, zero software downloads.
+                </p>
+            </div>
+
+            @if (!string.IsNullOrEmpty(Error))
+            {
+                <div class="reg-notice" role="alert">
+                    <span>@Error</span>
+                </div>
+            }
+
+            <form @onsubmit="RegisterAsync" @onsubmit:preventDefault>
+                <div class="reg-field">
+                    <label class="reg-label" for="reg-name">Your Full Name</label>
+                    <input id="reg-name"
+                           type="text"
+                           class="reg-input"
+                           autocomplete="name"
+                           required
+                           placeholder="e.g. Babajide Sanwo"
+                           @bind="AttendeeName" />
+                </div>
+
+                <div class="reg-field">
+                    <label class="reg-label" for="reg-phone">WhatsApp / Phone Number</label>
+                    <input id="reg-phone"
+                           type="tel"
+                           class="reg-input"
+                           autocomplete="tel"
+                           required
+                           placeholder="e.g. 08031234567 or +234..."
+                           @bind="AttendeePhone" />
+                    <span class="reg-hint">You will use this number to enter on any device.</span>
+                </div>
+
+                <div class="reg-field">
+                    <label class="reg-label" for="reg-email">Email Address (Optional)</label>
+                    <input id="reg-email"
+                           type="email"
+                           class="reg-input"
+                           autocomplete="email"
+                           placeholder="e.g. you@example.com"
+                           @bind="AttendeeEmail" />
+                </div>
+
+                @if (!string.IsNullOrWhiteSpace(Target.PaymentLink))
+                {
+                    <div class="reg-pay-info">
+                        <i class="fas fa-shield-alt"></i>
+                        <span>
+                            Payment for this event is made directly to the host's verified gateway.
+                        </span>
+                    </div>
+                }
+
+                <button class="reg-btn" type="submit" disabled="@IsSubmitting">
+                    @if (IsSubmitting)
+                    {
+                        <span>Registering...</span>
+                    }
+                    else if (!string.IsNullOrWhiteSpace(Target.PaymentLink))
+                    {
+                        <span>Proceed to Pay & Register &rarr;</span>
+                    }
+                    else
+                    {
+                        <span>Reserve My Seat &rarr;</span>
+                    }
+                </button>
+            </form>
+
+            <p class="reg-foot">
+                Already registered? <a href="@($"/join/{Target.Code}")">Join here</a>
+            </p>
+        </div>
+    }
+</div>
+
+<style>
+    .reg-wrap {
+        min-height: 80vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1.5rem 1rem;
+        font-family: inherit;
+    }
+    .reg-card {
+        width: 100%;
+        max-width: 440px;
+        background: var(--surface, #ffffff);
+        border: 1px solid var(--border, #e5e7eb);
+        border-radius: 1rem;
+        padding: 2rem;
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05);
+    }
+    .reg-head {
+        margin-bottom: 1.5rem;
+        text-align: center;
+    }
+    .reg-badge-row {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        margin-bottom: 0.5rem;
+    }
+    .reg-eyebrow {
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--primary, #2563eb);
+    }
+    .preset-pill {
+        font-size: 0.75rem;
+        font-weight: 600;
+        background: rgba(37, 99, 235, 0.08);
+        color: var(--primary, #2563eb);
+        padding: 0.15rem 0.5rem;
+        border-radius: 999px;
+    }
+    .reg-title {
+        font-size: 1.35rem;
+        font-weight: 700;
+        color: var(--text, #111827);
+        margin: 0.25rem 0;
+        line-height: 1.25;
+    }
+    .reg-sub {
+        font-size: 0.875rem;
+        color: var(--text-mid, #6b7280);
+        margin: 0;
+    }
+    .reg-field {
+        margin-bottom: 1.25rem;
+        text-align: left;
+    }
+    .reg-label {
+        display: block;
+        font-size: 0.8125rem;
+        font-weight: 600;
+        color: var(--text, #374151);
+        margin-bottom: 0.35rem;
+    }
+    .reg-input {
+        width: 100%;
+        padding: 0.65rem 0.85rem;
+        border: 1px solid var(--border, #d1d5db);
+        border-radius: 0.5rem;
+        font-size: 0.95rem;
+        color: var(--text, #111827);
+        background: var(--surface-subtle, #f9fafb);
+        transition: border-color 0.15s ease;
+        box-sizing: border-box;
+    }
+    .reg-input:focus {
+        outline: none;
+        border-color: var(--primary, #2563eb);
+        background: #ffffff;
+    }
+    .reg-hint {
+        display: block;
+        font-size: 0.75rem;
+        color: var(--text-faint, #9ca3af);
+        margin-top: 0.25rem;
+    }
+    .reg-pay-info {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.65rem;
+        background: rgba(16, 185, 129, 0.08);
+        border: 1px solid rgba(16, 185, 129, 0.2);
+        border-radius: 0.5rem;
+        font-size: 0.8rem;
+        color: #065f46;
+        margin-bottom: 1.25rem;
+    }
+    .reg-btn {
+        display: block;
+        width: 100%;
+        padding: 0.75rem 1rem;
+        background: var(--primary, #2563eb);
+        color: #ffffff;
+        font-weight: 600;
+        font-size: 0.95rem;
+        border: none;
+        border-radius: 0.5rem;
+        cursor: pointer;
+        text-align: center;
+        text-decoration: none;
+        box-sizing: border-box;
+        transition: opacity 0.15s ease;
+    }
+    .reg-btn:hover {
+        opacity: 0.95;
+    }
+    .reg-btn-quiet {
+        background: transparent;
+        color: var(--text-mid, #4b5563);
+        border: 1px solid var(--border, #d1d5db);
+        margin-top: 0.5rem;
+    }
+    .reg-notice {
+        padding: 0.65rem;
+        border-radius: 0.5rem;
+        background: rgba(239, 68, 68, 0.1);
+        border: 1px solid rgba(239, 68, 68, 0.2);
+        color: #b91c1c;
+        font-size: 0.85rem;
+        margin-bottom: 1rem;
+        text-align: center;
+    }
+    .reg-foot {
+        font-size: 0.85rem;
+        color: var(--text-faint, #6b7280);
+        text-align: center;
+        margin-top: 1.25rem;
+        margin-bottom: 0;
+    }
+    .reg-foot a {
+        color: var(--primary, #2563eb);
+        text-decoration: none;
+        font-weight: 600;
+    }
+    .reg-success-icon {
+        font-size: 2.5rem;
+        margin-bottom: 0.5rem;
+    }
+    .reg-ticket {
+        background: var(--surface-subtle, #f9fafb);
+        border: 1px dashed var(--border, #d1d5db);
+        border-radius: 0.5rem;
+        padding: 1rem;
+        margin: 1.25rem 0;
+    }
+    .reg-ticket-row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.85rem;
+        margin-bottom: 0.5rem;
+    }
+    .reg-ticket-row:last-child {
+        margin-bottom: 0;
+    }
+    .ticket-label {
+        color: var(--text-mid, #6b7280);
+    }
+    .ticket-val {
+        font-weight: 600;
+        color: var(--text, #111827);
+    }
+    .ticket-val.mono {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    .reg-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    .reg-pay-notice {
+        margin-top: 1.25rem;
+        padding: 0.85rem;
+        background: #fffbeb;
+        border: 1px solid #fef3c7;
+        border-radius: 0.5rem;
+        font-size: 0.8rem;
+        color: #92400e;
+        text-align: left;
+    }
+    .reg-pay-link {
+        display: inline-block;
+        margin-top: 0.35rem;
+        color: #b45309;
+        font-weight: 700;
+        text-decoration: underline;
+    }
+</style>
+
+@code {
+    [Parameter] public string Code { get; set; } = string.Empty;
+
+    private Class? Target { get; set; }
+    private SpacePreset.PresetMeta CurrentPreset => SpacePreset.GetMeta(Target?.PresetType);
+
+    private string AttendeeName { get; set; } = string.Empty;
+    private string AttendeePhone { get; set; } = string.Empty;
+    private string AttendeeEmail { get; set; } = string.Empty;
+
+    private bool IsLoading { get; set; } = true;
+    private bool IsSubmitting { get; set; }
+    private bool IsSuccess { get; set; }
+    private string? Error { get; set; }
+
+    private string JoinUrl => $"{Navigation.BaseUri.TrimEnd('/')}/join/{Target?.Code}?id={Uri.EscapeDataString(AttendeePhone)}";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        IsLoading = true;
+        if (!string.IsNullOrWhiteSpace(Code))
+        {
+            Target = await ClassService.GetByCodeAsync(Code);
+        }
+        IsLoading = false;
+    }
+
+    private async Task RegisterAsync()
+    {
+        if (Target is null || IsSubmitting) return;
+
+        IsSubmitting = true;
+        Error = null;
+
+        var (entry, error) = await ClassService.RegisterAttendeeAsync(
+            Target.Id,
+            AttendeePhone,
+            AttendeeName,
+            AttendeeEmail,
+            AttendeePhone);
+
+        IsSubmitting = false;
+
+        if (entry is null)
+        {
+            Error = error ?? "Could not register seat. Please check your details.";
+            return;
+        }
+
+        // If host provided a direct payment link, redirect them to pay immediately!
+        if (!string.IsNullOrWhiteSpace(Target.PaymentLink))
+        {
+            Navigation.NavigateTo(Target.PaymentLink, forceLoad: true);
+            return;
+        }
+
+        IsSuccess = true;
+    }
+
+    private async Task ShareToWhatsApp()
+    {
+        var text = Uri.EscapeDataString($"I just registered for {Target?.Name}! Join here: {Navigation.BaseUri.TrimEnd('/')}/register/{Target?.Code}");
+        var url = $"https://api.whatsapp.com/send?text={text}";
+        await JS.InvokeVoidAsync("open", url, "_blank");
+    }
+}

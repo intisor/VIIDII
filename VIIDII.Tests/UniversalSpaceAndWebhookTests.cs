@@ -215,4 +215,70 @@ public class UniversalSpaceAndWebhookTests
         Assert.Contains("Emeka Okafor", csvContent);
         Assert.Contains("VIP-", csvContent);
     }
+
+    [Fact]
+    public async Task SelfRegistrationAndPresetConfiguration_WorkSeamlessly()
+    {
+        using var app = CreateApp();
+        using var client = app.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false,
+            HandleCookies = true
+        });
+
+        using var scope = app.Services.CreateScope();
+        var classService = scope.ServiceProvider.GetRequiredService<VIIDII.Services.ClassService>();
+        var db = scope.ServiceProvider.GetRequiredService<ViidiiDbContext>();
+
+        // 1. Create a Masterclass space
+        var (space, err) = await classService.CreateAsync(
+            code: $"BOOT{Guid.NewGuid().ToString("N")[..4].ToUpperInvariant()}",
+            name: "Fullstack Engineering Masterclass",
+            lecturerId: 1,
+            presetType: SpacePreset.Masterclass,
+            joinPrompt: "Your WhatsApp Phone",
+            enableWatermark: true,
+            paymentLink: "https://paystack.com/pay/fullstack-bootcamp",
+            allowSelfRegistration: true);
+
+        Assert.Null(err);
+        Assert.NotNull(space);
+        Assert.Equal("https://paystack.com/pay/fullstack-bootcamp", space.PaymentLink);
+        Assert.True(space.EnableWatermark);
+
+        // 2. Test Self-Registration / RSVP
+        var (entry, regErr) = await classService.RegisterAttendeeAsync(
+            classId: space.Id,
+            identifier: "08123456789",
+            name: "Tunde Ednut",
+            email: "tunde@example.com",
+            phone: "08123456789");
+
+        Assert.Null(regErr);
+        Assert.NotNull(entry);
+        Assert.Equal("08123456789", entry.Identifier);
+        Assert.Equal("Tunde Ednut", entry.DisplayName);
+        Assert.Equal("rsvp", entry.Source);
+
+        // 3. Update preset configuration & payment link
+        var updated = await classService.UpdatePresetAsync(
+            classId: space.Id,
+            presetType: SpacePreset.Professional,
+            joinPrompt: "Enter your Student Number",
+            enableWatermark: false,
+            paymentLink: "https://flutterwave.com/pay/bootcamp-update");
+
+        Assert.True(updated);
+
+        var refreshed = await classService.GetByIdAsync(space.Id);
+        Assert.NotNull(refreshed);
+        Assert.Equal("https://flutterwave.com/pay/bootcamp-update", refreshed.PaymentLink);
+        Assert.Equal(SpacePreset.Professional, refreshed.PresetType);
+        Assert.False(refreshed.EnableWatermark);
+
+        // 4. Verify public registration page route renders
+        var pageResp = await client.GetAsync($"/register/{refreshed.Code}");
+        Assert.True(pageResp.IsSuccessStatusCode);
+    }
 }
+

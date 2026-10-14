@@ -161,7 +161,9 @@ else
 
     [SupplyParameterFromQuery(Name = "error")] private string? ErrorCode { get; set; }
 
-    [SupplyParameterFromQuery(Name = "identifier")] private string? Identifier { get; set; }
+    [SupplyParameterFromQuery(Name = "identifier")] private string? QueryIdentifier { get; set; }
+    [SupplyParameterFromQuery(Name = "id")] private string? ShortId { get; set; }
+    private string? Identifier => !string.IsNullOrWhiteSpace(QueryIdentifier) ? QueryIdentifier : ShortId;
 
     [SupplyParameterFromQuery(Name = "name")] private string? Name { get; set; }
 

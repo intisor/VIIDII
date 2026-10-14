@@ -27,7 +27,9 @@ public class ClassService
         string name,
         string? presetType = null,
         string? joinPrompt = null,
-        bool enableWatermark = true)
+        bool enableWatermark = true,
+        string? paymentLink = null,
+        bool allowSelfRegistration = true)
     {
         code = NormaliseCode(code);
         name = name?.Trim() ?? string.Empty;
@@ -68,7 +70,9 @@ public class ClassService
             CreatedAt = DateTime.UtcNow,
             PresetType = presetMeta.Key,
             JoinPrompt = finalPrompt,
-            EnableWatermark = enableWatermark
+            EnableWatermark = enableWatermark,
+            PaymentLink = string.IsNullOrWhiteSpace(paymentLink) ? null : paymentLink.Trim(),
+            AllowSelfRegistration = allowSelfRegistration
         };
 
         _context.Classes.Add(created);
@@ -78,13 +82,15 @@ public class ClassService
     }
 
     /// <summary>
-    /// Updates configuration, presets, and security settings for an existing space.
+    /// Updates configuration, presets, payment links, and security settings for an existing space.
     /// </summary>
     public async Task<bool> UpdatePresetAsync(
         int classId,
         string? presetType,
         string? joinPrompt,
-        bool? enableWatermark)
+        bool? enableWatermark,
+        string? paymentLink = null,
+        bool? allowSelfRegistration = null)
     {
         var target = await _context.Classes.FindAsync(classId);
         if (target is null) return false;
@@ -104,8 +110,68 @@ public class ClassService
             target.EnableWatermark = enableWatermark.Value;
         }
 
+        if (paymentLink is not null)
+        {
+            target.PaymentLink = string.IsNullOrWhiteSpace(paymentLink) ? null : paymentLink.Trim();
+        }
+
+        if (allowSelfRegistration.HasValue)
+        {
+            target.AllowSelfRegistration = allowSelfRegistration.Value;
+        }
+
         await _context.SaveChangesAsync();
         return true;
+    }
+
+    /// <summary>
+    /// Self-registers an attendee into a space (RSVP).
+    /// </summary>
+    public async Task<(RosterEntry? Entry, string? Error)> RegisterAttendeeAsync(
+        int classId,
+        string identifier,
+        string name,
+        string? email = null,
+        string? phone = null)
+    {
+        var target = await _context.Classes.FindAsync(classId);
+        if (target is null) return (null, "Space not found.");
+        if (!target.AllowSelfRegistration) return (null, "Registration is closed for this event.");
+
+        var cleanId = identifier?.Trim() ?? string.Empty;
+        var cleanName = name?.Trim() ?? string.Empty;
+
+        if (cleanId.Length == 0) return (null, "Please enter your phone number or identifier.");
+        if (cleanName.Length == 0) cleanName = cleanId;
+
+        var existing = await _context.RosterEntries
+            .FirstOrDefaultAsync(r => r.ClassId == classId && r.Identifier == cleanId);
+
+        if (existing is not null)
+        {
+            if (!string.IsNullOrWhiteSpace(name)) existing.DisplayName = cleanName;
+            if (!string.IsNullOrWhiteSpace(email)) existing.Email = email.Trim();
+            if (!string.IsNullOrWhiteSpace(phone)) existing.Phone = phone.Trim();
+            await _context.SaveChangesAsync();
+            return (existing, null);
+        }
+
+        var entry = new RosterEntry
+        {
+            ClassId = classId,
+            Identifier = cleanId,
+            DisplayName = cleanName,
+            Email = email?.Trim(),
+            Phone = phone?.Trim(),
+            Grouping = "RSVP Registered",
+            Source = "rsvp",
+            Role = RosterRole.Student,
+            ImportedAtUtc = DateTime.UtcNow
+        };
+
+        _context.RosterEntries.Add(entry);
+        await _context.SaveChangesAsync();
+        return (entry, null);
     }
 
     /// <summary>
