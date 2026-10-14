@@ -78,7 +78,6 @@ else
                            type="text"
                            class="auth-input"
                            autocomplete="off"
-                           autocapitalize="characters"
                            spellcheck="false"
                            required
                            autofocus
@@ -88,15 +87,17 @@ else
                 </div>
 
                 <div class="auth-field">
-                    <label class="auth-label" for="name-input">Your name</label>
+                    <label class="auth-label" for="name-input">
+                        @(RequiresSeparateName ? "Your name" : "Your name (optional)")
+                    </label>
                     <input id="name-input"
                            name="name"
                            type="text"
                            class="auth-input"
                            autocomplete="name"
-                           required
+                           required="@(RequiresSeparateName ? "required" : null)"
                            maxlength="200"
-                           placeholder="As it appears on the list"
+                           placeholder="@(RequiresSeparateName ? "As it appears on the list" : "How you will appear in class (e.g. Aisha)")"
                            value="@Name" />
                 </div>
 
@@ -204,39 +205,77 @@ else
             ? "Enter your details to join"
             : Target.JoinPrompt;
 
-    // Taken from the column the lecturer chose as the identifier, so the student is
-    // asked for the thing they actually know rather than a guessed "matric number".
+    private (string? Identifier, string? Name) ReadRosterMapping()
+    {
+        if (Target?.RosterMappingJson is null) return (null, null);
+
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(Target.RosterMappingJson);
+            string? id = null;
+            string? name = null;
+
+            if (doc.RootElement.TryGetProperty("identifierHeader", out var e1) || doc.RootElement.TryGetProperty("IdentifierHeader", out e1))
+            {
+                id = e1.GetString();
+            }
+            if (doc.RootElement.TryGetProperty("nameHeader", out var e2) || doc.RootElement.TryGetProperty("NameHeader", out e2))
+            {
+                name = e2.GetString();
+            }
+
+            return (id, name);
+        }
+        catch
+        {
+            return (null, null);
+        }
+    }
+
+    private bool RequiresSeparateName
+    {
+        get
+        {
+            var (id, name) = ReadRosterMapping();
+            if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(name))
+            {
+                return false;
+            }
+            return !string.Equals(id.Trim(), name.Trim(), StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
     private string IdentifierLabel
     {
         get
         {
-            var header = RosterColumnMappingFromTarget();
-            return string.IsNullOrWhiteSpace(header) ? "Your identifier" : header;
+            var (id, _) = ReadRosterMapping();
+            return string.IsNullOrWhiteSpace(id) ? "Your identifier" : id;
         }
     }
 
-    private string IdentifierPlaceholder => IdentifierLabel.Contains("Number", StringComparison.OrdinalIgnoreCase)
-        ? "e.g. CSC/2021/001"
-        : "As it appears on the list";
-
-    private string? RosterColumnMappingFromTarget()
+    private string IdentifierPlaceholder
     {
-        if (Target?.RosterMappingJson is null)
+        get
         {
-            return null;
-        }
-
-        try
-        {
-            using var document = System.Text.Json.JsonDocument.Parse(Target.RosterMappingJson);
-
-            return document.RootElement.TryGetProperty("identifierHeader", out var element)
-                ? element.GetString()
-                : null;
-        }
-        catch (System.Text.Json.JsonException)
-        {
-            return null;
+            var label = IdentifierLabel;
+            if (label.Contains("phone", StringComparison.OrdinalIgnoreCase) ||
+                label.Contains("mobile", StringComparison.OrdinalIgnoreCase) ||
+                label.Contains("whatsapp", StringComparison.OrdinalIgnoreCase) ||
+                label.Contains("contact", StringComparison.OrdinalIgnoreCase) ||
+                label.Contains("tel", StringComparison.OrdinalIgnoreCase))
+            {
+                return "e.g. 08012345678 or +234...";
+            }
+            if (label.Contains("email", StringComparison.OrdinalIgnoreCase) || label.Contains("mail", StringComparison.OrdinalIgnoreCase))
+            {
+                return "e.g. student@example.com";
+            }
+            if (label.Contains("matric", StringComparison.OrdinalIgnoreCase) || label.Contains("reg", StringComparison.OrdinalIgnoreCase))
+            {
+                return "e.g. CSC/2021/001";
+            }
+            return "As it appears on the list";
         }
     }
 

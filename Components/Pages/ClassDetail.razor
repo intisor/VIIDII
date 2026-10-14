@@ -85,7 +85,14 @@
                     {
                         <div class="student-row">
                             <span class="student-id">@student.Identifier</span>
-                            <span class="student-name">@student.DisplayName</span>
+                            @if (string.Equals(student.DisplayName, student.Identifier, StringComparison.OrdinalIgnoreCase))
+                            {
+                                <span class="student-name" style="color:var(--text-faint); font-style:italic;">(Awaiting name on join)</span>
+                            }
+                            else
+                            {
+                                <span class="student-name">@student.DisplayName</span>
+                            }
                             <span class="student-state @(student.HasClaimed ? "claimed" : null)">
                                 @(student.HasClaimed ? "joined" : "-")
                             </span>

@@ -37,13 +37,24 @@
             </div>
 
             <div class="form-group">
-                <label class="form-label" for="roster-paste">Or paste the data</label>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.35rem; flex-wrap:wrap; gap:0.5rem;">
+                    <label class="form-label" for="roster-paste" style="margin:0;">Or paste any list</label>
+                    <div class="template-pills">
+                        <span class="pills-label">Quick samples:</span>
+                        <button type="button" class="pill-btn" @onclick="FillPhoneSample">📱 Phone numbers</button>
+                        <button type="button" class="pill-btn" @onclick="FillMatricSample">🎓 Matric & Name</button>
+                        <button type="button" class="pill-btn" @onclick="FillEmailSample">✉️ Email list</button>
+                    </div>
+                </div>
                 <textarea id="roster-paste"
                           class="form-control paste-area"
                           rows="7"
-                          placeholder="Matric Number,Full Name&#10;CSC/2021/001,Aisha Bello&#10;CSC/2021/002,Babatunde Cole"
+                          placeholder="Paste whatever list you have: phone numbers, emails, WhatsApp groups, or matric numbers&#10;08031234567&#10;08091234567&#10;07011223344"
                           @bind="_pastedContent"
                           @bind:event="oninput"></textarea>
+                <span class="hint" style="margin-top:0.35rem; display:block;">
+                    💡 Single-column lists (just phone numbers or emails) work seamlessly without needing a separate name column.
+                </span>
             </div>
 
             <button class="primary-btn" disabled="@IsBusy" @onclick="AnalyseAsync">
@@ -95,11 +106,25 @@
                 <div class="mapping-row">
                     <label class="form-label" for="map-name">Shown as their name</label>
                     <select id="map-name" class="form-control" @bind="_nameHeader">
-                        @foreach (var column in _headers)
+                        @if (!string.IsNullOrWhiteSpace(_identifierHeader))
+                        {
+                            <option value="@_identifierHeader">(Use @_identifierHeader as name)</option>
+                        }
+                        @foreach (var column in _headers.Where(c => c != _identifierHeader))
                         {
                             <option value="@column">@column</option>
                         }
                     </select>
+                    <span class="mapping-hint">
+                        @if (_nameHeader == _identifierHeader)
+                        {
+                            <span>Students will be identified by this code and can optionally type their name when joining.</span>
+                        }
+                        else
+                        {
+                            <span>Students will type their name matching this column to join.</span>
+                        }
+                    </span>
                 </div>
 
                 <div class="mapping-row">
@@ -346,7 +371,7 @@
             _needsConfirmation = analysis.NeedsConfirmation.ToList();
 
             _identifierHeader = analysis.IdentifierColumn?.Name ?? _headers.FirstOrDefault();
-            _nameHeader = analysis.NameColumn?.Name ?? _headers.Skip(1).FirstOrDefault();
+            _nameHeader = analysis.NameColumn?.Name ?? _identifierHeader;
             _emailHeader = analysis.EmailColumn?.Name;
             _phoneHeader = analysis.PhoneColumn?.Name;
 
@@ -355,7 +380,7 @@
 
             if (!analysis.IsUsable)
             {
-                _error = "No unique identifier column was found. Check the first row is a header row.";
+                _error = "No usable identifier column was found. Check the data or paste sample numbers.";
                 return;
             }
 
@@ -371,6 +396,24 @@
         }
     }
 
+    private void FillPhoneSample()
+    {
+        _pastedContent = "08031234567\n08091234567\n07011223344\n08145556677";
+        _error = null;
+    }
+
+    private void FillMatricSample()
+    {
+        _pastedContent = "Matric Number,Full Name\nCSC/2021/001,Aisha Bello\nCSC/2021/002,Babatunde Cole\nCSC/2021/003,Chinedu Okeke";
+        _error = null;
+    }
+
+    private void FillEmailSample()
+    {
+        _pastedContent = "aisha.bello@uni.edu.ng\nbabatunde.cole@uni.edu.ng\nchinedu.okeke@uni.edu.ng";
+        _error = null;
+    }
+
     private static string BuildPrompt(string? header) =>
         string.IsNullOrWhiteSpace(header)
             ? "Enter your details to join"
@@ -378,10 +421,15 @@
 
     private async Task ImportAsync()
     {
-        if (string.IsNullOrWhiteSpace(_identifierHeader) || string.IsNullOrWhiteSpace(_nameHeader))
+        if (string.IsNullOrWhiteSpace(_identifierHeader))
         {
-            _error = "Choose which column students use to join, and which shows their name.";
+            _error = "Choose which column students use to join.";
             return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_nameHeader))
+        {
+            _nameHeader = _identifierHeader;
         }
 
         IsBusy = true;
@@ -511,6 +559,35 @@
     }
 
     .back-link:hover { color: var(--accent); }
+
+    .template-pills {
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+        flex-wrap: wrap;
+    }
+
+    .pills-label {
+        font-size: 0.75rem;
+        color: var(--text-faint);
+    }
+
+    .pill-btn {
+        background: var(--surface-up);
+        border: 1px solid var(--border-mid);
+        border-radius: 999px;
+        padding: 0.2rem 0.6rem;
+        font-size: 0.75rem;
+        color: var(--text-mid);
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+
+    .pill-btn:hover {
+        background: var(--surface-highest, #2a2a35);
+        color: var(--text);
+        border-color: var(--accent);
+    }
 
     .form-card {
         background: var(--surface);
