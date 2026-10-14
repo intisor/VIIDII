@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity;
 using VIIDII.Data;
@@ -28,7 +29,7 @@ public class RosterImportResult
 /// Replaces in-memory participant lists with a durable, queryable roster so that
 /// attendance evidence can be re-derived from the database at any time.
 /// </summary>
-public class RosterService
+public partial class RosterService
 {
     private readonly ViidiiDbContext _context;
     private readonly PasswordHasher<User> _passwordHasher;
@@ -96,7 +97,6 @@ public class RosterService
         var imported = 0;
         var skipped = 0;
         var linked = 0;
-        var created = 0;
 
         // Identifiers must be unique within a class or two students collide on
         // the same join code and attendance becomes unprovable.
@@ -141,10 +141,15 @@ public class RosterService
             var identifier = CellAt(row, identifierIndex).Trim();
             var name = CellAt(row, nameIndex).Trim();
 
-            if (identifier.Length == 0 || name.Length == 0)
+            if (name.Length == 0 && identifier.Length > 0)
+            {
+                name = identifier;
+            }
+
+            if (identifier.Length == 0)
             {
                 skipped++;
-                warnings.Add($"Skipped a row missing an identifier or name: '{identifier}' / '{name}'.");
+                warnings.Add("Skipped a row missing an identifier.");
                 continue;
             }
 
@@ -172,6 +177,15 @@ public class RosterService
             var email = emailIndex >= 0 ? Truncate(CellAt(row, emailIndex).Trim(), 200) : null;
             var phone = phoneIndex >= 0 ? Truncate(CellAt(row, phoneIndex).Trim(), 40) : null;
             var grouping = groupingIndex >= 0 ? Truncate(CellAt(row, groupingIndex).Trim(), 120) : null;
+
+            if (phone is null && (analysis.IdentifierColumn?.PhoneScore >= 0.45 || PhoneCandidateShape().IsMatch(identifier)))
+            {
+                phone = Truncate(identifier, 40);
+            }
+            if (email is null && (analysis.IdentifierColumn?.EmailScore >= 0.45 || identifier.Contains('@')))
+            {
+                email = Truncate(identifier, 200);
+            }
 
             var existingUser = existingByMatricNo.GetValueOrDefault(identifier);
 
@@ -300,33 +314,61 @@ public class RosterService
         return true;
     }
 
-    public async Task<RosterEntry?> ResolveAttendeeAsync(int classId, string identifier, string name)
+    public async Task<RosterEntry?> ResolveAttendeeAsync(int classId, string identifier, string? name)
     {
-        if (string.IsNullOrWhiteSpace(identifier) || string.IsNullOrWhiteSpace(name))
+        if (string.IsNullOrWhiteSpace(identifier))
         {
             return null;
         }
 
-        var normalisedIdentifier = identifier.Trim();
-
-        // Case-insensitive on purpose. Import already treats "ABC123" and "abc123"
-        // as the same attendee (seenIdentifiers uses OrdinalIgnoreCase), so the
-        // lookup must agree — otherwise a student who types their matric number in
-        // lowercase is locked out of their own session.
-        //
-        // The query filters on classId only and compares in memory: an indexable
-        // case-insensitive match would need ToUpper() on the column, which discards
-        // the index. A Class roster is bounded, and this runs once per join.
         var candidates = await _context.RosterEntries
             .Where(r => r.ClassId == classId)
             .ToListAsync();
 
-        var targetIdentifier = normalisedIdentifier;
-        var target = NormaliseForComparison(name);
+        var entry = candidates.FirstOrDefault(r => IdentifiersMatch(r.Identifier, identifier));
+        if (entry is null)
+        {
+            return null;
+        }
 
-        return candidates.FirstOrDefault(r =>
-            string.Equals(r.Identifier.Trim(), targetIdentifier, StringComparison.OrdinalIgnoreCase)
-            && NormaliseForComparison(r.DisplayName) == target);
+        var hasSeparateDisplayName = !string.Equals(
+            entry.DisplayName.Trim(),
+            entry.Identifier.Trim(),
+            StringComparison.OrdinalIgnoreCase);
+
+        if (hasSeparateDisplayName)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return null;
+            }
+
+            var target = NormaliseForComparison(name);
+            if (NormaliseForComparison(entry.DisplayName) != target)
+            {
+                return null;
+            }
+        }
+        else
+        {
+            // If the student provided a friendly display name on join, save it!
+            if (!string.IsNullOrWhiteSpace(name) && !string.Equals(name.Trim(), entry.Identifier.Trim(), StringComparison.OrdinalIgnoreCase))
+            {
+                var cleanName = name.Trim();
+                if (cleanName.Length > 200) cleanName = cleanName[..200];
+                entry.DisplayName = cleanName;
+
+                var user = await _context.Users.FirstOrDefaultAsync(u => u.MatricNo == entry.Identifier);
+                if (user is not null && (string.IsNullOrEmpty(user.Name) || user.Name == user.MatricNo))
+                {
+                    user.Name = cleanName;
+                }
+
+                await _context.SaveChangesAsync();
+            }
+        }
+
+        return entry;
     }
 
     /// <summary>
@@ -393,9 +435,19 @@ public class RosterService
                 return (-1, -1, -1, -1, -1);
             }
 
+            var idIndex = mapping.IndexOf(headers, mapping.IdentifierHeader);
+            var nameIndex = string.IsNullOrWhiteSpace(mapping.NameHeader)
+                ? idIndex
+                : mapping.IndexOf(headers, mapping.NameHeader);
+
+            if (nameIndex < 0)
+            {
+                nameIndex = idIndex;
+            }
+
             return (
-                mapping.IndexOf(headers, mapping.IdentifierHeader),
-                mapping.IndexOf(headers, mapping.NameHeader),
+                idIndex,
+                nameIndex,
                 mapping.IndexOf(headers, mapping.EmailHeader),
                 mapping.IndexOf(headers, mapping.PhoneHeader),
                 mapping.IndexOf(headers, mapping.GroupingHeader));
@@ -403,14 +455,17 @@ public class RosterService
 
         if (!analysis.IsUsable)
         {
-            errors.Add("Could not identify both an identifier column and a name column.");
+            errors.Add("Could not identify an identifier column.");
             errors.AddRange(analysis.Notes);
             return (-1, -1, -1, -1, -1);
         }
 
+        var detectedIdIndex = analysis.IdentifierColumn!.Index;
+        var detectedNameIndex = analysis.NameColumn?.Index ?? detectedIdIndex;
+
         return (
-            analysis.IdentifierColumn!.Index,
-            analysis.NameColumn!.Index,
+            detectedIdIndex,
+            detectedNameIndex,
             analysis.EmailColumn?.Index ?? -1,
             analysis.PhoneColumn?.Index ?? -1,
             analysis.GroupingColumn?.Index ?? -1);
@@ -444,4 +499,76 @@ public class RosterService
     /// case-insensitive.
     /// </summary>
     internal static string NormaliseIdentifier(string value) => value.Trim();
+
+    [GeneratedRegex(@"^[+()\-.\s\d]{7,25}$", RegexOptions.None, 200)]
+    private static partial Regex PhoneCandidateShape();
+
+    internal static bool IdentifiersMatch(string stored, string candidate)
+    {
+        var s = stored.Trim();
+        var c = candidate.Trim();
+
+        if (string.Equals(s, c, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (PhoneCandidateShape().IsMatch(s) && PhoneCandidateShape().IsMatch(c))
+        {
+            if (PhonesMatch(s, c))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    internal static bool PhonesMatch(string p1, string p2)
+    {
+        var d1 = ExtractDigits(p1);
+        var d2 = ExtractDigits(p2);
+
+        if (d1.Length < 7 || d2.Length < 7)
+        {
+            return false;
+        }
+
+        if (d1 == d2) return true;
+
+        if (d1.StartsWith("234") && d1.Length == 13 && d2.StartsWith("0") && d2.Length == 11)
+        {
+            return d1.AsSpan(3).SequenceEqual(d2.AsSpan(1));
+        }
+
+        if (d2.StartsWith("234") && d2.Length == 13 && d1.StartsWith("0") && d1.Length == 11)
+        {
+            return d2.AsSpan(3).SequenceEqual(d1.AsSpan(1));
+        }
+
+        if (d1.Length == 10 && d2.StartsWith("0") && d2.Length == 11)
+        {
+            return d1 == d2[1..];
+        }
+
+        if (d2.Length == 10 && d1.StartsWith("0") && d1.Length == 11)
+        {
+            return d2 == d1[1..];
+        }
+
+        if (d1.Length == 10 && d2.StartsWith("234") && d2.Length == 13)
+        {
+            return d1 == d2[3..];
+        }
+
+        if (d2.Length == 10 && d1.StartsWith("234") && d1.Length == 13)
+        {
+            return d2 == d1[3..];
+        }
+
+        return false;
+    }
+
+    private static string ExtractDigits(string value) =>
+        new string(value.Where(char.IsAsciiDigit).ToArray());
 }

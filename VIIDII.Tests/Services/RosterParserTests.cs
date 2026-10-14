@@ -164,6 +164,65 @@ public class RosterParserTests
 
         Assert.Equal(2, parsed.Rows.Count);
     }
+
+    [Fact]
+    public void ParsesSingleColumnPhoneNumbersWithoutHeader()
+    {
+        var parsed = RosterParser.Parse(
+            "08031234567\n" +
+            "08091234567\n" +
+            "07011223344\n");
+
+        Assert.Single(parsed.Headers);
+        Assert.Equal("Phone Number", parsed.Headers[0]);
+        Assert.Equal(3, parsed.Rows.Count);
+        Assert.Equal("08031234567", parsed.Rows[0][0]);
+        Assert.Equal("08091234567", parsed.Rows[1][0]);
+        Assert.Equal("07011223344", parsed.Rows[2][0]);
+    }
+
+    [Fact]
+    public void ParsesSingleColumnPhoneNumbersWithHeader()
+    {
+        var parsed = RosterParser.Parse(
+            "Phone Number\n" +
+            "08031234567\n" +
+            "08091234567\n");
+
+        Assert.Single(parsed.Headers);
+        Assert.Equal("Phone Number", parsed.Headers[0]);
+        Assert.Equal(2, parsed.Rows.Count);
+        Assert.Equal("08031234567", parsed.Rows[0][0]);
+    }
+
+    [Fact]
+    public void ParsesSingleColumnEmailsWithoutHeader()
+    {
+        var parsed = RosterParser.Parse(
+            "student1@uni.edu.ng\n" +
+            "student2@uni.edu.ng\n");
+
+        Assert.Single(parsed.Headers);
+        Assert.Equal("Email", parsed.Headers[0]);
+        Assert.Equal(2, parsed.Rows.Count);
+        Assert.Equal("student1@uni.edu.ng", parsed.Rows[0][0]);
+    }
+
+    [Fact]
+    public void ParsesJsonArrayOfStrings()
+    {
+        var parsed = RosterParser.Parse("""
+        [
+            "08031234567",
+            "08091234567"
+        ]
+        """);
+
+        Assert.Single(parsed.Headers);
+        Assert.Equal("Phone Number", parsed.Headers[0]);
+        Assert.Equal(2, parsed.Rows.Count);
+        Assert.Equal("08031234567", parsed.Rows[0][0]);
+    }
 }
 
 /// <summary>
@@ -194,5 +253,20 @@ public class NormaliseForComparisonTests
     {
         // "Bello, Aisha" is surname-first. "Bello A. Junior" is not.
         Assert.Equal("junior bello", RosterService.NormaliseForComparison("Bello, Junior"));
+    }
+
+    [Theory]
+    [InlineData("08031234567", "08031234567", true)]
+    [InlineData("08031234567", "+2348031234567", true)]
+    [InlineData("2348031234567", "08031234567", true)]
+    [InlineData("+234 803 123 4567", "08031234567", true)]
+    [InlineData("080-3123-4567", "08031234567", true)]
+    [InlineData("8031234567", "08031234567", true)]
+    [InlineData("CSC/2021/001", "csc/2021/001", true)]
+    [InlineData("08031234567", "08099999999", false)]
+    [InlineData("CSC/2021/001", "CSC/2021/002", false)]
+    public void IdentifiersMatch_HandlesPhonesAndCodesFlexibly(string stored, string candidate, bool expected)
+    {
+        Assert.Equal(expected, RosterService.IdentifiersMatch(stored, candidate));
     }
 }

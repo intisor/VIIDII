@@ -290,4 +290,42 @@ public class RosterServiceTests : IDisposable
         Assert.Equal(2, result.Imported);
         Assert.All(await service.GetForClassAsync(seededClass.Id), e => Assert.Equal("json", e.Source));
     }
+
+    [Fact]
+    public async Task ImportAsync_SupportsSingleColumnPhoneNumbers_AndResolvesAttendee()
+    {
+        var seededClass = await SeedClassAsync();
+        using var context = _factory.CreateDbContext();
+        var service = CreateService(context);
+
+        const string phones = """
+        08031234567
+        08091234567
+        07011223344
+        """;
+
+        var result = await service.ImportAsync(seededClass.Id, phones);
+
+        Assert.Equal(3, result.Imported);
+        Assert.Empty(result.Errors);
+
+        var entries = await service.GetForClassAsync(seededClass.Id);
+        Assert.Equal(3, entries.Count);
+        Assert.Contains(entries, e => e.Identifier == "08031234567" && e.Phone == "08031234567");
+
+        // 1. Matches with phone number and no name
+        var resolvedNoName = await service.ResolveAttendeeAsync(seededClass.Id, "08031234567", null);
+        Assert.NotNull(resolvedNoName);
+        Assert.Equal("08031234567", resolvedNoName.Identifier);
+
+        // 2. Matches with international format (+234...) and updates friendly name
+        var resolvedWithFriendlyName = await service.ResolveAttendeeAsync(seededClass.Id, "+2348091234567", "Aisha Bello");
+        Assert.NotNull(resolvedWithFriendlyName);
+        Assert.Equal("08091234567", resolvedWithFriendlyName.Identifier);
+        Assert.Equal("Aisha Bello", resolvedWithFriendlyName.DisplayName);
+
+        // Verify updated display name was saved in database
+        var reloaded = (await service.GetForClassAsync(seededClass.Id)).First(e => e.Identifier == "08091234567");
+        Assert.Equal("Aisha Bello", reloaded.DisplayName);
+    }
 }

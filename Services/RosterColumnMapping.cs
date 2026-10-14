@@ -56,21 +56,24 @@ public class RosterColumnMapping
     public string? Validate(IReadOnlyList<string> headers)
     {
         var identifierIndex = IndexOf(headers, IdentifierHeader);
-        var nameIndex = IndexOf(headers, NameHeader);
 
         if (identifierIndex < 0)
         {
             return $"Column '{IdentifierHeader}' was not found in this file.";
         }
 
-        if (nameIndex < 0)
+        if (!string.IsNullOrWhiteSpace(NameHeader))
         {
-            return $"Column '{NameHeader}' was not found in this file.";
-        }
+            var nameIndex = IndexOf(headers, NameHeader);
+            if (nameIndex < 0)
+            {
+                return $"Column '{NameHeader}' was not found in this file.";
+            }
 
-        if (identifierIndex == nameIndex)
-        {
-            return "The join identifier and the display name cannot be the same column.";
+            if (headers.Count > 1 && identifierIndex == nameIndex)
+            {
+                return "The join identifier and the display name cannot be the same column.";
+            }
         }
 
         return null;

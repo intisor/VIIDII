@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace VIIDII.Services.Roster;
 
@@ -25,9 +26,24 @@ public enum RosterSourceFormat { Csv, Tsv, Json, Unknown }
 /// cohort list over a stray comma would be the wrong trade-off. Problems are
 /// recorded as warnings rather than thrown.
 /// </summary>
-public static class RosterParser
+public static partial class RosterParser
 {
     private static readonly char[] Delimiters = { ',', '\t', ';', '|' };
+
+    private static readonly string[] CommonHeaderKeywords =
+    {
+        "name", "student", "matric", "phone", "email", "id", "code", "no", "number",
+        "reg", "dept", "sn", "s/n", "contact", "participant", "member", "tel",
+        "mobile", "whatsapp", "first", "last", "surname", "gender", "sex", "level",
+        "faculty", "group", "score", "grade", "index", "roll", "title", "address",
+        "programme", "program", "class", "cohort"
+    };
+
+    [GeneratedRegex(@"^[+()\-.\s\d]{7,25}$", RegexOptions.None, 200)]
+    private static partial Regex PhoneRegex();
+
+    [GeneratedRegex(@"^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$", RegexOptions.None, 200)]
+    private static partial Regex EmailRegex();
 
     /// <summary>
     /// Detects the format and parses. JSON is tried first when the payload
@@ -50,7 +66,8 @@ public static class RosterParser
     }
 
     /// <summary>
-    /// Parses delimited text, detecting the delimiter from the header line.
+    /// Parses delimited text, detecting delimiter and automatically recognizing
+    /// whether the first row is a header row or attendee data.
     /// </summary>
     public static ParsedRoster ParseDelimited(string content)
     {
@@ -63,15 +80,30 @@ public static class RosterParser
         }
 
         var delimiter = DetectDelimiter(lines[0], warnings);
-        var headers = SplitRespectingQuotes(lines[0], delimiter);
+        var firstRowCells = SplitRespectingQuotes(lines[0], delimiter);
 
-        if (headers.Count == 0 || headers.All(h => string.IsNullOrWhiteSpace(h)))
+        if (firstRowCells.Count == 0 || firstRowCells.All(h => string.IsNullOrWhiteSpace(h)))
         {
             return new ParsedRoster { Format = RosterSourceFormat.Unknown, Warnings = ["Could not read a header row."] };
         }
 
+        var isHeaderRow = LooksLikeHeaderRow(firstRowCells);
+        List<string> headers;
+        var startLineIndex = 1;
+
+        if (isHeaderRow)
+        {
+            headers = firstRowCells.Select(h => h.Trim()).ToList();
+        }
+        else
+        {
+            headers = SynthesizeHeaders(firstRowCells);
+            startLineIndex = 0;
+            warnings.Add("No header row detected; inferred column types from data rows.");
+        }
+
         var rows = new List<IReadOnlyList<string>>();
-        for (var i = 1; i < lines.Count; i++)
+        for (var i = startLineIndex; i < lines.Count; i++)
         {
             if (string.IsNullOrWhiteSpace(lines[i]))
             {
@@ -99,15 +131,85 @@ public static class RosterParser
 
         return new ParsedRoster
         {
-            Headers = headers.Select(h => h.Trim()).ToList(),
+            Headers = headers,
             Rows = rows,
             Format = delimiter == '\t' ? RosterSourceFormat.Tsv : RosterSourceFormat.Csv,
             Warnings = warnings
         };
     }
 
+    private static bool LooksLikeHeaderRow(IReadOnlyList<string> cells)
+    {
+        if (cells.Count == 0) return false;
+
+        foreach (var cell in cells)
+        {
+            var trimmed = cell.Trim();
+            if (trimmed.Length == 0) continue;
+
+            var tokens = trimmed.Split(new[] { ' ', '_', '-', '/', '.', ',', ':', ';' }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (var token in tokens)
+            {
+                if (CommonHeaderKeywords.Contains(token, StringComparer.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static List<string> SynthesizeHeaders(IReadOnlyList<string> sampleCells)
+    {
+        var headers = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        for (var i = 0; i < sampleCells.Count; i++)
+        {
+            var cell = sampleCells[i].Trim();
+            string candidate;
+
+            if (PhoneRegex().IsMatch(cell) && cell.Count(char.IsAsciiDigit) >= 7)
+            {
+                candidate = "Phone Number";
+            }
+            else if (EmailRegex().IsMatch(cell))
+            {
+                candidate = "Email";
+            }
+            else if (sampleCells.Count == 1)
+            {
+                candidate = "Identifier";
+            }
+            else if (i == 0)
+            {
+                candidate = "Identifier";
+            }
+            else if (i == 1)
+            {
+                candidate = "Full Name";
+            }
+            else
+            {
+                candidate = $"Column {i + 1}";
+            }
+
+            var uniqueCandidate = candidate;
+            var suffix = 2;
+            while (!seen.Add(uniqueCandidate))
+            {
+                uniqueCandidate = $"{candidate} {suffix++}";
+            }
+
+            headers.Add(uniqueCandidate);
+        }
+
+        return headers;
+    }
+
     /// <summary>
-    /// Parses a JSON array of objects. Also accepts an object wrapping the array
+    /// Parses a JSON array of objects or strings. Also accepts an object wrapping the array
     /// under common keys (data, results, records, items, students).
     /// </summary>
     public static ParsedRoster ParseJson(string content)
@@ -145,6 +247,29 @@ public static class RosterParser
                 {
                     Format = RosterSourceFormat.Json,
                     Warnings = ["JSON array was empty."]
+                };
+            }
+
+            var firstItem = arrayElement.EnumerateArray().FirstOrDefault();
+            if (firstItem.ValueKind != JsonValueKind.Object)
+            {
+                var sample = ValueToString(firstItem).Trim();
+                var singleHeader = PhoneRegex().IsMatch(sample) && sample.Count(char.IsAsciiDigit) >= 7
+                    ? "Phone Number"
+                    : EmailRegex().IsMatch(sample) ? "Email" : "Identifier";
+
+                var primitiveRows = new List<IReadOnlyList<string>>();
+                foreach (var element in arrayElement.EnumerateArray())
+                {
+                    primitiveRows.Add(new[] { ValueToString(element).Trim() });
+                }
+
+                return new ParsedRoster
+                {
+                    Headers = new[] { singleHeader },
+                    Rows = primitiveRows,
+                    Format = RosterSourceFormat.Json,
+                    Warnings = warnings
                 };
             }
 

@@ -66,10 +66,13 @@ public class ColumnProfile
     /// offered as a join key — forcing students to type row numbers.
     /// </summary>
     public bool IsLikelyIdentifier =>
-        IdentifierScore >= 0.5
-        && Uniqueness >= 0.95
-        && IdentifierShapeScore >= 0.5
-        && !LooksLikeSerialSequence;
+        !LooksLikeSerialSequence
+        && Uniqueness >= 0.85
+        && (
+            (IdentifierScore >= 0.5 && IdentifierShapeScore >= 0.5)
+            || PhoneScore >= 0.45
+            || EmailScore >= 0.45
+        );
 
     /// <summary>True when this column reads as a person's name.</summary>
     public bool IsLikelyPersonName => PersonNameScore >= 0.5 && Uniqueness >= 0.5;
@@ -280,12 +283,25 @@ public static partial class RosterSchemaAnalyzer
             });
         }
 
-        // An identifier must be unique across the cohort. Without this rule a
-        // duplicated "Registration No" column would be chosen and students would
-        // collide on the same identifier.
-        var rankedIdentifiers = Rank(columns.Where(c => c.IsLikelyIdentifier), c => c.IdentifierScore)
+        // An institutional identifier (matric, reg no, student id) ranks highest.
+        // A phone number or email ranks next when no institutional identifier is present.
+        var rankedIdentifiers = Rank(
+            columns.Where(c => c.IsLikelyIdentifier),
+            c => (c.IdentifierScore >= 0.5 && c.IdentifierShapeScore >= 0.5)
+                ? 10.0 + c.IdentifierScore
+                : Math.Max(c.PhoneScore, c.EmailScore))
             .Take(5)
             .ToList();
+
+        // Fallback ONLY for single-column lists where scores might be borderline
+        if (rankedIdentifiers.Count == 0 && columns.Count == 1)
+        {
+            var single = columns[0];
+            if (!single.LooksLikeSerialSequence && single.Uniqueness >= 0.85)
+            {
+                rankedIdentifiers.Add(single);
+            }
+        }
 
         var rankedNames = Rank(
             columns.Where(c => c.PersonNameScore >= 0.5 && c.Uniqueness >= 0.5),
@@ -299,7 +315,7 @@ public static partial class RosterSchemaAnalyzer
         {
             notes.Add(
                 "No column was unique enough to use as a join identifier. " +
-                "Add a matric or registration number column, or remove duplicate rows.");
+                "Add a matric or phone number column, or remove duplicate rows.");
         }
         else
         {
@@ -313,7 +329,15 @@ public static partial class RosterSchemaAnalyzer
 
         if (name is null)
         {
-            notes.Add("No column looked like a person's name. A display name is required.");
+            if (columns.Count == 1 && identifier is not null)
+            {
+                name = identifier;
+                notes.Add($"No separate name column detected; attendees will display using '{identifier.Name}'.");
+            }
+            else
+            {
+                notes.Add("No column looked like a person's name. A display name is required.");
+            }
         }
         else
         {
