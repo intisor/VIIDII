@@ -69,8 +69,7 @@ public class SessionState
     public int ConnectionAttempts { get; set; }
     public DateTime? LastConnectionAttempt { get; set; }
 
-    // Browser Persistence
-    public bool IsRestoredFromStorage { get; set; }
+    public string? LoadingMessage { get; set; }
 
     // Methods
     public void Reset()
@@ -85,6 +84,7 @@ public class SessionState
         Participants.Clear();
         ParticipantStatuses.Clear();
         ErrorMessage = null;
+        LoadingMessage = null;
         IsLoading = false;
         IsHubConnected = false;
         IsPeerConnected = false;
@@ -105,23 +105,18 @@ public class SessionState
     public void StartLoading(string? message = null)
     {
         IsLoading = true;
-        if (message != null)
-        {
-            ErrorMessage = message;
-        }
+        LoadingMessage = message;
     }
 
     public void StopLoading()
     {
         IsLoading = false;
+        LoadingMessage = null;
     }
 
     public void AddParticipant(string matricNo, string name)
     {
-        if (!Participants.ContainsKey(matricNo))
-        {
-            Participants[matricNo] = name;
-        }
+        Participants[matricNo] = name;
     }
 
     public void RemoveParticipant(string matricNo)

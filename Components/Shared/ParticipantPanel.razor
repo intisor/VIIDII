@@ -14,15 +14,40 @@
         
         @if (IsLecturer && ParticipantCount > 0)
         {
-            <button class="btn-prompt" @onclick="PromptEngagement">
-                <i class="fas fa-hand-paper"></i> Prompt All
-            </button>
+            <div class="prompt-actions">
+                <button class="btn-prompt btn-quiz" @onclick="PrepareCaptionQuiz" title="Extract smart attention check question from live captions">
+                    <i class="fas fa-brain"></i> Quiz Check
+                </button>
+                <button class="btn-prompt btn-ping" @onclick="PromptEngagement" title="Quick 'Are you there' ping">
+                    <i class="fas fa-hand-paper"></i> Ping All
+                </button>
+            </div>
         }
     </div>
 
-    @* Who is expected but has not joined is the number a lecturer actually
-       cares about mid-lecture, so it is stated up front rather than left to be
-       inferred from an empty panel. *@
+    @* Live Quiz Stats Banner (Lecturer Only) *@
+    @if (IsLecturer && _hasLiveQuizStats)
+    {
+        <div class="live-quiz-card">
+            <div class="quiz-stat-header">
+                <span class="quiz-stat-title"><i class="fas fa-brain"></i> Latest Quiz Check</span>
+                <span class="quiz-stat-badge">@(_quizResponses)/@(_quizTotalEligible > 0 ? _quizTotalEligible : ParticipantCount) Responded</span>
+            </div>
+            <div class="quiz-stat-progress">
+                @{
+                    var eligible = _quizTotalEligible > 0 ? _quizTotalEligible : Math.Max(1, ParticipantCount);
+                    var pct = Math.Min(100, (int)((double)_quizResponses / eligible * 100));
+                }
+                <div class="quiz-stat-bar" style="width: @(pct)%;"></div>
+            </div>
+            <div class="quiz-stat-footer">
+                <span>Accuracy: @(_quizResponses > 0 ? $"{(_quizCorrect * 100 / _quizResponses)}%" : "—")</span>
+                <span>Response Rate: @pct%</span>
+            </div>
+        </div>
+    }
+
+    @* Who is expected but has not joined *@
     @if (IsLecturer && ExpectedCount > 0)
     {
         <div class="engagement-stats">
@@ -43,8 +68,7 @@
         </div>
     }
 
-    @* Expected but absent. Students do not hold accounts, so these are matched
-       on the identifier they typed when claiming their seat. *@
+    @* Expected but absent *@
     @if (IsLecturer && MissingStudents.Count > 0)
     {
         <details class="absent-list">
@@ -130,21 +154,83 @@
     }
 </div>
 
+@* Lecturer Quiz Review & Customization Modal *@
+@if (_showQuizModal)
+{
+    <div class="quiz-preview-overlay" @onclick="() => _showQuizModal = false">
+        <div class="quiz-preview-modal natural-glass" @onclick:stopPropagation="true">
+            <div class="quiz-preview-header">
+                <h4><i class="fas fa-brain"></i> Lecture Check: Question Preview</h4>
+                <button type="button" class="btn-close-preview" @onclick="() => _showQuizModal = false">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="quiz-preview-body">
+                @if (!string.IsNullOrEmpty(_quizSourceQuote))
+                {
+                    <div class="preview-quote">
+                        <i class="fas fa-quote-left"></i> Spoken in lecture: "@_quizSourceQuote"
+                    </div>
+                }
+                <div class="preview-field">
+                    <label>Question to Attendees</label>
+                    <textarea class="preview-textarea" @bind="_quizQuestion" rows="2"></textarea>
+                </div>
+                <div class="preview-field">
+                    <label>Options (Click check to mark correct answer)</label>
+                    @for (int i = 0; i < _quizOptions.Count; i++)
+                    {
+                        var idx = i;
+                        var isCorrect = idx == _quizCorrectIndex;
+                        <div class="preview-option-row @(isCorrect ? "correct-row" : "")">
+                            <span class="option-tag">@((char)('A' + idx))</span>
+                            <input type="text" class="preview-input" @bind="_quizOptions[idx]" />
+                            <button type="button" class="btn-set-correct @(isCorrect ? "active" : "")" 
+                                    @onclick="() => _quizCorrectIndex = idx" 
+                                    title="@(isCorrect ? "Correct answer" : "Mark as correct answer")">
+                                <i class="fas fa-check"></i>
+                            </button>
+                        </div>
+                    }
+                </div>
+                <div class="preview-field">
+                    <label>Response Timer</label>
+                    <select class="preview-select" @bind="_quizTimeout">
+                        <option value="20">20 seconds</option>
+                        <option value="30">30 seconds</option>
+                        <option value="45">45 seconds</option>
+                    </select>
+                </div>
+            </div>
+            <div class="quiz-preview-footer">
+                <button type="button" class="btn btn-secondary" @onclick="() => _showQuizModal = false">Cancel</button>
+                <button type="button" class="btn btn-primary" @onclick="BroadcastQuiz" disabled="@_isSendingQuiz">
+                    @if (_isSendingQuiz)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1"></span>
+                        <span>Broadcasting...</span>
+                    }
+                    else
+                    {
+                        <i class="fas fa-paper-plane"></i>
+                        <span>Broadcast to Class</span>
+                    }
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     [Parameter] public Dictionary<string, string> Participants { get; set; } = new();
     [Parameter] public Dictionary<string, Session.StudentStatus> ParticipantStatuses { get; set; } = new();
     [Parameter] public HubConnection? HubConnection { get; set; }
     [Parameter] public string SessionId { get; set; } = string.Empty;
+    [Parameter] public string SessionTitle { get; set; } = string.Empty;
     [Parameter] public bool IsLecturer { get; set; }
 
-    /// <summary>
-    /// Everyone on the class list, lecturer only. Empty when there is no class, and
-    /// the panel falls back to showing participants alone.
-    /// </summary>
     [Parameter] public IReadOnlyList<ExpectedStudent> ExpectedStudents { get; set; } = [];
 
-    /// <param name="Identifier">What the student types to join.</param>
-    /// <param name="Name">Name as the lecturer spelled it on the list.</param>
     public sealed record ExpectedStudent(string Identifier, string Name);
 
     private Dictionary<string, string> SafeParticipants => Participants ?? new();
@@ -155,11 +241,6 @@
             .OrderBy(static p => p.Value, StringComparer.OrdinalIgnoreCase);
     private int ParticipantCount => OrderedParticipants.Count();
 
-    /// <summary>
-    /// Expected students who are not in the room. Matched on the identifier, which
-    /// is what the student typed when claiming a seat, because that is what the
-    /// hub records them under.
-    /// </summary>
     private IReadOnlyList<ExpectedStudent> MissingStudents => ExpectedStudents
         .Where(student =>
             !SafeParticipants.Keys.Any(id =>
@@ -175,6 +256,97 @@
     private int IssuesCount => SafeParticipantStatuses.Count(p => 
         p.Value == Session.StudentStatus.BatteryLow || 
         p.Value == Session.StudentStatus.DataFinished);
+
+    // Quiz Generation & Live Stats State
+    private bool _showQuizModal;
+    private string _quizQuestion = "";
+    private List<string> _quizOptions = new();
+    private int _quizCorrectIndex = 0;
+    private string _quizSourceQuote = "";
+    private int _quizTimeout = 30;
+    private bool _isSendingQuiz;
+    private bool _hasLiveQuizStats;
+    private int _quizTotalEligible;
+    private int _quizResponses;
+    private int _quizCorrect;
+
+    protected override void OnInitialized()
+    {
+        if (HubConnection != null && IsLecturer)
+        {
+            HubConnection.On<string, int, int, int>("ReceiveQuizLiveStats", (quizId, totalEligible, totalResponses, correctCount) =>
+            {
+                _hasLiveQuizStats = true;
+                _quizTotalEligible = totalEligible;
+                _quizResponses = totalResponses;
+                _quizCorrect = correctCount;
+                InvokeAsync(StateHasChanged);
+            });
+        }
+    }
+
+    private async Task PrepareCaptionQuiz()
+    {
+        try
+        {
+            var res = await JSRuntime.InvokeAsync<System.Text.Json.JsonElement>("captionInterop.generateEngagementQuiz", SessionTitle);
+            if (res.ValueKind == System.Text.Json.JsonValueKind.Object)
+            {
+                _quizQuestion = res.GetProperty("question").GetString() ?? "";
+                _quizCorrectIndex = res.GetProperty("correctIndex").GetInt32();
+                _quizSourceQuote = res.TryGetProperty("sourceQuote", out var q) ? q.GetString() ?? "" : "";
+                _quizOptions.Clear();
+                if (res.TryGetProperty("options", out var opts) && opts.ValueKind == System.Text.Json.JsonValueKind.Array)
+                {
+                    foreach (var opt in opts.EnumerateArray())
+                    {
+                        _quizOptions.Add(opt.GetString() ?? "");
+                    }
+                }
+                _showQuizModal = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error preparing quiz: {ex.Message}");
+            // Fallback: ping all
+            await PromptEngagement();
+        }
+    }
+
+    private async Task BroadcastQuiz()
+    {
+        if (HubConnection == null || string.IsNullOrWhiteSpace(_quizQuestion) || _quizOptions.Count == 0 || _isSendingQuiz)
+            return;
+
+        _isSendingQuiz = true;
+        try
+        {
+            await HubConnection.SendAsync(
+                "PromptEngagementWithQuiz", 
+                SessionId, 
+                _quizQuestion, 
+                _quizOptions.ToArray(), 
+                _quizCorrectIndex, 
+                _quizTimeout, 
+                _quizSourceQuote);
+
+            _showQuizModal = false;
+            _hasLiveQuizStats = true;
+            _quizTotalEligible = ParticipantCount;
+            _quizResponses = 0;
+            _quizCorrect = 0;
+            Console.WriteLine($"[ParticipantPanel] Broadcast caption quiz to session {SessionId}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error sending quiz: {ex.Message}");
+        }
+        finally
+        {
+            _isSendingQuiz = false;
+        }
+    }
 
     private async Task PromptEngagement()
     {

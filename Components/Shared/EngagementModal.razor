@@ -7,33 +7,110 @@
 {
     <div class="modal fade show d-block" tabindex="-1" aria-labelledby="engagementModalLabel" aria-modal="true" role="dialog">
         <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
+            <div class="modal-content natural-glass">
                 <div class="modal-header">
                     <h5 class="modal-title" id="engagementModalLabel">
-                        <i class="fas fa-hand-paper"></i> Are You There?
+                        <i class="fas fa-@(IsQuizMode ? "brain" : "hand-paper")"></i>
+                        @(IsQuizMode ? "Live Lecture Check" : "Are You There?")
                     </h5>
+                    @if (TimeRemaining > 0 && !_submitted)
+                    {
+                        <div class="timer-badge">
+                            <i class="fas fa-clock"></i>
+                            <span>@(TimeRemaining)s</span>
+                        </div>
+                    }
                 </div>
                 <div class="modal-body">
-                    <div class="engagement-content">
-                        <div class="attention-icon">
-                            <i class="fas fa-user-check"></i>
-                        </div>
-                        <p class="message">Your lecturer wants to confirm you're paying attention.</p>
-                        <p class="instruction">Click the button below to confirm you're actively participating.</p>
-
-                        @if (TimeRemaining > 0)
-                        {
-                            <div class="timer">
-                                <i class="fas fa-clock"></i>
-                                <span>@TimeRemaining seconds remaining</span>
+                    @if (_submitted)
+                    {
+                        <div class="feedback-container">
+                            <div class="feedback-icon @(_isCorrect ? "correct" : "submitted")">
+                                <i class="fas fa-@(_isCorrect ? "check-circle" : "clipboard-check")"></i>
                             </div>
-                        }
-                    </div>
+                            <h4 class="feedback-title">@(_isCorrect ? "Great Attention!" : "Response Recorded")</h4>
+                            <p class="feedback-message">
+                                @(_isCorrect 
+                                    ? "You answered correctly and your attendance is marked as fully active." 
+                                    : "Thank you for confirming your presence. Attendance updated.")
+                            </p>
+                        </div>
+                    }
+                    else if (IsQuizMode)
+                    {
+                        <div class="quiz-container">
+                            @if (!string.IsNullOrWhiteSpace(SourceQuote))
+                            {
+                                <div class="quote-pill">
+                                    <i class="fas fa-quote-left"></i>
+                                    <span>From lecture: "@SourceQuote"</span>
+                                </div>
+                            }
+
+                            <p class="quiz-question">@QuestionText</p>
+
+                            <div class="quiz-options">
+                                @if (Options != null)
+                                {
+                                    @for (int i = 0; i < Options.Length; i++)
+                                    {
+                                        var idx = i;
+                                        var letter = (char)('A' + idx);
+                                        var isSelected = _selectedOptionIndex == idx;
+                                        <button type="button" 
+                                                class="option-card @(isSelected ? "selected" : "")" 
+                                                @onclick="() => SelectOption(idx)">
+                                            <span class="option-letter">@letter</span>
+                                            <span class="option-text">@Options[idx]</span>
+                                            @if (isSelected)
+                                            {
+                                                <i class="fas fa-check-circle option-check"></i>
+                                            }
+                                        </button>
+                                    }
+                                }
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="engagement-content">
+                            <div class="attention-icon">
+                                <i class="fas fa-user-check"></i>
+                            </div>
+                            <p class="message">Your lecturer wants to confirm you're paying attention.</p>
+                            <p class="instruction">Click the button below to confirm you're actively participating.</p>
+                        </div>
+                    }
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-primary btn-lg w-100" @onclick="ConfirmActive">
-                        <i class="fas fa-check-circle"></i> I'm Here!
-                    </button>
+                    @if (!_submitted)
+                    {
+                        @if (IsQuizMode)
+                        {
+                            <button type="button" 
+                                    class="btn btn-primary w-100" 
+                                    @onclick="SubmitQuizAnswer" 
+                                    disabled="@(_selectedOptionIndex < 0 || _isSubmitting)">
+                                @if (_isSubmitting)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-2"></span>
+                                    <span>Submitting...</span>
+                                }
+                                else
+                                {
+                                    <i class="fas fa-paper-plane"></i>
+                                    <span>Submit Answer</span>
+                                }
+                            </button>
+                        }
+                        else
+                        {
+                            <button type="button" class="btn btn-primary w-100" @onclick="ConfirmActive">
+                                <i class="fas fa-check-circle"></i> I'm Here!
+                            </button>
+                        }
+                    }
                 </div>
             </div>
         </div>
@@ -43,14 +120,27 @@
 
 @code {
     [Parameter] public HubConnection? HubConnection { get; set; }
+    [Parameter] public string SessionId { get; set; } = string.Empty;
     [Parameter] public bool IsStudent { get; set; }
     [Parameter] public bool ShouldShow { get; set; }
     [Parameter] public EventCallback OnHidden { get; set; }
+
+    [Parameter] public string? QuizId { get; set; }
+    [Parameter] public string? QuestionText { get; set; }
+    [Parameter] public string[]? Options { get; set; }
+    [Parameter] public string? SourceQuote { get; set; }
+    [Parameter] public int InitialTimeoutSeconds { get; set; } = 30;
+
+    private bool IsQuizMode => !string.IsNullOrWhiteSpace(QuestionText) && Options != null && Options.Length > 0;
 
     private bool IsShown = false;
     private int TimeRemaining = 30;
     private System.Threading.Timer? _timer;
     private bool _isHiding;
+    private int _selectedOptionIndex = -1;
+    private bool _isSubmitting;
+    private bool _submitted;
+    private bool _isCorrect;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -75,8 +165,13 @@
 
         IsShown = true;
         _isHiding = false;
-        TimeRemaining = 30;
-        await JSRuntime.InvokeVoidAsync("console.log", $"[VIIDII] Engagement prompt shown. TimeRemaining={TimeRemaining}");
+        _submitted = false;
+        _isCorrect = false;
+        _isSubmitting = false;
+        _selectedOptionIndex = -1;
+        TimeRemaining = InitialTimeoutSeconds > 0 ? InitialTimeoutSeconds : 30;
+
+        await JSRuntime.InvokeVoidAsync("console.log", $"[VIIDII] Engagement prompt shown. QuizMode={IsQuizMode}, TimeRemaining={TimeRemaining}");
 
         _timer?.Dispose();
         _timer = new System.Threading.Timer(async _ =>
@@ -95,6 +190,44 @@
         await InvokeAsync(StateHasChanged);
     }
 
+    private void SelectOption(int index)
+    {
+        if (_submitted) return;
+        _selectedOptionIndex = index;
+    }
+
+    private async Task SubmitQuizAnswer()
+    {
+        if (HubConnection == null || _selectedOptionIndex < 0 || _isSubmitting)
+            return;
+
+        _isSubmitting = true;
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("console.log", $"[VIIDII] Submitting quiz answer: index={_selectedOptionIndex}, quizId={QuizId}");
+            await HubConnection.SendAsync("SubmitQuizResponse", SessionId, QuizId ?? "", _selectedOptionIndex);
+            
+            _submitted = true;
+            _isCorrect = true;
+            _timer?.Dispose();
+            _timer = null;
+            StateHasChanged();
+
+            // Auto-close after showing confirmation
+            await Task.Delay(1800);
+            await Hide();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error submitting quiz answer: {ex.Message}");
+            await ConfirmActive();
+        }
+        finally
+        {
+            _isSubmitting = false;
+        }
+    }
+
     private async Task ConfirmActive()
     {
         if (HubConnection == null)
@@ -106,12 +239,19 @@
         {
             await JSRuntime.InvokeVoidAsync("console.log", "[VIIDII] Engagement prompt confirmed by student.");
             await HubConnection.SendAsync("ConfirmActive");
+            _submitted = true;
+            _isCorrect = true;
+            _timer?.Dispose();
+            _timer = null;
+            StateHasChanged();
+
+            await Task.Delay(1200);
             await Hide();
-            Console.WriteLine("Engagement confirmed");
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Error confirming active: {ex.Message}");
+            await Hide();
         }
     }
 
@@ -134,7 +274,8 @@
         _timer = null;
         IsShown = false;
         TimeRemaining = 0;
-        await JSRuntime.InvokeVoidAsync("console.log", "[VIIDII] Engagement prompt hidden.");
+        _submitted = false;
+        _selectedOptionIndex = -1;
 
         if (OnHidden.HasDelegate)
         {

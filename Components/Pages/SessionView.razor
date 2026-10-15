@@ -39,6 +39,79 @@ else if (CurrentSession == null)
 {
     <div class="alert alert-danger">Session not found or you don't have access.</div>
 }
+else if (_sessionEndedForStudent)
+{
+    <div class="student-completion-screen">
+        <div class="completion-card">
+            <div class="completion-header">
+                <div class="completion-icon-wrapper">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                        <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                    </svg>
+                </div>
+                <h2>Class Concluded</h2>
+                <p class="completion-subtitle">The lecture session has ended. Your verified attendance record has been preserved.</p>
+            </div>
+
+            <div class="receipt-card">
+                <div class="receipt-header">
+                    <span>ATTENDANCE RECEIPT</span>
+                    <span class="receipt-status-badge">
+                        <span class="status-dot"></span> Logged
+                    </span>
+                </div>
+                <div class="receipt-divider"></div>
+                <div class="receipt-grid">
+                    <div class="receipt-row">
+                        <span class="receipt-label">Session Topic</span>
+                        <span class="receipt-value font-medium">@CurrentSession.Title</span>
+                    </div>
+                    @if (CurrentSession.Class != null)
+                    {
+                        <div class="receipt-row">
+                            <span class="receipt-label">Course / Class</span>
+                            <span class="receipt-value">@(string.IsNullOrWhiteSpace(CurrentSession.Class.Code) ? CurrentSession.Class.Name : $"{CurrentSession.Class.Code} - {CurrentSession.Class.Name}")</span>
+                        </div>
+                    }
+                    <div class="receipt-row">
+                        <span class="receipt-label">Student Name</span>
+                        <span class="receipt-value font-medium">@Identity.Name</span>
+                    </div>
+                    <div class="receipt-row">
+                        <span class="receipt-label">Matric / Identifier</span>
+                        <span class="receipt-value font-mono">@Identity.MatricNo</span>
+                    </div>
+                    <div class="receipt-row">
+                        <span class="receipt-label">Completion Time</span>
+                        <span class="receipt-value">@DateTime.Now.ToString("MMM dd, yyyy · hh:mm tt")</span>
+                    </div>
+                    <div class="receipt-row">
+                        <span class="receipt-label">Session Reference</span>
+                        <span class="receipt-value font-mono">@CurrentSession.SessionId</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="completion-privacy-note">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                </svg>
+                <span>All video/audio streams, peer connections, and shared temporary buffers have been securely cleared from your device. You may safely close this window.</span>
+            </div>
+
+            <div class="completion-actions">
+                <a href="/" class="btn btn-primary completion-home-btn">
+                    Return to Home
+                </a>
+                <button type="button" class="btn btn-secondary completion-close-btn" onclick="window.close();">
+                    Close Tab
+                </button>
+            </div>
+        </div>
+    </div>
+}
 else
 {
     <div class="session-container">
@@ -177,10 +250,29 @@ else
             </div>
         }
 
+        <!-- Mobile View Mode Segmented Switcher -->
+        @if (State.IsSessionStarted)
+        {
+            <div class="mobile-view-tabs">
+                <button type="button" class="m-tab @(_mobileViewMode == "split" ? "active" : "")" @onclick='() => _mobileViewMode = "split"'>
+                    <i class="fas fa-columns"></i>
+                    <span>Split</span>
+                </button>
+                <button type="button" class="m-tab @(_mobileViewMode == "video" ? "active" : "")" @onclick='() => _mobileViewMode = "video"'>
+                    <i class="fas fa-video"></i>
+                    <span>Video Focus</span>
+                </button>
+                <button type="button" class="m-tab @(_mobileViewMode == "chat" ? "active" : "")" @onclick='() => _mobileViewMode = "chat"'>
+                    <i class="fas fa-comments"></i>
+                    <span>Chat & Class</span>
+                </button>
+            </div>
+        }
+
         <!-- Session Body: sidebar layout -->
         @if (State.IsSessionStarted || State.IsTestingCamera || !State.IsLecturer)
         {
-            <div class="session-body">
+            <div class="session-body mode-@_mobileViewMode">
                 <div class="video-panel">
                 <div class="video-container" id="videoContainer">
                     <!-- Main Video Element -->
@@ -188,15 +280,23 @@ else
                            autoplay 
                            playsinline 
                            muted="@State.IsLecturer"
-                           class="session-video @(State.IsLecturer ? "local-stream" : "")">
+                           class="session-video @(State.IsLecturer ? "local-stream" : "") @(_isVideoFlipped ? "flipped" : "") @(State.IsScreenSharing ? "screen-share" : "")">
                     </video>
+
+                    <!-- Live Captions Subtitle Overlay -->
+                    <div class="caption-overlay-container" id="captionOverlay" style="display:none;">
+                        <div class="caption-bubble">
+                            <span class="caption-speaker" id="captionSpeaker"></span>
+                            <span class="caption-text" id="captionText"></span>
+                        </div>
+                    </div>
 
                     <!-- Loading Overlay -->
                     @if (State.IsLoading || State.IsInitializing)
                     {
                         <div class="loading-overlay">
                             <div class="spinner"></div>
-                            <p>@(State.IsLecturer ? "Initializing camera..." : "Connecting to session...")</p>
+                            <p>@(State.LoadingMessage ?? (State.IsLecturer ? "Initializing camera..." : "Connecting to session..."))</p>
                         </div>
                     }
 
@@ -222,32 +322,12 @@ else
                         </div>
                     }
 
-                    <!-- Waiting for Host (Student View) -->
+                    <!-- Waiting for Host Stream (Student View) -->
                     @if (!State.IsLecturer && !State.HasStream && State.IsSessionStarted)
                     {
                         <div class="waiting-overlay">
                             <div class="spinner"></div>
                             <p>Waiting for host to start streaming...</p>
-
-                            @* An attendee on a phone cannot open a console, so the stage
-                               is put on screen. Without it, "no video" and "the relay
-                               refused the connection" look identical from their side. *@
-                            <div class="media-diagnostics">
-                                <p class="media-diagnostics-title">Connecting to the broadcast…</p>
-                                <p class="media-diagnostics-stage">
-                                    @(string.IsNullOrWhiteSpace(State.MediaStage)
-                                        ? "starting up"
-                                        : State.MediaStage)
-                                </p>
-                                @if (!string.IsNullOrWhiteSpace(State.MediaDetail))
-                                {
-                                    <p class="media-diagnostics-detail">@State.MediaDetail</p>
-                                }
-                                <p class="media-diagnostics-hint">
-                                    If this stays here, your network is blocking the connection.
-                                    Try switching to mobile data (MTN / Airtel / Glo).
-                                </p>
-                            </div>
                         </div>
                     }
 
@@ -265,24 +345,49 @@ else
                 <div class="video-controls-container">
                     @if (State.IsLecturer && State.IsWebcamActive)
                     {
-                        <div class="video-controls">
-                            <button class="btn-control" @onclick="ToggleScreenShare" disabled="@State.IsLoading">
+                        <div class="video-controls lecturer-controls">
+                            <button class="btn-control" @onclick="ToggleScreenShare" disabled="@State.IsLoading" title="Share your screen or camera">
                                 <i class="fas fa-@(State.IsScreenSharing ? "video" : "desktop")"></i>
                                 <span class="control-label">@(State.IsScreenSharing ? "Camera" : "Share Screen")</span>
                             </button>
+
+                            <button class="btn-control @(_isVideoFlipped ? "active" : "")" @onclick="ToggleVideoFlip" title="Flip camera view horizontally">
+                                <i class="fas fa-arrows-alt-h"></i>
+                                <span class="control-label">@(_isVideoFlipped ? "Unflip" : "Flip")</span>
+                            </button>
+
+                            <button class="btn-control @(IsCaptionsBroadcasting ? "active success" : "")" @onclick="ToggleHostCaptions" title="Broadcast live subtitles to attendees">
+                                <i class="fas fa-closed-captioning"></i>
+                                <span class="control-label">@(IsCaptionsBroadcasting ? "Captions Live" : "Captions")</span>
+                            </button>
                             
-                            <button class="btn-control btn-danger" @onclick="EndSession">
+                            <button class="btn-control btn-danger" @onclick="EndSession" title="End session for all participants">
                                 <i class="fas fa-stop"></i>
-                                <span class="control-label">End Session</span>
+                                <span class="control-label">End</span>
                             </button>
                         </div>
                     }
                     @if (!State.IsLecturer && State.IsSessionStarted)
                     {
-                        <div class="video-controls" style="display:flex; justify-content:flex-end; gap:0.5rem; padding:0.5rem 0;">
-                            <button class="btn-control @(_isAudioOnly ? "btn-warning" : "btn-secondary")" @onclick="ToggleAudioOnlyAsync" title="Toggle audio only to save mobile data">
+                        <div class="video-controls student-controls">
+                            <button class="btn-control @(_isVideoFlipped ? "active" : "")" @onclick="ToggleVideoFlip" title="Flip or unflip video view">
+                                <i class="fas fa-arrows-alt-h"></i>
+                                <span class="control-label">@(_isVideoFlipped ? "Unflip" : "Flip")</span>
+                            </button>
+
+                            <button class="btn-control @(IsCaptionsEnabled ? "active" : "")" @onclick="ToggleStudentCaptions" title="Toggle live subtitles overlay">
+                                <i class="fas fa-closed-captioning"></i>
+                                <span class="control-label">@(IsCaptionsEnabled ? "CC On" : "CC Off")</span>
+                            </button>
+
+                            <button class="btn-control @(_isAudioOnly ? "active warning" : "")" @onclick="ToggleAudioOnlyAsync" title="Toggle audio only to save mobile data">
                                 <i class="fas fa-@(_isAudioOnly ? "headphones" : "tv")"></i>
-                                <span class="control-label">@(_isAudioOnly ? "Audio Only (Saving Data)" : "Audio Only (Save 90% Data)")</span>
+                                <span class="control-label">@(_isAudioOnly ? "Saving Data" : "Data Saver")</span>
+                            </button>
+
+                            <button class="btn-control btn-leave" @onclick="StudentLeaveSession" title="Leave class and view attendance receipt">
+                                <i class="fas fa-sign-out-alt"></i>
+                                <span class="control-label">Leave</span>
                             </button>
                         </div>
                     }
@@ -315,7 +420,8 @@ else
                                     <MessagingPanel SessionId="@SessionId"
                                                    IsLecturer="@State.IsLecturer"
                                                    HubConnection="@_hubConnection"
-                                                   CurrentUserId="@(State.CurrentUser?.MatricNo ?? "")" />
+                                                   CurrentUserId="@(State.CurrentUser?.MatricNo ?? "")"
+                                                   CurrentUserName="@(State.CurrentUser?.Name ?? State.CurrentUser?.MatricNo ?? "")" />
                                 }
                                 else
                                 {
@@ -325,6 +431,7 @@ else
                                                       ParticipantStatuses="@State.ParticipantStatuses"
                                                       HubConnection="@_hubConnection"
                                                       SessionId="@SessionId"
+                                                      SessionTitle="@State.SessionTitle"
                                                       IsLecturer="@State.IsLecturer" />
                                 }
                             </div>
@@ -345,8 +452,14 @@ else
     @if (!State.IsLecturer)
     {
         <EngagementModal HubConnection="@_hubConnection"
+                         SessionId="@SessionId"
                          IsStudent="true"
                          ShouldShow="@_showEngagementModal"
+                         QuizId="@_currentQuizId"
+                         QuestionText="@_currentQuizQuestion"
+                         Options="@_currentQuizOptions"
+                         SourceQuote="@_currentQuizSourceQuote"
+                         InitialTimeoutSeconds="@_currentQuizTimeout"
                          OnHidden="@HideEngagementModal" />
     }
 }
@@ -361,8 +474,14 @@ else
     private HubConnection? _hubConnection;
     private DotNetObjectReference<SessionView>? _dotNetRef;
     private bool _showEngagementModal = false;
+    private string? _currentQuizId;
+    private string? _currentQuizQuestion;
+    private string[]? _currentQuizOptions;
+    private int _currentQuizTimeout = 30;
+    private string? _currentQuizSourceQuote;
     private bool _isDisposed = false;
     private bool _isNavigating = false; // Prevent render after navigation
+    private bool _sessionEndedForStudent = false; // Render attendance receipt
     private bool IsLecturer => State.IsLecturer;
     private bool _pendingStudentPeerSetup = false;
     // LiveKit is started once per component. Blazor re-renders often, and each
@@ -464,17 +583,15 @@ else
     {
         get
         {
-            if (State.Participants.Count > 0)
-            {
-                return State.Participants;
-            }
-
-            var participants = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var participants = new Dictionary<string, string>(State.Participants, StringComparer.OrdinalIgnoreCase);
             foreach (var connectedStudent in State.ConnectedStudents)
             {
                 if (!string.IsNullOrWhiteSpace(connectedStudent.Key) && !string.IsNullOrWhiteSpace(connectedStudent.Value))
                 {
-                    participants[connectedStudent.Key] = connectedStudent.Value;
+                    if (!participants.ContainsKey(connectedStudent.Key))
+                    {
+                        participants[connectedStudent.Key] = connectedStudent.Value;
+                    }
                 }
             }
 
@@ -573,6 +690,8 @@ else
             State.Status = CurrentSession.Status;
             State.IsSessionStarted = CurrentSession.IsSessionStarted;
             State.IsLecturer = CurrentSession.LecturerMatricNo == Identity.MatricNo;
+            // Default student view to flipped so incoming remote stream is not inverted
+            _isVideoFlipped = !State.IsLecturer;
 
             // If a student joined an ended session, forward them to the live session for their class
             if (!State.IsLecturer && CurrentSession.ClassId is int classId && CurrentSession.Status == SessionStatus.Ended)
@@ -586,6 +705,11 @@ else
                     Navigation.NavigateTo($"/session/{activeSession.SessionId}", forceLoad: true);
                     return;
                 }
+                _sessionEndedForStudent = true;
+            }
+            else if (!State.IsLecturer && CurrentSession.Status == SessionStatus.Ended)
+            {
+                _sessionEndedForStudent = true;
             }
 
             if (State.IsLecturer)
@@ -641,6 +765,19 @@ else
                 {
                     Console.WriteLine($"[SessionView C#] Student view - setting up tab visibility listener");
                     await SessionJsInterop.SetupTabVisibilityListenerAsync();
+
+                    // Start passive device & network telemetry monitoring (pure event-driven, zero polling)
+                    if (Identity != null)
+                    {
+                        try
+                        {
+                            await JSRuntime.InvokeVoidAsync("sessionInterop.startPassiveTelemetryWatch", _dotNetRef, SessionId, Identity.MatricNo);
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"[SessionView C#] Passive telemetry start error: {ex.Message}");
+                        }
+                    }
                 }
 
                 // Bring up the LiveKit room. Deliberately after the PeerJS
@@ -648,6 +785,13 @@ else
                 // same diagnostics panel with distinct prefixes, so the first phone
                 // test shows which of them got further.
                 await StartLiveKitAsync();
+
+                // Initialize live captions module
+                try
+                {
+                    await JSRuntime.InvokeVoidAsync("captionInterop.init", DotNetObjectReference.Create(this), SessionId, State.IsLecturer);
+                }
+                catch { }
 
                 // If student and session already started, setup peer
                 if (!State.IsLecturer && State.IsSessionStarted)
@@ -694,7 +838,7 @@ else
             {
                 State.IsHubConnected = true;
                 await JSRuntime.InvokeVoidAsync("console.log", $"[VIIDII] SignalR reconnected. ConnectionId={connectionId}, session={SessionId}");
-                await _hubConnection.SendAsync("JoinSession", SessionId);
+                await _hubConnection.SendAsync("JoinSession", SessionId, Identity?.MatricNo);
                 await JSRuntime.InvokeVoidAsync("console.log", $"[VIIDII] JoinSession resent after reconnect. session={SessionId}");
             };
 
@@ -751,6 +895,16 @@ else
         // Stream changes
         _hubConnection.On<string>("ReceiveStreamChange", OnStreamChange);
 
+        // Live captions
+        _hubConnection.On<System.Text.Json.JsonElement>("ReceiveLiveCaption", async (caption) =>
+        {
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("captionInterop.onCaptionReceived", caption);
+            }
+            catch { }
+        });
+
         // Participant management (lecturer only)
         if (State.IsLecturer)
         {
@@ -762,7 +916,8 @@ else
         if (!State.IsLecturer)
         {
             _hubConnection.On("AreYouThere", OnAreYouThere);
-            _ = JSRuntime.InvokeVoidAsync("console.log", $"[VIIDII] AreYouThere handler registered. session={SessionId}");
+            _hubConnection.On<string, string, string[], int, string>("ReceiveEngagementQuiz", OnReceiveEngagementQuiz);
+            _ = JSRuntime.InvokeVoidAsync("console.log", $"[VIIDII] Engagement handlers registered. session={SessionId}");
         }
     }
 
@@ -787,8 +942,11 @@ else
                         
                         const stream = await navigator.mediaDevices.getUserMedia({ 
                             video: { width: { ideal: 720 }, height: { ideal: 420 } }, 
-                            audio: true 
+                            audio: false 
                         });
+                        video.muted = true;
+                        video.defaultMuted = true;
+                        video.volume = 0;
                         video.srcObject = stream;
                         window.testStream = stream;
                         return { success: true };
@@ -1020,6 +1178,56 @@ else
         }
     }
 
+    private bool IsCaptionsBroadcasting { get; set; }
+    private bool IsCaptionsEnabled { get; set; } = true;
+    private bool _isVideoFlipped;
+    private string _mobileViewMode = "split";
+
+    private void ToggleVideoFlip()
+    {
+        _isVideoFlipped = !_isVideoFlipped;
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void OnCaptionBroadcastStateChanged(bool active)
+    {
+        IsCaptionsBroadcasting = active;
+        StateHasChanged();
+    }
+
+    private async Task ToggleHostCaptions()
+    {
+        var speaker = State.CurrentUser?.Name ?? "Host";
+        try
+        {
+            var res = await JSRuntime.InvokeAsync<System.Text.Json.JsonElement>("captionInterop.toggleBroadcasting", speaker, "en-US");
+            if (res.TryGetProperty("success", out var s) && s.GetBoolean())
+            {
+                IsCaptionsBroadcasting = !IsCaptionsBroadcasting;
+            }
+            else if (res.TryGetProperty("error", out var err))
+            {
+                State.SetError($"Captions: {err.GetString()}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SessionView C#] ToggleHostCaptions threw: {ex.Message}");
+        }
+        StateHasChanged();
+    }
+
+    private async Task ToggleStudentCaptions()
+    {
+        try
+        {
+            IsCaptionsEnabled = await JSRuntime.InvokeAsync<bool>("captionInterop.toggleCaptions");
+        }
+        catch { }
+        StateHasChanged();
+    }
+
     private async Task EndSession()
     {
         if (CurrentSession == null || !State.IsLecturer || State.CurrentUser == null || State.IsLoading)
@@ -1038,7 +1246,7 @@ else
             if (_hubConnection != null && _hubConnection.State == HubConnectionState.Connected)
             {
                 Console.WriteLine($"[SessionView C#] [Lecturer] Sending EndSession to hub for SessionId: {SessionId}");
-                await _hubConnection.SendAsync("EndSession", SessionId);
+                await _hubConnection.SendAsync("EndSession", SessionId, State.CurrentUser.MatricNo);
             }
 
             // Clear session storage
@@ -1237,47 +1445,60 @@ else
 
     private async Task OnSessionEnded(string sessionId)
     {
-        if (_isDisposed || _isNavigating) return;
+        if (_isDisposed) return;
 
         Console.WriteLine($"[SessionView C#] SignalR: OnSessionEnded event received. SessionId: {sessionId}");
 
         if (sessionId == SessionId)
         {
-            try
+            if (State.IsLecturer)
             {
-                // Cleanup JS resources
-                Console.WriteLine($"[SessionView C#] Cleaning up JS media/peer resources...");
-                await SessionJsInterop.CleanupAsync();
-
-                // Clear storage
-                await ClearSessionStorageAsync();
-
-                await InvokeAsync(() =>
+                if (!_isNavigating)
                 {
-                    // Show brief message
-                    State.SetError("Session has ended");
-                    StateHasChanged();
-                });
-
-                await Task.Delay(2000);
-
-                // Navigate based on role
-                _isNavigating = true;
-                if (State.IsLecturer)
-                {
+                    _isNavigating = true;
                     Console.WriteLine($"[SessionView C#] [Lecturer] Session ended. Redirecting to recap page.");
                     Navigation.NavigateTo($"/session-recap/{sessionId}", forceLoad: true);
                 }
-                else
-                {
-                    Console.WriteLine($"[SessionView C#] [Student] Session ended. Redirecting to dashboard.");
-                    Navigation.NavigateTo("/dashboard", forceLoad: true);
-                }
             }
-            catch (Exception ex)
+            else
             {
-                Console.WriteLine($"[SessionView C#] Error in OnSessionEnded: {ex.Message}");
+                Console.WriteLine($"[SessionView C#] [Student] Session ended. Immediately displaying post-class attendance receipt.");
+                _sessionEndedForStudent = true;
+                _isNavigating = false;
+                State.ClearError();
+                State.StopLoading();
+                State.IsStreamLoaded = false;
+                State.HasStream = false;
+                await InvokeAsync(StateHasChanged);
+
+                // Run cleanup safely in background without blocking UI
+                try { await ClearSessionStorageAsync(); } catch { }
+                try { await SessionJsInterop.CleanupAsync(); } catch { }
+                try { await JSRuntime.InvokeVoidAsync("livekitInterop.disconnect"); } catch { }
             }
+        }
+    }
+
+    private async Task StudentLeaveSession()
+    {
+        try
+        {
+            await SessionJsInterop.CleanupAsync();
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("livekitInterop.disconnect");
+            }
+            catch { }
+
+            _sessionEndedForStudent = true;
+            State.ClearError();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SessionView C#] StudentLeaveSession error: {ex.Message}");
+            _sessionEndedForStudent = true;
+            StateHasChanged();
         }
     }
 
@@ -1373,6 +1594,23 @@ else
         await InvokeAsync(StateHasChanged);
     }
 
+    private async Task OnReceiveEngagementQuiz(string quizId, string question, string[] options, int timeoutSeconds, string sourceQuote)
+    {
+        Console.WriteLine($"[SessionView C#] ReceiveEngagementQuiz: {question}, Timeout={timeoutSeconds}");
+        if (State.IsLecturer) return;
+
+        await InvokeAsync(() =>
+        {
+            _currentQuizId = quizId;
+            _currentQuizQuestion = question;
+            _currentQuizOptions = options;
+            _currentQuizTimeout = timeoutSeconds;
+            _currentQuizSourceQuote = sourceQuote;
+            _showEngagementModal = true;
+            StateHasChanged();
+        });
+    }
+
     private async Task OnAreYouThere()
     {
         Console.WriteLine($"[SessionView C#] AreYouThere received. SessionId={SessionId}, IsLecturer={State.IsLecturer}, HubConnected={State.IsHubConnected}, ConnectionId={_hubConnection?.ConnectionId}");
@@ -1382,6 +1620,10 @@ else
         {
             if (!State.IsLecturer)
             {
+                _currentQuizId = null;
+                _currentQuizQuestion = null;
+                _currentQuizOptions = null;
+                _currentQuizSourceQuote = null;
                 _showEngagementModal = true;
                 Console.WriteLine($"[SessionView C#] Setting engagement modal visible for student in session {SessionId}");
             }
@@ -1395,6 +1637,10 @@ else
         await InvokeAsync(() =>
         {
             _showEngagementModal = false;
+            _currentQuizId = null;
+            _currentQuizQuestion = null;
+            _currentQuizOptions = null;
+            _currentQuizSourceQuote = null;
             StateHasChanged();
         });
     }
@@ -1539,12 +1785,32 @@ else
     }
 
     [JSInvokable]
-    public void OnStreamLost()
+    public async Task OnStreamLost()
     {
-        Console.WriteLine("[SessionView C#] [JSInvokable] OnStreamLost: Media stream lost/disconnected. Setting IsStreamLoaded=false.");
+        Console.WriteLine("[SessionView C#] [JSInvokable] OnStreamLost: Media stream lost/disconnected.");
         State.IsStreamLoaded = false;
         State.HasStream = false;
-        State.SetError("Connection to lecturer lost. Reconnecting...");
+
+        // If the session was ended by the lecturer, transition student to completion receipt immediately
+        if (!State.IsLecturer)
+        {
+            try
+            {
+                var s = await SessionService.GetSessionByIdAsync(SessionId);
+                if (s == null || s.Status == SessionStatus.Ended || !s.IsSessionStarted)
+                {
+                    Console.WriteLine("[SessionView C#] OnStreamLost: Detected session is ended. Showing attendance receipt.");
+                    _sessionEndedForStudent = true;
+                    State.ClearError();
+                    State.StopLoading();
+                    await InvokeAsync(StateHasChanged);
+                    return;
+                }
+            }
+            catch { }
+        }
+
+        // LiveKit auto-renegotiates when tracks toggle; do not flash an alarmist error banner
         StateHasChanged();
     }
 
@@ -1552,13 +1818,14 @@ else
     public void OnPeerError(string errorType)
     {
         Console.WriteLine($"[SessionView C#] [JSInvokable] OnPeerError: Error occurred: '{errorType}'. Connection attempt #{State.ConnectionAttempts}. Processing retry logic.");
+        if (_sessionEndedForStudent || _isDisposed || CurrentSession?.Status == SessionStatus.Ended)
+        {
+            return;
+        }
+
         State.RecordConnectionAttempt();
 
-        if (State.ShouldRetryConnection() && !State.HasExceededMaxAttempts)
-        {
-            State.SetError("Connection issue. Retrying...");
-        }
-        else if (State.HasExceededMaxAttempts)
+        if (State.HasExceededMaxAttempts)
         {
             State.SetError("Unable to establish connection. Please refresh the page.");
         }
@@ -1623,9 +1890,34 @@ else
 
         try
         {
+            await JSRuntime.InvokeVoidAsync("sessionInterop.stopPassiveTelemetryWatch");
+        }
+        catch { }
+
+        try
+        {
             await JSRuntime.InvokeVoidAsync("livekitInterop.disconnect");
         }
         catch { }
+    }
+
+    [JSInvokable]
+    public async Task OnPassiveTelemetryAlert(string issueType, int metricValue)
+    {
+        Console.WriteLine($"[SessionView C#] Passive Telemetry Alert: {issueType} metric: {metricValue}");
+        if (_hubConnection != null && _hubConnection.State == HubConnectionState.Connected)
+        {
+            if (issueType == "BatteryLow")
+            {
+                await _hubConnection.SendAsync("RecordDeviceTelemetry", metricValue, false, null, null);
+                await _hubConnection.SendAsync("FlagIssue", "BatteryLow");
+            }
+            else if (issueType == "DataFinished")
+            {
+                await _hubConnection.SendAsync("RecordDeviceTelemetry", null, null, metricValue, "slow");
+                await _hubConnection.SendAsync("FlagIssue", "DataFinished");
+            }
+        }
     }
 }
 
