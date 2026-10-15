@@ -128,14 +128,20 @@ else
                     <span class="status-badge">@State.Status</span>
                 }
             </div>
-            <div class="session-header-right">
-                <span class="session-code">@SessionId</span>
+            <div class="session-header-right">                <span class="session-code">@SessionId</span>
                 @if (State.IsLecturer && State.ParticipantCount > 0)
                 {
                     <span class="participant-badge">
                         <i class="fas fa-users"></i>
                         @State.ParticipantCount
                     </span>
+                }
+                @if (State.IsLecturer && !string.IsNullOrWhiteSpace(JoinUrl) && State.IsSessionStarted)
+                {
+                    <button type="button" class="btn-header-share" @onclick="CopyJoinLink" title="Copy student join link">
+                        <i class="fas @(_joinLinkLabel == "Copied" ? "fa-check" : "fa-share-nodes")"></i>
+                        <span>@JoinLinkLabel</span>
+                    </button>
                 }
             </div>
         </div>
@@ -157,94 +163,70 @@ else
             </div>
         }
 
-        <!-- Attendee list (Lecturer Only, Before Session Starts) -->
-        @if (State.IsLecturer && !State.IsSessionStarted)
-        {
-            <div class="roster-entry-card">
-                <div class="roster-entry-text">
-                    <h3>Attendee list</h3>
-                    <p>
-                        Upload the class list so VIIDII knows who is expected. Each student gets a
-                        join code, and attendance is recorded against their verified identity.
-                    </p>
-                </div>
-                @* Class-scoped, not session-scoped: the roster belongs to the class and is reused by
-               every session in it. This used to point at /session/{id}/roster, which
-               does not exist, so "Manage list" was a 404. *@
-                <a class="btn-control" href="/classes/@(CurrentSession?.ClassId)/roster">
-                    <i class="fas fa-users"></i>
-                    <span class="control-label">Manage list</span>
-                </a>
-            </div>
-        }
-
-        <!-- Share the student link (Lecturer Only) -->
-        @if (State.IsLecturer && !string.IsNullOrWhiteSpace(JoinUrl))
-        {
-            <div class="roster-entry-card share-card">
-                <div class="roster-entry-text">
-                    <h3>Share with your students</h3>
-                    <p>
-                        This is the same link every week. Send it in your class group; nobody has to
-                        make an account.
-                    </p>
-                    <code class="share-url">@JoinUrl</code>
-                </div>
-                <div class="share-actions">
-                    <button class="btn-control" @onclick="CopyJoinLink">
-                        <i class="fas fa-copy"></i>
-                        <span class="control-label">@JoinLinkLabel</span>
-                    </button>
-                    @* WhatsApp needs no clipboard permission, which matters because
-                       clipboard writes are refused on unfocused tabs, on some
-                       in-app browsers, and anywhere the origin is not secure. Most
-                       lecturers are forwarding this from a class group, so a button
-                       that hands the text to WhatsApp is the one that reliably works. *@
-                    <a class="btn-control" href="@WhatsAppHref" target="_blank" rel="noopener noreferrer">
-                        <i class="fab fa-whatsapp"></i>
-                        <span class="control-label">WhatsApp</span>
-                    </a>
-                </div>
-            </div>
-        }
-
         <!-- Setup configuration section (Lecturer Only, Before Session Starts) -->
         @if (State.IsLecturer && !State.IsSessionStarted && State.ShowTestCameraSection)
         {
             <div class="setup-layout">
-                <div class="setup-card">
-                    <div class="setup-header">
-                        <h3>Device Preview</h3>
-                        <p>Configure and verify your camera output before launching the live classroom session.</p>
-                    </div>
-
-                    <div class="test-video-container">
-                        <video id="testVideo" autoplay playsinline muted class="test-video"></video>
-                        @if (!State.IsTestingCamera)
-                        {
-                            <div class="camera-off-placeholder">
-                                <i class="fas fa-video-slash"></i>
-                                <span>Webcam is currently offline</span>
+                <div class="setup-container-inner">
+                    @if (!string.IsNullOrWhiteSpace(JoinUrl))
+                    {
+                        <!-- Compact Pre-flight Bar: Student Link & Attendee List in a single sleek, uncluttered bar -->
+                        <div class="preflight-compact-bar">
+                            <div class="preflight-link-section">
+                                <span class="preflight-badge"><i class="fas fa-link"></i> Student Link</span>
+                                <input type="text" readonly class="preflight-input" value="@JoinUrl" @onclick="CopyJoinLink" title="Click to copy link" />
+                                <button type="button" class="btn-preflight-btn btn-preflight-copy @(_joinLinkLabel == "Copied" ? "copied" : "")" @onclick="CopyJoinLink" title="Copy student link">
+                                    <i class="fas @(_joinLinkLabel == "Copied" ? "fa-check" : "fa-copy")"></i>
+                                    <span>@JoinLinkLabel</span>
+                                </button>
+                                <a class="btn-preflight-btn btn-preflight-wa" href="@WhatsAppHref" target="_blank" rel="noopener noreferrer" title="Share via WhatsApp">
+                                    <i class="fab fa-whatsapp"></i>
+                                    <span>WhatsApp</span>
+                                </a>
                             </div>
-                        }
-                    </div>
+                            <div class="preflight-roster-section">
+                                <a class="btn-preflight-btn btn-preflight-roster" href="/classes/@(CurrentSession?.ClassId)/roster" title="Manage attendee list and student codes">
+                                    <i class="fas fa-users-cog"></i>
+                                    <span>Manage List</span>
+                                </a>
+                            </div>
+                        </div>
+                    }
 
-                    <div class="test-controls">
-                        @if (!State.IsTestingCamera)
-                        {
-                            <button class="btn btn-primary btn-lg" @onclick="TestCamera" id="test-camera-btn">
-                                <i class="fas fa-video"></i> Start Camera Test
-                            </button>
-                        }
-                        else
-                        {
-                            <button class="btn btn-secondary" @onclick="StopTestCamera" id="stop-test-btn">
-                                <i class="fas fa-stop"></i> Stop Test
-                            </button>
-                            <button class="btn btn-success" @onclick="StartSessionWithCamera" id="start-session-btn">
-                                <i class="fas fa-play"></i> Start Session
-                            </button>
-                        }
+                    <div class="setup-card">
+                        <div class="setup-header">
+                            <h3>Device Preview</h3>
+                            <p>Configure and verify your camera output before launching the live classroom session.</p>
+                        </div>
+
+                        <div class="test-video-container">
+                            <video id="testVideo" autoplay playsinline muted class="test-video"></video>
+                            @if (!State.IsTestingCamera)
+                            {
+                                <div class="camera-off-placeholder">
+                                    <i class="fas fa-video-slash"></i>
+                                    <span>Webcam is currently offline</span>
+                                </div>
+                            }
+                        </div>
+
+                        <div class="test-controls">
+                            @if (!State.IsTestingCamera)
+                            {
+                                <button class="btn btn-primary btn-lg" @onclick="TestCamera" id="test-camera-btn">
+                                    <i class="fas fa-video"></i> Start Camera Test
+                                </button>
+                            }
+                            else
+                            {
+                                <button class="btn btn-secondary" @onclick="StopTestCamera" id="stop-test-btn">
+                                    <i class="fas fa-stop"></i> Stop Test
+                                </button>
+                                <button class="btn btn-success" @onclick="StartSessionWithCamera" id="start-session-btn">
+                                    <i class="fas fa-play"></i> Start Session
+                                </button>
+                            }
+                        </div>
                     </div>
                 </div>
             </div>
