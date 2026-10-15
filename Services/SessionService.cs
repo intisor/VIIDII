@@ -1070,12 +1070,8 @@ public class SessionService
             await persistenceService.EndAndPersistSessionAsync(sessionId, lecturerId);
             Console.WriteLine($"[SessionService] Session {sessionId} end state persisted");
 
-            // Discard all uploaded files for this session to free up disk space immediately
-            var fileService = scope.ServiceProvider.GetService<SessionFileService>();
-            if (fileService != null)
-            {
-                await fileService.CleanupSessionFilesAsync(sessionId);
-            }
+            // Clear ephemeral in-memory messages for this session
+            MessageService.ClearSessionMessages(sessionId);
         }
         catch (Exception ex)
         {

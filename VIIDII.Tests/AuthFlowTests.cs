@@ -30,6 +30,8 @@ public class AuthFlowTests : IClassFixture<WebApplicationFactory<Program>>
             builder.UseSetting(
                 "ConnectionStrings:DefaultConnection",
                 $"Data Source=file:viidii-auth-{Guid.NewGuid():N}?mode=memory&cache=shared");
+            builder.UseSetting("Authentication:Google:ClientId", "");
+            builder.UseSetting("Authentication:Google:ClientSecret", "");
             builder.UseEnvironment("Development");
         });
     }

@@ -122,7 +122,7 @@ namespace VIIDII.Data
             if (message == null)
                 return null;
 
-            message.Content = MessagePayloadHelper.UpdateAnsweredStatus(message.Content, isAnswered);
+            message.Reaction = isAnswered ? "answered" : null;
             return await _messageRepository.UpdateMessageAsync(message);
         }
 
