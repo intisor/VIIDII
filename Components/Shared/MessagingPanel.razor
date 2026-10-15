@@ -220,7 +220,7 @@
         }
 
         <!-- Composer Actions & Input Bar -->
-        <div class="composer-row">
+        <form class="composer-row" @onsubmit="SubmitMessage" @onsubmit:preventDefault="true">
             <!-- Hidden InputFile -->
             <InputFile id="messagingFileInput" 
                        @ref="_fileInput" 
@@ -229,7 +229,8 @@
                        style="display: none;" />
 
             <!-- Attachment Button -->
-            <button class="btn-tool @(SelectedFile != null ? "active" : "")" 
+            <button type="button" 
+                    class="btn-tool @(SelectedFile != null ? "active" : "")" 
                     @onclick="TriggerFileInput" 
                     disabled="@IsUploadingFile"
                     title="Attach file (PDF, slides, images, code up to 50MB)">
@@ -237,7 +238,8 @@
             </button>
 
             <!-- Question Mode Toggle -->
-            <button class="btn-tool btn-question-toggle @(IsComposingQuestion ? "active" : "")" 
+            <button type="button" 
+                    class="btn-tool btn-question-toggle @(IsComposingQuestion ? "active" : "")" 
                     @onclick="ToggleQuestionMode"
                     disabled="@IsUploadingFile"
                     title="@(IsComposingQuestion ? "Switch to standard message" : "Ask as question to the class")">
@@ -251,12 +253,12 @@
                    placeholder="@GetComposerPlaceholder()" 
                    @bind="ComposerText"
                    @bind:event="oninput"
-                   @onkeypress="HandleKeyPress"
+                   @onkeydown="HandleKeyDown"
                    disabled="@IsUploadingFile" />
 
             <!-- Send Button -->
-            <button class="btn-send @(CanSend ? "ready" : "")" 
-                    @onclick="SubmitMessage" 
+            <button type="submit" 
+                    class="btn-send @(CanSend ? "ready" : "")" 
                     disabled="@(!CanSend || IsUploadingFile)"
                     title="Send message">
                 @if (IsUploadingFile)
@@ -268,7 +270,7 @@
                     <i class="fas fa-paper-plane"></i>
                 }
             </button>
-        </div>
+        </form>
 
         <!-- Upload Progress Bar -->
         @if (IsUploadingFile)
@@ -542,11 +544,14 @@
         }
     }
 
-    private async Task HandleKeyPress(KeyboardEventArgs e)
+    private async Task HandleKeyDown(KeyboardEventArgs e)
     {
-        if (e.Key == "Enter" && CanSend && !IsUploadingFile)
+        if ((e.Key == "Enter" || e.Code == "Enter" || e.Key == "Return") && !e.ShiftKey)
         {
-            await SubmitMessage();
+            if (CanSend && !IsUploadingFile)
+            {
+                await SubmitMessage();
+            }
         }
     }
 
