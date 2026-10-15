@@ -2,41 +2,149 @@
 
 <PageTitle>About VIIDII</PageTitle>
 
+<div class="about-container">
+    
+    <!-- Natural Glass Header -->
+    <div class="about-header">
+        <div class="about-eyebrow">Platform Overview</div>
+        <h1>About VIIDII</h1>
+        <p>Low-bandwidth virtual workspaces, roster-authenticated attendance, and verified cohort rooms.</p>
+    </div>
+
+    <!-- The Mission -->
+    <div class="content-section">
+        <h2>The Mission</h2>
+        <p>
+            VIIDII was engineered specifically to solve the biggest breakdowns of conventional meeting tools 
+            in emerging markets: prohibitive data costs, unstable network connections, and unverified "ghost attendees."
+        </p>
+        <p>
+            Instead of treating meetings as disposable, high-bandwidth video streams, VIIDII acts as a 
+            <strong>structured digital facility</strong>. It enables bootcamps, universities, professional bodies, 
+            and remote teams to rent persistent, low-bandwidth spaces with verified identity and indisputable 
+            attendance proof.
+        </p>
+    </div>
+
+    <!-- Core Capabilities Grid -->
+    <div class="content-section">
+        <h2>Core Platform Capabilities</h2>
+        <div class="features-grid">
+            <div class="feature-card">
+                <h3>Roster-Gated Access</h3>
+                <p>Upload candidate lists via CSV. Approved students and members join with zero password friction while unauthorized guests are kept out.</p>
+            </div>
+            <div class="feature-card">
+                <h3>Low-Bandwidth Adaptive Streaming</h3>
+                <p>Powered by LiveKit WebRTC SFU with intelligent Data Saver mode, reducing data consumption by up to 90% compared to standard video calls.</p>
+            </div>
+            <div class="feature-card">
+                <h3>Network Drop Grace Period</h3>
+                <p>Unstable power or network switches trigger a 5-minute grace buffer, preserving the user’s seat, attendance score, and chat state without dropping them.</p>
+            </div>
+            <div class="feature-card">
+                <h3>Expected vs. Present Roster</h3>
+                <p>Hosts see a live dual-column dashboard showing who has connected and who is still absent, with 1-click reminders.</p>
+            </div>
+            <div class="feature-card">
+                <h3>Verified Attendance Dossiers</h3>
+                <p>Indisputable time-in-room metrics and presence tracking, ready for 1-click CSV or audited PDF compliance exports.</p>
+            </div>
+            <div class="feature-card">
+                <h3>Universal Space Presets</h3>
+                <p>Pre-configured spaces tailored for Cohort Bootcamps, University Lectures, Executive Workshops, and Exam Halls.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Architecture & Tech Stack -->
+    <div class="content-section">
+        <h2>Technical Architecture</h2>
+        <p>
+            VIIDII is built on a high-throughput, modular Microsoft .NET 10 stack designed for reliability and minimal cloud egress:
+        </p>
+        <div class="tech-stack">
+            <span class="tech-badge">.NET 10</span>
+            <span class="tech-badge">Blazor Interactive Server</span>
+            <span class="tech-badge">LiveKit WebRTC SFU</span>
+            <span class="tech-badge">SignalR Realtime</span>
+            <span class="tech-badge">Entity Framework Core</span>
+            <span class="tech-badge">Google OAuth 2.0</span>
+            <span class="tech-badge">Cloudflare Zero Trust Tunnel</span>
+        </div>
+    </div>
+
+    <!-- Who It Serves -->
+    <div class="content-section">
+        <h2>Who Uses VIIDII?</h2>
+        <p>
+            <strong>Tech Bootcamps & Training Academies:</strong> Run daily multi-hour classes without burning students' data budgets or dealing with rogue link sharing.
+        </p>
+        <p>
+            <strong>Professional Accreditation Councils:</strong> Conduct mandatory Continuing Professional Development (CPD) sessions with verifiable attendance records for license renewal.
+        </p>
+        <p>
+            <strong>Universities & Higher Education:</strong> Manage large lecture cohorts, attendance quotas, and exam clearances with automated records.
+        </p>
+        <p>
+            <strong>Distributed Remote Teams:</strong> Collaborate in lightweight, persistent team spaces without video exhaustion.
+        </p>
+    </div>
+
+</div>
+
 <style>
     .about-container {
-        max-width: 900px;
-        margin: 2rem auto;
+        max-width: 860px;
+        margin: 2.5rem auto 5rem;
         padding: 0 1.5rem;
         display: flex;
         flex-direction: column;
-        gap: 1.125rem;
+        gap: 1.25rem;
     }
 
     .about-header {
-        background: var(--surface);
-        border: 1px solid var(--border);
+        background: rgba(18, 18, 24, 0.75);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid rgba(255, 255, 255, 0.08);
         border-radius: var(--r-lg);
-        padding: 2.25rem 1.75rem;
+        padding: 2.5rem 2rem;
         text-align: center;
     }
 
+    .about-eyebrow {
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: var(--accent);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        margin-bottom: 0.5rem;
+    }
+
     .about-header h1 {
-        margin: 0 0 0.375rem 0;
-        font-size: 1.875rem;
+        margin: 0 0 0.5rem 0;
+        font-size: 2.25rem;
         font-weight: 700;
+        letter-spacing: -0.02em;
         color: var(--text);
     }
 
     .about-header p {
-        font-size: 0.9375rem;
+        font-size: 1rem;
         margin: 0;
         color: var(--text-mid);
+        line-height: 1.5;
+        max-width: 580px;
+        margin: 0 auto;
     }
 
     .content-section {
-        background: var(--surface);
-        border: 1px solid var(--border);
-        padding: 1.75rem;
+        background: rgba(18, 18, 24, 0.65);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid rgba(255, 255, 255, 0.07);
+        padding: 2rem;
         border-radius: var(--r-lg);
     }
 
@@ -45,17 +153,23 @@
         font-size: 1.125rem;
         font-weight: 600;
         margin-top: 0;
-        margin-bottom: 0.75rem;
+        margin-bottom: 0.85rem;
+        letter-spacing: -0.01em;
     }
 
     .content-section p {
         color: var(--text-mid);
         line-height: 1.6;
-        font-size: 0.875rem;
-        margin-bottom: 0.875rem;
+        font-size: 0.9375rem;
+        margin-bottom: 0.85rem;
     }
+
     .content-section p:last-child {
         margin-bottom: 0;
+    }
+
+    .content-section strong {
+        color: var(--text);
     }
 
     .features-grid {
@@ -66,9 +180,9 @@
     }
 
     .feature-card {
-        background: var(--surface-up);
-        border: 1px solid var(--border-mid);
-        padding: 1rem 1.25rem;
+        background: rgba(23, 23, 30, 0.7);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        padding: 1.25rem;
         border-radius: var(--r);
     }
 
@@ -77,7 +191,7 @@
         font-size: 0.875rem;
         font-weight: 600;
         margin-top: 0;
-        margin-bottom: 0.375rem;
+        margin-bottom: 0.4rem;
     }
 
     .feature-card p {
@@ -95,101 +209,12 @@
     }
 
     .tech-badge {
-        background: var(--surface-up);
-        border: 1px solid var(--border-mid);
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.08);
         color: var(--text-mid);
-        padding: 0.3rem 0.75rem;
-        border-radius: 100px;
+        padding: 0.35rem 0.85rem;
+        border-radius: var(--r-sm);
         font-weight: 500;
         font-size: 0.8125rem;
     }
 </style>
-
-<div class="about-container">
-    <div class="about-header">
-        <h1>About VIIDII</h1>
-        <p>Session Attendance Management System</p>
-    </div>
-
-    <div class="content-section">
-        <h2>What is VIIDII?</h2>
-        <p>
-            VIIDII is a comprehensive Session Attendance Management System designed to streamline 
-            the process of managing virtual and in-person educational sessions. Built with modern 
-            web technologies, VIIDII provides a seamless experience for both educators and students.
-        </p>
-        <p>
-            The platform enables lecturers to create and manage sessions, while students can easily 
-            join and participate in real-time classes. With built-in attendance tracking and 
-            real-time communication features, VIIDII ensures efficient session management.
-        </p>
-    </div>
-
-    <div class="content-section">
-        <h2>Key Features</h2>
-        <div class="features-grid">
-            <div class="feature-card">
-                <h3>Session Management</h3>
-                <p>Create, schedule, and manage educational sessions with ease.</p>
-            </div>
-            <div class="feature-card">
-                <h3>Real-time Communication</h3>
-                <p>Built-in SignalR support for instant updates and notifications.</p>
-            </div>
-            <div class="feature-card">
-                <h3>Role-based Access</h3>
-                <p>Different interfaces for Students, Lecturers, and Administrators.</p>
-            </div>
-            <div class="feature-card">
-                <h3>Attendance Tracking</h3>
-                <p>Automatic attendance recording and status monitoring.</p>
-            </div>
-            <div class="feature-card">
-                <h3>Department Filtering</h3>
-                <p>Target specific departments and levels for your sessions.</p>
-            </div>
-            <div class="feature-card">
-                <h3>Admin Dashboard</h3>
-                <p>Comprehensive system overview and user management tools.</p>
-            </div>
-        </div>
-    </div>
-
-    <div class="content-section">
-        <h2>Technology Stack</h2>
-        <p>VIIDII is built using cutting-edge technologies to ensure performance, reliability, and scalability:</p>
-        <div class="tech-stack">
-            <span class="tech-badge">ASP.NET Core</span>
-            <span class="tech-badge">Blazor</span>
-            <span class="tech-badge">SignalR</span>
-            <span class="tech-badge">C#</span>
-            <span class="tech-badge">Real-time WebSockets</span>
-            <span class="tech-badge">Bootstrap</span>
-        </div>
-    </div>
-
-    <div class="content-section">
-        <h2>How It Works</h2>
-        <p>
-            <strong>For Lecturers:</strong> Log in, create a new session with customizable parameters, 
-            and share the session code with your students. Monitor attendance and manage participants 
-            in real-time.
-        </p>
-        <p>
-            <strong>For Students:</strong> Log in and join sessions either by entering a session code 
-            or browsing available sessions. Your attendance is automatically tracked once you join.
-        </p>
-        <p>
-            <strong>For Administrators:</strong> Access comprehensive dashboards to monitor system usage, 
-            manage users, oversee all sessions, and maintain system integrity.
-        </p>
-    </div>
-
-    <div class="content-section">
-        <h2>Contact & Support</h2>
-        <p>
-            For questions, support, or feedback about VIIDII, please contact your system administrator 
-            or refer to your institution's IT support channels.
-        </p>
-    </div>
-</div>

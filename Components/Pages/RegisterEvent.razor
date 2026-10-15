@@ -41,31 +41,44 @@
     {
         <div class="reg-card">
             <div class="reg-head">
-                <div class="reg-success-icon">🎉</div>
-                <h1 class="reg-title">You're on the list!</h1>
+                <div class="reg-confirmed-badge">
+                    <i class="fas fa-check-circle"></i> RSVP Confirmed
+                </div>
+                <h1 class="reg-title">You're on the Guest List!</h1>
                 <p class="reg-sub">
-                    Your seat for <strong>@Target.Name</strong> has been reserved for <strong>@AttendeePhone</strong>.
+                    Your seat for <strong>@Target.Name</strong> has been successfully reserved.
                 </p>
             </div>
 
             <div class="reg-ticket">
                 <div class="reg-ticket-row">
-                    <span class="ticket-label">Event</span>
+                    <span class="ticket-label">Event / Space</span>
                     <span class="ticket-val">@Target.Name</span>
                 </div>
                 <div class="reg-ticket-row">
-                    <span class="ticket-label">Registered Identifier</span>
-                    <span class="ticket-val mono">@AttendeePhone</span>
+                    <span class="ticket-label">Registered Name</span>
+                    <span class="ticket-val">@AttendeeName</span>
                 </div>
                 <div class="reg-ticket-row">
-                    <span class="ticket-label">Attendee Name</span>
-                    <span class="ticket-val">@AttendeeName</span>
+                    <span class="ticket-label">Phone / WhatsApp ID</span>
+                    <span class="ticket-val mono">@AttendeePhone</span>
+                </div>
+                @if (!string.IsNullOrWhiteSpace(AttendeeEmail))
+                {
+                    <div class="reg-ticket-row">
+                        <span class="ticket-label">Email</span>
+                        <span class="ticket-val">@AttendeeEmail</span>
+                    </div>
+                }
+                <div class="reg-ticket-row">
+                    <span class="ticket-label">Reservation Status</span>
+                    <span class="ticket-val status-reserved">Confirmed &bull; Seat Secured</span>
                 </div>
             </div>
 
             <div class="reg-actions">
                 <a class="reg-btn" href="@JoinUrl">
-                    Enter Event Room &rarr;
+                    Enter Event Room / Join Now &rarr;
                 </a>
                 <button class="reg-btn reg-btn-quiet" @onclick="ShareToWhatsApp">
                     <i class="fab fa-whatsapp"></i> Share on WhatsApp
@@ -75,10 +88,10 @@
             @if (!string.IsNullOrWhiteSpace(Target.PaymentLink))
             {
                 <div class="reg-pay-notice">
-                    <p>
-                        💡 <strong>Payment Required:</strong> If you haven't completed payment yet, please finish on the host's direct payment page below:
+                    <p style="margin:0 0 0.5rem 0;">
+                        💡 <strong>Host Payment Required:</strong> To finalize with the organizer, complete your payment on their gateway:
                     </p>
-                    <a href="@Target.PaymentLink" target="_blank" class="reg-pay-link">
+                    <a href="@Target.PaymentLink" target="_blank" class="reg-btn" style="background:#059669; color:#fff; display:block; text-decoration:none;">
                         Complete Payment with Host &rarr;
                     </a>
                 </div>
@@ -321,9 +334,24 @@
         text-decoration: none;
         font-weight: 600;
     }
-    .reg-success-icon {
-        font-size: 2.5rem;
-        margin-bottom: 0.5rem;
+    .reg-confirmed-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.375rem;
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #10b981;
+        background: rgba(16, 185, 129, 0.12);
+        border: 1px solid rgba(16, 185, 129, 0.25);
+        padding: 0.25rem 0.75rem;
+        border-radius: 999px;
+        margin-bottom: 0.75rem;
+    }
+    .status-reserved {
+        color: #10b981 !important;
+        font-weight: 700 !important;
     }
     .reg-ticket {
         background: var(--surface-subtle, #f9fafb);
@@ -390,7 +418,7 @@
     private bool IsSuccess { get; set; }
     private string? Error { get; set; }
 
-    private string JoinUrl => $"{Navigation.BaseUri.TrimEnd('/')}/join/{Target?.Code}?id={Uri.EscapeDataString(AttendeePhone)}";
+    private string JoinUrl => $"{Navigation.BaseUri.TrimEnd('/')}/join/{Target?.Code}?id={Uri.EscapeDataString(AttendeePhone)}&name={Uri.EscapeDataString(AttendeeName)}&rsvp=1";
 
     protected override async Task OnParametersSetAsync()
     {
@@ -421,13 +449,6 @@
         if (entry is null)
         {
             Error = error ?? "Could not register seat. Please check your details.";
-            return;
-        }
-
-        // If host provided a direct payment link, redirect them to pay immediately!
-        if (!string.IsNullOrWhiteSpace(Target.PaymentLink))
-        {
-            Navigation.NavigateTo(Target.PaymentLink, forceLoad: true);
             return;
         }
 

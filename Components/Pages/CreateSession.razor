@@ -235,9 +235,12 @@
         // student could ever be routed to it from the join link.
         var owned = await ClassService.GetForLecturerAsync(currentUser.Id);
 
-        MyClasses = owned
-            .Select(c => new ClassOption(c.Id, c.Code, c.Name, c.RosterMappingJson is not null))
-            .ToList();
+        MyClasses = new List<ClassOption>();
+        foreach (var c in owned)
+        {
+            var count = await ClassService.GetStudentCountAsync(c.Id);
+            MyClasses.Add(new ClassOption(c.Id, c.Code, c.Name, c.RosterMappingJson is not null || count > 0));
+        }
 
         // Arriving from a class page carries ?classId=, because that class is the only
         // sensible one for a session started from that page. Only accept an id the

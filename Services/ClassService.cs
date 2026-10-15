@@ -156,6 +156,21 @@ public class ClassService
             return (existing, null);
         }
 
+        if (string.IsNullOrWhiteSpace(target.RosterMappingJson))
+        {
+            var defaultMapping = new RosterColumnMapping
+            {
+                IdentifierHeader = "Phone / Identifier",
+                NameHeader = "Name",
+                IdentifierPrompt = target.JoinPrompt ?? "Phone Number or Identifier"
+            };
+            target.RosterMappingJson = System.Text.Json.JsonSerializer.Serialize(defaultMapping);
+            if (string.IsNullOrWhiteSpace(target.JoinPrompt))
+            {
+                target.JoinPrompt = "Phone Number or Identifier";
+            }
+        }
+
         var entry = new RosterEntry
         {
             ClassId = classId,

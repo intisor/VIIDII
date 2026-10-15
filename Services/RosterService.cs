@@ -331,6 +331,21 @@ public partial class RosterService
             return null;
         }
 
+        // If the entry came from RSVP or voucher, the identifier (phone / voucher code) is their personal key.
+        // Don't reject the attendee if they typed a slight variation of their name or left it blank.
+        if (string.Equals(entry.Source, "rsvp", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(entry.Source, "voucher", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!string.IsNullOrWhiteSpace(name) && !string.Equals(name.Trim(), entry.DisplayName, StringComparison.OrdinalIgnoreCase))
+            {
+                var cleanName = name.Trim();
+                if (cleanName.Length > 200) cleanName = cleanName[..200];
+                entry.DisplayName = cleanName;
+                await _context.SaveChangesAsync();
+            }
+            return entry;
+        }
+
         var hasSeparateDisplayName = !string.Equals(
             entry.DisplayName.Trim(),
             entry.Identifier.Trim(),

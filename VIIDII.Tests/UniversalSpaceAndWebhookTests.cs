@@ -228,6 +228,7 @@ public class UniversalSpaceAndWebhookTests
 
         using var scope = app.Services.CreateScope();
         var classService = scope.ServiceProvider.GetRequiredService<VIIDII.Services.ClassService>();
+        var rosterService = scope.ServiceProvider.GetRequiredService<VIIDII.Services.RosterService>();
         var db = scope.ServiceProvider.GetRequiredService<ViidiiDbContext>();
 
         // 1. Create a Masterclass space
@@ -275,10 +276,23 @@ public class UniversalSpaceAndWebhookTests
         Assert.Equal("https://flutterwave.com/pay/bootcamp-update", refreshed.PaymentLink);
         Assert.Equal(SpacePreset.Professional, refreshed.PresetType);
         Assert.False(refreshed.EnableWatermark);
+        Assert.NotNull(refreshed.RosterMappingJson);
+
+        var count = await classService.GetStudentCountAsync(space.Id);
+        Assert.Equal(1, count);
+
+        // Verify RSVP attendee can be resolved on join even without name or with friendly name
+        var resolved = await rosterService.ResolveAttendeeAsync(space.Id, "08123456789", null);
+        Assert.NotNull(resolved);
+        Assert.Equal("Tunde Ednut", resolved.DisplayName);
 
         // 4. Verify public registration page route renders
         var pageResp = await client.GetAsync($"/register/{refreshed.Code}");
         Assert.True(pageResp.IsSuccessStatusCode);
+
+        // 5. Verify guest join page renders
+        var joinResp = await client.GetAsync($"/join/{refreshed.Code}?id=08123456789&rsvp=1");
+        Assert.True(joinResp.IsSuccessStatusCode);
     }
 }
 

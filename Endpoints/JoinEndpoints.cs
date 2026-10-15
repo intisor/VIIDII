@@ -165,7 +165,7 @@ public static class JoinEndpoints
                 return Results.NotFound(new { error = "No class was found with that code." });
             }
 
-            if (target.RosterMappingJson is null)
+            if (target.RosterMappingJson is null && await classService.GetStudentCountAsync(target.Id) == 0)
             {
                 return Results.BadRequest(new
                 {

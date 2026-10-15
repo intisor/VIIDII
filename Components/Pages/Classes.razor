@@ -48,7 +48,9 @@
                         <h2>@item.Name</h2>
                     </div>
                     <span class="class-count">
-                        @(item.HasList ? $"{item.StudentCount} students" : "No list yet")
+                        @(item.StudentCount > 0 
+                            ? $"{item.StudentCount} attendee{(item.StudentCount == 1 ? "" : "s")}" 
+                            : (item.HasList ? "List configured" : "No list yet"))
                     </span>
                 </div>
 
@@ -65,7 +67,7 @@
 
                 <div class="btn-row">
                     <button class="btn-primary-custom" @onclick="() => Open(item.Id)">
-                        @(item.HasList ? "View students" : "Upload the list")
+                        @(item.HasList || item.StudentCount > 0 ? "View attendees / list" : "Upload the list")
                     </button>
                     <button class="btn-secondary-custom" @onclick="() => StartSession(item.Id)">
                         Start a session
@@ -263,12 +265,13 @@
 
         foreach (var item in owned)
         {
+            var count = await ClassService.GetStudentCountAsync(item.Id);
             Items.Add(new ClassRow(
                 item.Id,
                 item.Code,
                 item.Name,
-                item.RosterMappingJson is not null,
-                await ClassService.GetStudentCountAsync(item.Id),
+                item.RosterMappingJson is not null || count > 0,
+                count,
                 item.PresetType));
         }
 

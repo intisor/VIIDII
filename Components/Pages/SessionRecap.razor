@@ -29,9 +29,12 @@ else
                 <h1 class="mb-1">@Session.Title</h1>
                 <div class="text-muted">Session ended @Session.EndTime?.ToString("g")</div>
             </div>
-            <div class="text-end">
-                <div class="badge bg-secondary mb-2">@Session.Status</div>
-                <div class="text-muted small">@Session.SessionId</div>
+            <div class="d-flex align-items-center gap-2">
+                <a href="/api/session/@SessionId/attendance/csv" download class="btn btn-outline-secondary btn-sm">
+                    <i class="fas fa-file-csv me-1"></i> Export Attendance CSV
+                </a>
+                <div class="badge bg-secondary">@Session.Status</div>
+                <div class="text-muted small font-monospace">@Session.SessionId</div>
             </div>
         </div>
 
@@ -78,6 +81,7 @@ else
                             <tr>
                                 <th>Participant</th>
                                 <th>Score (%)</th>
+                                <th>Status / Grace</th>
                                 <th>Active (min)</th>
                                 <th>Inactive (min)</th>
                                 <th>Battery Low (min)</th>
@@ -92,6 +96,18 @@ else
                                 <tr>
                                     <td>@details.ParticipantName (@details.ParticipantId)</td>
                                     <td>@details.FinalScorePercentage.ToString("F1")</td>
+                                    <td>
+                                        @if (!string.IsNullOrWhiteSpace(details.GraceReason))
+                                        {
+                                            <span class="badge @(details.GraceReason.StartsWith("Excused") ? "badge-warning" : "badge-success")">
+                                                @details.GraceReason
+                                            </span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">-</span>
+                                        }
+                                    </td>
                                     <td>@details.TimeActiveMinutes.ToString("F1")</td>
                                     <td>@details.TimeInactiveMinutes.ToString("F1")</td>
                                     <td>@details.TimeBatteryLowMinutes.ToString("F1")</td>

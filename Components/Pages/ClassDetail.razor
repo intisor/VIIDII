@@ -123,7 +123,7 @@
             else
             {
                 <p class="info-text">
-                    @Students.Count registered @(CurrentPreset.AttendeeLabel.ToLowerInvariant())s, @ClaimedCount joined so far.
+                    @Students.Count registered @(CurrentPreset.AttendeeLabel.ToLowerInvariant())s@(RsvpCount > 0 ? $" ({RsvpCount} via RSVP)" : ""), @ClaimedCount joined so far.
                 </p>
 
                 <div class="btn-row" style="flex-wrap:wrap; gap:0.5rem; margin-bottom:1rem;">
@@ -153,6 +153,14 @@
                             else
                             {
                                 <span class="student-name">@student.DisplayName</span>
+                            }
+                            @if (string.Equals(student.Source, "rsvp", StringComparison.OrdinalIgnoreCase))
+                            {
+                                <span class="badge-rsvp">RSVP</span>
+                            }
+                            else if (string.Equals(student.Source, "voucher", StringComparison.OrdinalIgnoreCase))
+                            {
+                                <span class="badge-voucher">Voucher</span>
                             }
                             <span class="student-state @(student.HasClaimed ? "claimed" : null)">
                                 @(student.HasClaimed ? "joined" : "-")
@@ -293,13 +301,39 @@
     .student-state.claimed {
         color: var(--success);
     }
+
+    .badge-rsvp {
+        display: inline-block;
+        font-size: 0.6875rem;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: #10b981;
+        background: rgba(16, 185, 129, 0.12);
+        border: 1px solid rgba(16, 185, 129, 0.25);
+        padding: 0.125rem 0.5rem;
+        border-radius: var(--r-sm);
+    }
+
+    .badge-voucher {
+        display: inline-block;
+        font-size: 0.6875rem;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: #f59e0b;
+        background: rgba(245, 158, 11, 0.12);
+        border: 1px solid rgba(245, 158, 11, 0.25);
+        padding: 0.125rem 0.5rem;
+        border-radius: var(--r-sm);
+    }
 </style>
 
 @code {
 
     [Parameter] public int ClassId { get; set; }
 
-    private sealed record StudentRow(int RosterEntryId, string Identifier, string DisplayName, bool HasClaimed);
+    private sealed record StudentRow(int RosterEntryId, string Identifier, string DisplayName, bool HasClaimed, string Source);
 
     private Class? Target { get; set; }
     private List<StudentRow> Students { get; set; } = new();
@@ -313,6 +347,7 @@
     private bool HasList => (Target?.RosterMappingJson is not null) || (Students.Count > 0);
 
     private int ClaimedCount => Students.Count(s => s.HasClaimed);
+    private int RsvpCount => Students.Count(s => string.Equals(s.Source, "rsvp", StringComparison.OrdinalIgnoreCase));
 
     private string ShareUrl =>
         $"{Navigation.BaseUri.TrimEnd('/')}/join/{Target?.Code}";
@@ -357,7 +392,7 @@
             {
                 var entries = await RosterService.GetForClassAsync(ClassId);
                 Students = entries
-                    .Select(e => new StudentRow(e.Id, e.Identifier, e.DisplayName, e.HasClaimed))
+                    .Select(e => new StudentRow(e.Id, e.Identifier, e.DisplayName, e.HasClaimed, e.Source ?? "csv"))
                     .ToList();
                 HostPaymentLink = Target.PaymentLink;
             }
@@ -488,7 +523,7 @@
             var entries = await RosterService.GetForClassAsync(ClassId);
 
             Students = entries
-                .Select(e => new StudentRow(e.Id, e.Identifier, e.DisplayName, e.HasClaimed))
+                .Select(e => new StudentRow(e.Id, e.Identifier, e.DisplayName, e.HasClaimed, e.Source ?? "csv"))
                 .ToList();
 
             Notice = $"Released the seat for {student.DisplayName}.";

@@ -18,6 +18,16 @@ public class SessionService
     /// </para>
     /// </summary>
     private static readonly ConcurrentDictionary<string, Session> _sessions = new();
+    
+    public record ParticipantTelemetry(
+        int? BatteryLevel,
+        bool? IsCharging,
+        int? Rtt,
+        string? EffectiveType,
+        DateTime RecordedAt,
+        string? PardonReason);
+
+    private static readonly ConcurrentDictionary<string, ConcurrentDictionary<string, ParticipantTelemetry>> _telemetries = new(StringComparer.OrdinalIgnoreCase);
 
     private readonly IServiceProvider _serviceProvider;
     private readonly TimeProvider _clock;
@@ -53,6 +63,7 @@ public class SessionService
         public double TimeDataFinishedMinutes { get; set; }
         public double TimeDisconnectedMinutes { get; set; }
         public required string ParticipantName { get; set; } // Added to fetch participant name
+        public string? GraceReason { get; set; }
     }
   
     /// <summary>
@@ -391,7 +402,44 @@ public class SessionService
         }
         return false; // Participant or session not found
     }
-    public Dictionary<string,Session.StudentStatus> GetParticipantStatus(string sessionId)
+    public void RecordParticipantTelemetry(string sessionId, string participantId, int? batteryLevel, bool? isCharging, int? rtt, string? effectiveType)
+    {
+        if (string.IsNullOrWhiteSpace(sessionId) || string.IsNullOrWhiteSpace(participantId)) return;
+
+        string? pardon = null;
+        if (batteryLevel.HasValue && batteryLevel.Value <= 8 && isCharging != true)
+        {
+            pardon = $"Battery Depleted ({batteryLevel.Value}%)";
+        }
+        else if ((rtt.HasValue && rtt.Value >= 1500) || string.Equals(effectiveType, "slow-2g", StringComparison.OrdinalIgnoreCase))
+        {
+            pardon = $"Network Drop ({(rtt.HasValue ? rtt.Value + "ms RTT" : effectiveType)})";
+        }
+
+        var sessionMap = _telemetries.GetOrAdd(sessionId, _ => new ConcurrentDictionary<string, ParticipantTelemetry>(StringComparer.OrdinalIgnoreCase));
+        sessionMap[participantId] = new ParticipantTelemetry(batteryLevel, isCharging, rtt, effectiveType, UtcNow, pardon);
+
+        // If a critical warning threshold is crossed, actively update participant status in session so grace credit is recorded
+        if (pardon != null)
+        {
+            var targetStatus = pardon.StartsWith("Battery") ? Session.StudentStatus.BatteryLow : Session.StudentStatus.DataFinished;
+            UpdateParticipantStatus(sessionId, participantId, targetStatus);
+        }
+    }
+
+    public bool TryGetParticipantTelemetry(string sessionId, string participantId, out ParticipantTelemetry? telemetry)
+    {
+        telemetry = null;
+        if (string.IsNullOrWhiteSpace(sessionId) || string.IsNullOrWhiteSpace(participantId)) return false;
+        if (_telemetries.TryGetValue(sessionId, out var map) && map.TryGetValue(participantId, out var found))
+        {
+            telemetry = found;
+            return true;
+        }
+        return false;
+    }
+
+    public Dictionary<string, Session.StudentStatus> GetParticipantStatus(string sessionId)
     {
         return _sessions.TryGetValue(sessionId, out var session) ? session.ParticipantStatuses : new Dictionary<string, Session.StudentStatus>();
     }
@@ -802,6 +850,31 @@ public class SessionService
         details.FinalScorePercentage = totalSessionMinutes == 0 ? 0 : 
             Math.Round(Math.Clamp((totalCreditMinutes / totalSessionMinutes) * 100, 0, 100), 2);
 
+        if (details.TimeBatteryLowMinutes > 0)
+        {
+            details.GraceReason = "Excused (Low Battery)";
+        }
+        else if (details.TimeDataFinishedMinutes > 0)
+        {
+            details.GraceReason = "Excused (Network Failure)";
+        }
+        else if (TryGetParticipantTelemetry(session.SessionId, participantId, out var telemetry) && !string.IsNullOrWhiteSpace(telemetry?.PardonReason))
+        {
+            details.GraceReason = $"Excused ({telemetry.PardonReason})";
+        }
+        else if (details.FinalScorePercentage >= 70)
+        {
+            details.GraceReason = "Verified Present";
+        }
+        else if (details.FinalScorePercentage >= 40)
+        {
+            details.GraceReason = "Partial Attendance";
+        }
+        else
+        {
+            details.GraceReason = "Absent / Early Exit";
+        }
+
         Console.WriteLine($"CalculateScore: {participantId} Final: TotalCredit={totalCreditMinutes:F1}, Possible={totalSessionMinutes:F1}, Percentage={details.FinalScorePercentage:F1}%");
 
         return details;
@@ -859,6 +932,28 @@ public class SessionService
         }
 
         details.FinalScorePercentage = Math.Round(Math.Clamp((totalCreditMinutes / totalSessionMinutes) * 100, 0, 100), 2);
+        
+        if (details.TimeBatteryLowMinutes > 0)
+        {
+            details.GraceReason = "Excused (Low Battery)";
+        }
+        else if (details.TimeDataFinishedMinutes > 0)
+        {
+            details.GraceReason = "Excused (Network Failure)";
+        }
+        else if (details.FinalScorePercentage >= 70)
+        {
+            details.GraceReason = "Verified Present";
+        }
+        else if (details.FinalScorePercentage >= 40)
+        {
+            details.GraceReason = "Partial Attendance";
+        }
+        else
+        {
+            details.GraceReason = "Absent / Early Exit";
+        }
+
         return details;
     }
 
@@ -974,6 +1069,13 @@ public class SessionService
             var persistenceService = scope.ServiceProvider.GetRequiredService<Data.SessionPersistenceService>();
             await persistenceService.EndAndPersistSessionAsync(sessionId, lecturerId);
             Console.WriteLine($"[SessionService] Session {sessionId} end state persisted");
+
+            // Discard all uploaded files for this session to free up disk space immediately
+            var fileService = scope.ServiceProvider.GetService<SessionFileService>();
+            if (fileService != null)
+            {
+                await fileService.CleanupSessionFilesAsync(sessionId);
+            }
         }
         catch (Exception ex)
         {

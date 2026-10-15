@@ -33,6 +33,7 @@ public static class ClassEndpoints
             var result = new List<object>();
             foreach (var item in owned)
             {
+                var studentCount = await classService.GetStudentCountAsync(item.Id);
                 result.Add(new
                 {
                     item.Id,
@@ -41,8 +42,8 @@ public static class ClassEndpoints
                     item.PresetType,
                     item.JoinPrompt,
                     item.EnableWatermark,
-                    hasList = item.RosterMappingJson is not null,
-                    studentCount = await classService.GetStudentCountAsync(item.Id),
+                    hasList = item.RosterMappingJson is not null || studentCount > 0,
+                    studentCount,
                     sessionCount = await classService.GetSessionCountAsync(item.Id)
                 });
             }
@@ -131,6 +132,7 @@ public static class ClassEndpoints
                 return Results.Forbid();
             }
 
+            var studentCount = await classService.GetStudentCountAsync(classId);
             return Results.Ok(new
             {
                 item.Id,
@@ -139,8 +141,8 @@ public static class ClassEndpoints
                 item.PresetType,
                 item.JoinPrompt,
                 item.EnableWatermark,
-                hasList = item.RosterMappingJson is not null,
-                studentCount = await classService.GetStudentCountAsync(classId),
+                hasList = item.RosterMappingJson is not null || studentCount > 0,
+                studentCount,
                 sessionCount = await classService.GetSessionCountAsync(classId),
                 joinUrl = $"/join/{item.Code}"
             });
@@ -197,7 +199,7 @@ public static class ClassEndpoints
                 prompt = string.IsNullOrWhiteSpace(item.JoinPrompt)
                     ? preset.DefaultPrompt
                     : item.JoinPrompt,
-                hasList = item.RosterMappingJson is not null
+                hasList = item.RosterMappingJson is not null || (await classService.GetStudentCountAsync(item.Id)) > 0
             });
         });
     }
