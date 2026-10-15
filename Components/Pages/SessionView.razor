@@ -252,7 +252,7 @@ else
         }
 
         <!-- Session Body: sidebar layout -->
-        @if (State.IsSessionStarted || State.IsTestingCamera || !State.IsLecturer)
+        @if (State.IsSessionStarted || !State.IsLecturer)
         {
             <div class="session-body mode-@_mobileViewMode">
                 <div class="video-panel">

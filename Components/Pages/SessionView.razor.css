@@ -334,10 +334,10 @@
     background: var(--surface);
     border: 1px solid var(--border-mid);
     border-radius: var(--r-lg);
-    padding: 2.25rem;
+    padding: 1.5rem 1.75rem;
     display: flex;
     flex-direction: column;
-    gap: 1.75rem;
+    gap: 1.25rem;
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
 }
 
@@ -349,7 +349,7 @@
     font-size: 1.25rem;
     font-weight: 600;
     color: var(--text);
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.35rem;
 }
 
 .setup-header p {
@@ -362,6 +362,7 @@
 .test-video-container {
     width: 100%;
     aspect-ratio: 16 / 9;
+    max-height: min(45vh, 360px);
     background: #070709;
     border-radius: var(--r);
     overflow: hidden;
@@ -400,9 +401,23 @@
 
 .test-controls {
     display: flex;
-    gap: 0.75rem;
+    gap: 0.875rem;
     justify-content: center;
+    align-items: center;
     flex-wrap: wrap;
+}
+
+.test-controls .btn {
+    min-height: 44px;
+    padding: 0.6rem 1.5rem;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    border-radius: var(--r-sm, 6px);
+    cursor: pointer;
+    transition: all 0.15s ease;
 }
 
 /* ── Session Body: sidebar layout ────────────────────────── */
