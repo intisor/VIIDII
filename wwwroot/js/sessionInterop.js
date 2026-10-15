@@ -297,13 +297,17 @@ window.sessionInterop = (function () {
         }
 
         try {
-            console.log("[sessionInterop JS] [Lecturer] Requesting camera and microphone access...");
+            console.log("[sessionInterop JS] [Lecturer] Requesting camera access (video-only for local preview)...");
             localStream = await navigator.mediaDevices.getUserMedia({
                 video: { width: { ideal: 720 }, height: { ideal: 420 } },
-                audio: true
+                audio: false
             });
 
             console.log("[sessionInterop JS] [Lecturer] Camera stream successfully obtained. Stream ID:", localStream.id);
+            // Strict muting on local preview to prevent any audio feedback / loopback
+            video.muted = true;
+            video.defaultMuted = true;
+            video.volume = 0;
             video.srcObject = localStream;
             console.log("[sessionInterop JS] [Lecturer] Attaching stream to video element and playing...");
             await video.play();
@@ -433,7 +437,7 @@ window.sessionInterop = (function () {
                 try {
                     const webcamStream = originalStream || await navigator.mediaDevices.getUserMedia({ 
                         video: true, 
-                        audio: true 
+                        audio: false 
                     });
                     await switchToWebcam(webcamStream);
                 } catch (err) {
@@ -455,6 +459,9 @@ window.sessionInterop = (function () {
         localStream = webcamStream;
         const video = document.getElementById("sessionVideo");
         if (video) {
+            video.muted = true;
+            video.defaultMuted = true;
+            video.volume = 0;
             video.srcObject = localStream;
             console.log("[sessionInterop JS] [Lecturer] Switched back to webcam stream.");
         }
@@ -950,6 +957,108 @@ window.sessionInterop = (function () {
         window.sessionInteropVisibilityRegistered = true;
     }
 
+    let telemetryWatcher = null;
+    let cachedTelemetry = {
+        batteryLevel: -1,
+        isCharging: false,
+        rtt: -1,
+        effectiveType: 'unknown'
+    };
+
+    function startPassiveTelemetryWatch(dotNetRef, sessionId, matricNo) {
+        stopPassiveTelemetryWatch();
+
+        // 1. Passive Battery Event Listener (zero polling, OS push notifications only)
+        if ('getBattery' in navigator) {
+            navigator.getBattery().then(battery => {
+                const onBatteryChange = () => {
+                    const level = Math.round(battery.level * 100);
+                    const charging = battery.charging;
+                    cachedTelemetry.batteryLevel = level;
+                    cachedTelemetry.isCharging = charging;
+
+                    // Critical threshold: battery <= 8% and discharging
+                    if (level > 0 && level <= 8 && !charging) {
+                        console.log(`[PassiveTelemetry] Auto-flagging low battery: ${level}%`);
+                        if (dotNetRef && dotNetRef.invokeMethodAsync) {
+                            dotNetRef.invokeMethodAsync('OnPassiveTelemetryAlert', 'BatteryLow', level);
+                        }
+                    }
+                };
+
+                onBatteryChange();
+                battery.addEventListener('levelchange', onBatteryChange);
+                battery.addEventListener('chargingchange', onBatteryChange);
+
+                telemetryWatcher = telemetryWatcher || {};
+                telemetryWatcher.battery = battery;
+                telemetryWatcher.batteryListener = onBatteryChange;
+            }).catch(() => {});
+        }
+
+        // 2. Passive Network Event Listener (fires only on network switch / drop)
+        const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+        if (conn) {
+            const onNetworkChange = () => {
+                const rtt = conn.rtt || -1;
+                const effectiveType = conn.effectiveType || 'unknown';
+                cachedTelemetry.rtt = rtt;
+                cachedTelemetry.effectiveType = effectiveType;
+
+                // Critical threshold: RTT >= 1500ms or slow-2g
+                if (rtt >= 1500 || effectiveType === 'slow-2g') {
+                    console.log(`[PassiveTelemetry] Auto-flagging network distress: ${rtt}ms RTT, ${effectiveType}`);
+                    if (dotNetRef && dotNetRef.invokeMethodAsync) {
+                        dotNetRef.invokeMethodAsync('OnPassiveTelemetryAlert', 'DataFinished', rtt);
+                    }
+                }
+            };
+
+            onNetworkChange();
+            conn.addEventListener('change', onNetworkChange);
+
+            telemetryWatcher = telemetryWatcher || {};
+            telemetryWatcher.conn = conn;
+            telemetryWatcher.networkListener = onNetworkChange;
+        }
+
+        // 3. Emergency Disconnect Beacon (pagehide / unload)
+        const onPageHide = () => {
+            if (!sessionId || !matricNo) return;
+            try {
+                const payload = JSON.stringify({
+                    sessionId: sessionId,
+                    matricNo: matricNo,
+                    batteryLevel: cachedTelemetry.batteryLevel,
+                    isCharging: cachedTelemetry.isCharging,
+                    rtt: cachedTelemetry.rtt,
+                    effectiveType: cachedTelemetry.effectiveType
+                });
+                const blob = new Blob([payload], { type: 'application/json' });
+                navigator.sendBeacon('/api/session/telemetry/beacon', blob);
+            } catch (e) {}
+        };
+
+        window.addEventListener('pagehide', onPageHide);
+        telemetryWatcher = telemetryWatcher || {};
+        telemetryWatcher.onPageHide = onPageHide;
+    }
+
+    function stopPassiveTelemetryWatch() {
+        if (!telemetryWatcher) return;
+        if (telemetryWatcher.battery && telemetryWatcher.batteryListener) {
+            telemetryWatcher.battery.removeEventListener('levelchange', telemetryWatcher.batteryListener);
+            telemetryWatcher.battery.removeEventListener('chargingchange', telemetryWatcher.batteryListener);
+        }
+        if (telemetryWatcher.conn && telemetryWatcher.networkListener) {
+            telemetryWatcher.conn.removeEventListener('change', telemetryWatcher.networkListener);
+        }
+        if (telemetryWatcher.onPageHide) {
+            window.removeEventListener('pagehide', telemetryWatcher.onPageHide);
+        }
+        telemetryWatcher = null;
+    }
+
     // Public API - only media and peer functions
     return {
         initialize: initialize,
@@ -970,6 +1079,8 @@ window.sessionInterop = (function () {
         saveSessionState: saveSessionState,
         restoreSessionState: restoreSessionState,
         clearSessionState: clearSessionState,
-        setupTabVisibilityListener: setupTabVisibilityListener
+        setupTabVisibilityListener: setupTabVisibilityListener,
+        startPassiveTelemetryWatch: startPassiveTelemetryWatch,
+        stopPassiveTelemetryWatch: stopPassiveTelemetryWatch
     };
 })();
