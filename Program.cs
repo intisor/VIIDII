@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.HttpOverrides;
 using VIIDII.Components;
 using VIIDII.Data;
 using VIIDII.Endpoints;
@@ -86,7 +87,7 @@ builder.Services.AddSession(options =>
 
 // Add authentication + authorization.
 // Cookie auth is issued by the /auth/login endpoint, NOT from inside a Blazor
-// Server circuit — cookies cannot be written once a circuit is established.
+// Server circuit â€” cookies cannot be written once a circuit is established.
 var authBuilder = builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
     {
@@ -97,7 +98,7 @@ var authBuilder = builder.Services.AddAuthentication(CookieAuthenticationDefault
 
         // Always require HTTPS in production. Over plain HTTP a Secure cookie is
         // never sent back by the browser, which silently breaks sign-in during local
-        // development and in tests — the symptom is "login succeeds then every
+        // development and in tests â€” the symptom is "login succeeds then every
         // authenticated call returns 401".
         //
         // Tried SameSite=None here to see whether the browser withholding this cookie
@@ -296,6 +297,15 @@ using (var scope = app.Services.CreateScope())
 }
 
 // Configure the HTTP request pipeline
+var forwardedHeadersOptions = new ForwardedHeadersOptions
+{
+    ForwardedHeaders = Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedFor | Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedProto
+};
+forwardedHeadersOptions.KnownNetworks.Clear();
+forwardedHeadersOptions.KnownProxies.Clear();
+app.UseForwardedHeaders(forwardedHeadersOptions);
+
+if (!app.Environment.IsDevelopment())
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
@@ -501,7 +511,7 @@ app.MapGet("/auth/google", (HttpContext http, IConfiguration config) =>
 });
 
 // Map SignalR hub.
-// Authorization is enforced INSIDE the hub — a cookie issued to the browser is not
+// Authorization is enforced INSIDE the hub â€” a cookie issued to the browser is not
 // automatically presented on the websocket handshake for every client.
 app.MapHub<SessionHub>("/sessionHub", options =>
 {
@@ -537,7 +547,7 @@ app.MapGet("/api/config/ice", (IConfiguration config, IWebHostEnvironment env) =
     var usingPublicFallback = servers.Count == 0;
     if (usingPublicFallback && !env.IsDevelopment())
     {
-        // Loud, actionable warning — do not fail the request. Lecturers can still run
+        // Loud, actionable warning â€” do not fail the request. Lecturers can still run
         // sessions on a good network; they will just fail on poor ones.
         app.Logger.LogError(
             "No TurnServers configured in a non-Development environment. " +
@@ -692,3 +702,5 @@ static void ReadLiveKitCredentialsFile(LiveKitOptions options)
 /// Exposed so integration tests can use <c>WebApplicationFactory</c>.
 /// </summary>
 public partial class Program;
+
+

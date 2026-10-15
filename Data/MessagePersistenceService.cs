@@ -22,16 +22,46 @@ namespace VIIDII.Data
             _context = context;
         }
 
+        private async Task<User?> GetOrCreateUserAsync(string authorMatricNo, string? displayName = null)
+        {
+            if (string.IsNullOrWhiteSpace(authorMatricNo))
+                return null;
+
+            var author = await _context.Users.FirstOrDefaultAsync(u => u.MatricNo == authorMatricNo);
+            if (author != null)
+                return author;
+
+            try
+            {
+                author = new User
+                {
+                    MatricNo = authorMatricNo,
+                    Name = !string.IsNullOrWhiteSpace(displayName) ? displayName : authorMatricNo,
+                    PasswordHash = null,
+                    Role = Role.Student,
+                    CreatedAt = DateTime.UtcNow
+                };
+                _context.Users.Add(author);
+                await _context.SaveChangesAsync();
+                return author;
+            }
+            catch (Exception)
+            {
+                return await _context.Users.FirstOrDefaultAsync(u => u.MatricNo == authorMatricNo);
+            }
+        }
+
         /// <summary>
-        /// Create post and persist to database
+        /// Create post and persist to database. Allows any room attendee (Lecturer or Student) to post.
         /// </summary>
         public async Task<Models.Message?> CreateAndPersistPostAsync(
             string sessionId,
             string authorMatricNo,
-            string content)
+            string content,
+            string? displayName = null)
         {
-            var author = await _userService.GetUserByMatricNoAsync(authorMatricNo);
-            if (author == null || author.Role != Role.Lecturer)
+            var author = await GetOrCreateUserAsync(authorMatricNo, displayName);
+            if (author == null)
                 return null;
 
             var session = await _context.Sessions
@@ -59,9 +89,10 @@ namespace VIIDII.Data
             string sessionId,
             string authorMatricNo,
             string content,
-            int parentMessageId)
+            int parentMessageId,
+            string? displayName = null)
         {
-            var author = await _userService.GetUserByMatricNoAsync(authorMatricNo);
+            var author = await GetOrCreateUserAsync(authorMatricNo, displayName);
             if (author == null)
                 return null;
 
@@ -83,11 +114,24 @@ namespace VIIDII.Data
         }
 
         /// <summary>
+        /// Mark a question message as answered or reopen it.
+        /// </summary>
+        public async Task<Models.Message?> MarkQuestionAnsweredAsync(int messageId, bool isAnswered)
+        {
+            var message = await _messageRepository.GetMessageByIdAsync(messageId);
+            if (message == null)
+                return null;
+
+            message.Content = MessagePayloadHelper.UpdateAnsweredStatus(message.Content, isAnswered);
+            return await _messageRepository.UpdateMessageAsync(message);
+        }
+
+        /// <summary>
         /// Add reaction to message
         /// </summary>
         public async Task<Models.Message?> AddReactionAsync(int messageId, string authorMatricNo, string reaction)
         {
-            var author = await _userService.GetUserByMatricNoAsync(authorMatricNo);
+            var author = await GetOrCreateUserAsync(authorMatricNo);
             if (author == null)
                 return null;
 
@@ -108,7 +152,7 @@ namespace VIIDII.Data
 
         public async Task<Models.Message?> RemoveReactionAsync(int messageId, string authorMatricNo, string reaction)
         {
-            var author = await _userService.GetUserByMatricNoAsync(authorMatricNo);
+            var author = await GetOrCreateUserAsync(authorMatricNo);
             if (author == null)
                 return null;
 

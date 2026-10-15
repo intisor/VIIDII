@@ -216,6 +216,14 @@ window.livekitInterop = (function () {
                         dotNetRef.invokeMethodAsync('OnStreamReceived');
                     }
                 } else if (track.kind === 'audio') {
+                    if (isLecturer) {
+                        console.log('[livekit JS] Lecturer role: skipping incoming audio track to prevent audio loopback/echo');
+                        return;
+                    }
+                    if (participant && (participant.isLocal || (room.localParticipant && participant.identity === room.localParticipant.identity))) {
+                        console.log('[livekit JS] Skipping local participant audio track attachment');
+                        return;
+                    }
                     try {
                         track.attach();
                         if (room && room.startAudio) {
@@ -260,6 +268,23 @@ window.livekitInterop = (function () {
                 }
             });
 
+            room.on(events.DataReceived, function (payload, participant, kind, topic) {
+                if (topic === 'captions' || !topic) {
+                    try {
+                        const decoder = new TextDecoder();
+                        const jsonStr = decoder.decode(payload);
+                        const data = JSON.parse(jsonStr);
+                        if (window.captionInterop && typeof window.captionInterop.onCaptionReceived === 'function') {
+                            window.captionInterop.onCaptionReceived(data);
+                        }
+                    } catch (e) {
+                        // Not caption data, ignore
+                    }
+                } else if (topic === 'file-transfer') {
+                    handleIncomingP2PFile(payload);
+                }
+            });
+
             report('connecting to the video server', token.room);
             await room.connect(token.url, token.token);
 
@@ -297,9 +322,15 @@ window.livekitInterop = (function () {
         }
 
         try {
+            video.muted = true;
+            video.defaultMuted = true;
+            video.volume = 0;
             const publication = await room.localParticipant.setCameraEnabled(true);
             if (publication && publication.track) {
                 publication.track.attach(video);
+                video.muted = true;
+                video.defaultMuted = true;
+                video.volume = 0;
                 try {
                     await video.play();
                 } catch (playErr) {
@@ -495,6 +526,163 @@ window.livekitInterop = (function () {
         return mediaState;
     }
 
+    function publishData(payloadObj, topic) {
+        if (!room || !room.localParticipant) {
+            return false;
+        }
+        try {
+            const encoder = new TextEncoder();
+            const jsonStr = JSON.stringify(payloadObj);
+            const data = encoder.encode(jsonStr);
+            room.localParticipant.publishData(data, {
+                reliable: false,
+                topic: topic || 'captions'
+            });
+            return true;
+        } catch (e) {
+            console.warn('[livekit JS] publishData error:', e);
+            return false;
+        }
+    }
+
+    // P2P File Sharing (Zero Server Storage via WebRTC reliable data channel)
+    window.p2pFiles = window.p2pFiles || new Map();
+    const p2pIncomingChunks = new Map();
+
+    window.downloadP2PFile = function (e, messageId, fileName) {
+        if (e && e.preventDefault) e.preventDefault();
+        const fileInfo = window.p2pFiles.get(messageId);
+        if (fileInfo && fileInfo.url) {
+            const a = document.createElement('a');
+            a.href = fileInfo.url;
+            a.download = fileInfo.fileName || fileName || 'download';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        } else {
+            alert('File is still transferring via P2P stream. Please wait a moment...');
+        }
+    };
+
+    function handleIncomingP2PFile(payload) {
+        try {
+            const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+            const metaLen = view.getUint32(0, true);
+            const metaBytes = payload.subarray(4, 4 + metaLen);
+            const chunkBytes = payload.subarray(4 + metaLen);
+            const meta = JSON.parse(new TextDecoder().decode(metaBytes));
+
+            const fileKey = meta.messageId;
+            if (!p2pIncomingChunks.has(fileKey)) {
+                p2pIncomingChunks.set(fileKey, new Array(meta.total));
+                console.log(`[livekit JS] [P2P File] Receiving '${meta.fileName}' (${meta.total} chunks)...`);
+            }
+
+            const chunkArr = p2pIncomingChunks.get(fileKey);
+            chunkArr[meta.index] = chunkBytes;
+
+            const receivedCount = chunkArr.filter(c => c !== undefined).length;
+
+            const downloadBtns = document.querySelectorAll(`[data-file-id="${fileKey}"]`);
+            downloadBtns.forEach(btn => {
+                const textSpan = btn.querySelector('.download-text');
+                if (textSpan && receivedCount < meta.total) {
+                    const pct = Math.round((receivedCount / meta.total) * 100);
+                    textSpan.textContent = `Receiving ${pct}%`;
+                }
+            });
+
+            if (receivedCount === meta.total) {
+                console.log(`[livekit JS] [P2P File] All chunks received for '${meta.fileName}'. Reassembling in memory...`);
+                const blob = new Blob(chunkArr, { type: meta.mimeType });
+                const blobUrl = URL.createObjectURL(blob);
+                window.p2pFiles.set(fileKey, { url: blobUrl, fileName: meta.fileName, size: meta.fileSize });
+                p2pIncomingChunks.delete(fileKey);
+
+                downloadBtns.forEach(btn => {
+                    btn.href = blobUrl;
+                    btn.download = meta.fileName;
+                    const textSpan = btn.querySelector('.download-text');
+                    if (textSpan) textSpan.textContent = 'Download';
+                });
+
+                if (!isLecturer) {
+                    const tempLink = document.createElement('a');
+                    tempLink.href = blobUrl;
+                    tempLink.download = meta.fileName;
+                    document.body.appendChild(tempLink);
+                    tempLink.click();
+                    document.body.removeChild(tempLink);
+                }
+            }
+        } catch (err) {
+            console.error('[livekit JS] Error receiving file chunk:', err);
+        }
+    }
+
+    async function sendP2PFile(inputElementId, messageId) {
+        if (!room || !room.localParticipant) {
+            console.warn('[livekit JS] sendP2PFile: room not connected');
+            return { success: false, error: 'Room not connected' };
+        }
+        const fileInput = document.getElementById(inputElementId);
+        if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
+            console.warn('[livekit JS] sendP2PFile: no file selected in element', inputElementId);
+            return { success: false, error: 'No file selected' };
+        }
+        const file = fileInput.files[0];
+        console.log(`[livekit JS] [P2P File] Starting transmission for '${file.name}', size: ${file.size} bytes, messageId: ${messageId}`);
+
+        // Store sender's local Blob URL so sender can also download immediately from memory
+        const localUrl = URL.createObjectURL(file);
+        window.p2pFiles.set(messageId, { url: localUrl, fileName: file.name, size: file.size });
+
+        const chunkSize = 60 * 1024; // 60KB per chunk for WebRTC reliable data channel
+        const totalChunks = Math.ceil(file.size / chunkSize);
+
+        for (let i = 0; i < totalChunks; i++) {
+            const start = i * chunkSize;
+            const end = Math.min(start + chunkSize, file.size);
+            const slice = file.slice(start, end);
+            const arrayBuffer = await slice.arrayBuffer();
+            const chunkBytes = new Uint8Array(arrayBuffer);
+
+            const metaStr = JSON.stringify({
+                type: 'p2pFileChunk',
+                messageId: messageId,
+                fileName: file.name,
+                fileSize: file.size,
+                mimeType: file.type || 'application/octet-stream',
+                index: i,
+                total: totalChunks
+            });
+            const metaBytes = new TextEncoder().encode(metaStr);
+
+            // Frame format: [4 bytes uint32 metaLen][metaBytes][raw chunkBytes]
+            const packet = new Uint8Array(4 + metaBytes.length + chunkBytes.length);
+            const view = new DataView(packet.buffer);
+            view.setUint32(0, metaBytes.length, true);
+            packet.set(metaBytes, 4);
+            packet.set(chunkBytes, 4 + metaBytes.length);
+
+            try {
+                await room.localParticipant.publishData(packet, {
+                    reliable: true,
+                    topic: 'file-transfer'
+                });
+            } catch (err) {
+                console.error(`[livekit JS] Error publishing chunk ${i + 1}/${totalChunks}:`, err);
+            }
+
+            if (i % 5 === 0) {
+                await new Promise(r => setTimeout(r, 8));
+            }
+        }
+
+        console.log(`[livekit JS] [P2P File] Completed transmission of ${totalChunks} chunks for '${file.name}'`);
+        return { success: true, fileName: file.name, totalChunks: totalChunks };
+    }
+
     return {
         connect: connect,
         disconnect: disconnect,
@@ -508,6 +696,8 @@ window.livekitInterop = (function () {
         enableWatermark: enableWatermark,
         disableWatermark: disableWatermark,
         getMediaState: getMediaState,
+        publishData: publishData,
+        sendP2PFile: sendP2PFile,
         isConfigured: function () { return true; },
     };
 })();

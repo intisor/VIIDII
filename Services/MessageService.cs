@@ -1,8 +1,8 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
-using VIIDII.Data;
-using VIIDII.Models;
+using System.Threading.Tasks;
 
 namespace VIIDII.Services
 {
@@ -29,144 +29,178 @@ namespace VIIDII.Services
         public DateTime createdAt { get; set; } = DateTime.UtcNow;
         public List<Reaction> Reactions { get; set; } = new();
 
-        public int ThumbsUpCount => Reactions.Count(r => r.Emoji == "👍");
+        // File Sharing & Q&A (Ephemeral in-memory metadata / P2P transferred)
+        public string? fileName { get; set; }
+        public string? fileUrl { get; set; }
+        public long? fileSizeBytes { get; set; }
+        public string? fileSizeFormatted { get; set; }
+        public bool isQuestion { get; set; }
+        public bool isAnswered { get; set; }
+
+        public int ThumbsUpCount => Reactions.Count(r => r.Emoji == "👍" || r.Emoji == "like" || r.Emoji == "??");
         public bool HasUserReacted(string userId) => Reactions.Any(r => r.UserId == userId);
     }
 
+    /// <summary>
+    /// Ephemeral in-memory message coordinator for live sessions.
+    /// Zero server storage: chat, questions, and reactions are held strictly in memory
+    /// during active sessions and purged when the session ends.
+    /// </summary>
     public class MessageService
     {
-        private readonly MessagePersistenceService _persistenceService;
-        private readonly SessionService _sessionService;
+        private static readonly ConcurrentDictionary<string, List<Message>> _sessionMessages = new(StringComparer.OrdinalIgnoreCase);
+        private static readonly object _lock = new();
 
-        public MessageService(MessagePersistenceService persistenceService, SessionService sessionService)
+        public Task<Message> CreatePostAsync(
+            string sessionId,
+            string userId,
+            string userName,
+            string content,
+            bool isLecturer,
+            bool isFile = false,
+            string? fileUrl = null,
+            string? fileName = null,
+            long? fileSizeBytes = null,
+            bool isQuestion = false)
         {
-            _persistenceService = persistenceService;
-            _sessionService = sessionService;
-        }
-
-        public async Task<Message> CreatePostAsync(string sessionId, string userId, string userName, string content, bool isLecturer, bool isFile = false)
-        {
-            if (!isLecturer)
+            var msg = new Message
             {
-                throw new InvalidOperationException("Only lecturers can create posts.");
-            }
-
-            var persisted = await _persistenceService.CreateAndPersistPostAsync(sessionId, userId, content);
-            if (persisted == null)
-            {
-                throw new InvalidOperationException("Failed to create post.");
-            }
-
-            return await MapMessageAsync(persisted, sessionId, userId, userName, isFile);
-        }
-
-        public async Task<Message> CreateCommentAsync(string sessionId, string userId, string userName, string content, string postId, bool isLecturer)
-        {
-            if (!int.TryParse(postId, out var parentMessageId))
-            {
-                throw new InvalidOperationException("Post not found.");
-            }
-
-            var persisted = await _persistenceService.CreateAndPersistCommentAsync(sessionId, userId, content, parentMessageId);
-            if (persisted == null)
-            {
-                throw new InvalidOperationException("Failed to create comment.");
-            }
-
-            return await MapMessageAsync(persisted, sessionId, userId, userName, false, isLecturer);
-        }
-
-        public async Task<List<Message>> GetAllMessagesAsync(string sessionId)
-        {
-            var messages = await _persistenceService.GetSessionPostsAsync(sessionId);
-            var result = new List<Message>(messages.Count);
-
-            foreach (var message in messages)
-            {
-                result.Add(await MapMessageAsync(message));
-            }
-
-            return result.OrderBy(m => m.createdAt).ToList();
-        }
-
-        public async Task<bool> AddReactionAsync(string sessionId, string messageId, string userId, string emoji)
-        {
-            if (!int.TryParse(messageId, out var parsedMessageId))
-            {
-                return false;
-            }
-
-            var updatedMessage = await _persistenceService.AddReactionAsync(parsedMessageId, userId, emoji);
-            return updatedMessage != null && updatedMessage.Session.SessionId == sessionId;
-        }
-
-        public async Task<bool> RemoveReactionAsync(string sessionId, string messageId, string userId, string emoji)
-        {
-            if (!int.TryParse(messageId, out var parsedMessageId))
-            {
-                return false;
-            }
-
-            var updatedMessage = await _persistenceService.RemoveReactionAsync(parsedMessageId, userId, emoji);
-            return updatedMessage != null && updatedMessage.Session.SessionId == sessionId;
-        }
-
-        private async Task<Message> MapMessageAsync(Models.Message message, string? sessionId = null, string? userId = null, string? userName = null, bool isFile = false, bool? isLecturerOverride = null)
-        {
-            ArgumentNullException.ThrowIfNull(message);
-
-            var resolvedSessionId = sessionId ?? message.Session?.SessionId ?? await ResolveSessionIdAsync(message.SessionId);
-            var resolvedUserId = userId ?? message.Author?.MatricNo ?? await ResolveUserIdAsync(message.AuthorId);
-            var resolvedUserName = userName ?? message.Author?.Name ?? resolvedUserId;
-            var reactions = ParseReactions(message.Reaction);
-            var isLecturer = isLecturerOverride ?? (message.Author?.Role == Role.Lecturer);
-
-            return new Message
-            {
-                id = message.Id.ToString(),
-                sessionId = resolvedSessionId,
-                userId = resolvedUserId,
-                UserName = resolvedUserName,
-                content = message.Content,
-                parentId = message.ParentId?.ToString() ?? message.Id.ToString(),
+                id = Guid.NewGuid().ToString("N"),
+                sessionId = sessionId,
+                userId = userId,
+                UserName = userName,
+                content = content,
                 isLecturerPost = isLecturer,
-                isComment = message.ParentId.HasValue,
+                isComment = false,
                 messageType = isFile ? MessageType.File : MessageType.Text,
-                createdAt = message.CreatedAt,
-                Reactions = reactions
+                createdAt = DateTime.UtcNow,
+                fileName = fileName,
+                fileUrl = fileUrl,
+                fileSizeBytes = fileSizeBytes,
+                fileSizeFormatted = fileSizeBytes.HasValue ? FormatFileSize(fileSizeBytes.Value) : null,
+                isQuestion = isQuestion,
+                isAnswered = false
             };
-        }
+            msg.parentId = msg.id;
 
-        private static List<Reaction> ParseReactions(string? reactionData)
-        {
-            if (string.IsNullOrWhiteSpace(reactionData))
+            lock (_lock)
             {
-                return new List<Reaction>();
+                var list = _sessionMessages.GetOrAdd(sessionId, _ => new List<Message>());
+                list.Add(msg);
             }
 
-            return reactionData
-                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Select(entry => entry.Split(':', 2, StringSplitOptions.TrimEntries))
-                .Where(parts => parts.Length == 2)
-                .Select(parts => new Reaction
+            return Task.FromResult(msg);
+        }
+
+        public Task<Message> CreateCommentAsync(string sessionId, string userId, string userName, string content, string postId, bool isLecturer)
+        {
+            var comment = new Message
+            {
+                id = Guid.NewGuid().ToString("N"),
+                sessionId = sessionId,
+                userId = userId,
+                UserName = userName,
+                content = content,
+                parentId = postId,
+                isLecturerPost = isLecturer,
+                isComment = true,
+                messageType = MessageType.Text,
+                createdAt = DateTime.UtcNow
+            };
+
+            lock (_lock)
+            {
+                var list = _sessionMessages.GetOrAdd(sessionId, _ => new List<Message>());
+                list.Add(comment);
+            }
+
+            return Task.FromResult(comment);
+        }
+
+        public Task<List<Message>> GetAllMessagesAsync(string sessionId)
+        {
+            lock (_lock)
+            {
+                if (_sessionMessages.TryGetValue(sessionId, out var list))
                 {
-                    UserId = parts[0],
-                    Emoji = parts[1],
-                    Timestamp = DateTime.UtcNow
-                })
-                .ToList();
+                    return Task.FromResult(list.OrderBy(m => m.createdAt).ToList());
+                }
+                return Task.FromResult(new List<Message>());
+            }
         }
 
-        private async Task<string> ResolveSessionIdAsync(int sessionDbId)
+        public Task<bool> AddReactionAsync(string sessionId, string messageId, string userId, string emoji)
         {
-            var session = await _sessionService.GetSessionByDbIdAsync(sessionDbId);
-            return session?.SessionId ?? sessionDbId.ToString();
+            lock (_lock)
+            {
+                if (_sessionMessages.TryGetValue(sessionId, out var list))
+                {
+                    var msg = list.FirstOrDefault(m => m.id == messageId);
+                    if (msg != null && !msg.Reactions.Any(r => r.UserId == userId && r.Emoji == emoji))
+                    {
+                        msg.Reactions.Add(new Reaction
+                        {
+                            UserId = userId,
+                            Emoji = emoji,
+                            Timestamp = DateTime.UtcNow
+                        });
+                        return Task.FromResult(true);
+                    }
+                }
+                return Task.FromResult(false);
+            }
         }
 
-        private async Task<string> ResolveUserIdAsync(int authorId)
+        public Task<bool> RemoveReactionAsync(string sessionId, string messageId, string userId, string emoji)
         {
-            var user = await _persistenceService.GetUserByIdAsync(authorId);
-            return user?.MatricNo ?? authorId.ToString();
+            lock (_lock)
+            {
+                if (_sessionMessages.TryGetValue(sessionId, out var list))
+                {
+                    var msg = list.FirstOrDefault(m => m.id == messageId);
+                    if (msg != null)
+                    {
+                        var reaction = msg.Reactions.FirstOrDefault(r => r.UserId == userId && r.Emoji == emoji);
+                        if (reaction != null)
+                        {
+                            msg.Reactions.Remove(reaction);
+                            return Task.FromResult(true);
+                        }
+                    }
+                }
+                return Task.FromResult(false);
+            }
+        }
+
+        public Task<bool> MarkQuestionAnsweredAsync(string sessionId, string messageId, bool isAnswered)
+        {
+            lock (_lock)
+            {
+                if (_sessionMessages.TryGetValue(sessionId, out var list))
+                {
+                    var msg = list.FirstOrDefault(m => m.id == messageId);
+                    if (msg != null)
+                    {
+                        msg.isAnswered = isAnswered;
+                        return Task.FromResult(true);
+                    }
+                }
+                return Task.FromResult(false);
+            }
+        }
+
+        public static void ClearSessionMessages(string sessionId)
+        {
+            _sessionMessages.TryRemove(sessionId, out _);
+        }
+
+        public static string FormatFileSize(long bytes)
+        {
+            if (bytes >= 1024 * 1024)
+                return $"{(bytes / 1024.0 / 1024.0):F1} MB";
+            if (bytes >= 1024)
+                return $"{(bytes / 1024.0):F1} KB";
+            return $"{bytes} B";
         }
     }
 }
