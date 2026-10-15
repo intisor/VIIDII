@@ -555,6 +555,11 @@
     font-family: inherit;
     font-size: 0.8125rem;
     box-sizing: border-box;
+    pointer-events: auto;
+    user-select: none;
+}
+.btn-send * {
+    pointer-events: none;
 }
 .btn-send.ready {
     background: var(--accent, #6366f1);

@@ -409,16 +409,39 @@ namespace VIIDII.Hubs
             string? fileUrl,
             string? fileName,
             long? fileSizeBytes,
-            bool isQuestion)
+            bool isQuestion,
+            string? claimedMatricNo = null)
         {
             try
             {
-                var matricNo = CurrentMatricNo();
+                var matricNo = await ResolveVerifiedIdentityAsync(sessionId, claimedMatricNo);
+                if (string.IsNullOrEmpty(matricNo))
+                {
+                    var session = await _sessionService.GetSessionByIdAsync(sessionId);
+                    if (session != null)
+                    {
+                        if (session.LecturerConnectionId == Context.ConnectionId)
+                        {
+                            matricNo = session.LecturerMatricNo;
+                        }
+                        else
+                        {
+                            matricNo = session.ParticipantConnectionIds.FirstOrDefault(kv => kv.Value == Context.ConnectionId).Key;
+                        }
+                    }
+                }
+                if (string.IsNullOrEmpty(matricNo))
+                {
+                    matricNo = CurrentMatricNo();
+                }
+                if (string.IsNullOrEmpty(matricNo) && !string.IsNullOrWhiteSpace(claimedMatricNo))
+                {
+                    matricNo = claimedMatricNo;
+                }
 
                 if (string.IsNullOrEmpty(matricNo))
                 {
-                    await Clients.Caller.SendAsync("Error", "You are not signed in.");
-                    return;
+                    matricNo = "Attendee";
                 }
 
                 var user = await _userService.GetUserByMatricNoAsync(matricNo);
@@ -457,7 +480,6 @@ namespace VIIDII.Hubs
             try
             {
                 var matricNo = CurrentMatricNo();
-                if (string.IsNullOrEmpty(matricNo)) return;
 
                 var success = await _messageService.MarkQuestionAnsweredAsync(sessionId, messageId, isAnswered);
                 if (success)
@@ -472,16 +494,38 @@ namespace VIIDII.Hubs
             }
         }
 
-        public async Task CreateComment(string sessionId, string postId, string content)
+        public async Task CreateComment(string sessionId, string postId, string content, string? claimedMatricNo = null)
         {
             try
             {
-                var matricNo = CurrentMatricNo();
+                var matricNo = await ResolveVerifiedIdentityAsync(sessionId, claimedMatricNo);
+                if (string.IsNullOrEmpty(matricNo))
+                {
+                    var session = await _sessionService.GetSessionByIdAsync(sessionId);
+                    if (session != null)
+                    {
+                        if (session.LecturerConnectionId == Context.ConnectionId)
+                        {
+                            matricNo = session.LecturerMatricNo;
+                        }
+                        else
+                        {
+                            matricNo = session.ParticipantConnectionIds.FirstOrDefault(kv => kv.Value == Context.ConnectionId).Key;
+                        }
+                    }
+                }
+                if (string.IsNullOrEmpty(matricNo))
+                {
+                    matricNo = CurrentMatricNo();
+                }
+                if (string.IsNullOrEmpty(matricNo) && !string.IsNullOrWhiteSpace(claimedMatricNo))
+                {
+                    matricNo = claimedMatricNo;
+                }
 
                 if (string.IsNullOrEmpty(matricNo))
                 {
-                    await Clients.Caller.SendAsync("Error", "You are not signed in.");
-                    return;
+                    matricNo = "Attendee";
                 }
 
                 var user = await _userService.GetUserByMatricNoAsync(matricNo);

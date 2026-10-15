@@ -402,8 +402,8 @@ else
                                     <MessagingPanel SessionId="@SessionId"
                                                    IsLecturer="@State.IsLecturer"
                                                    HubConnection="@_hubConnection"
-                                                   CurrentUserId="@(State.CurrentUser?.MatricNo ?? "")"
-                                                   CurrentUserName="@(State.CurrentUser?.Name ?? State.CurrentUser?.MatricNo ?? "")" />
+                                                   CurrentUserId="@(Identity?.MatricNo ?? State.CurrentUser?.MatricNo ?? "")"
+                                                   CurrentUserName="@(Identity?.Name ?? State.CurrentUser?.Name ?? "Participant")" />
                                 }
                                 else
                                 {
@@ -834,6 +834,7 @@ else
 
             await _hubConnection.StartAsync();
             State.IsHubConnected = true;
+            await InvokeAsync(StateHasChanged);
             Console.WriteLine($"[SessionView C#] SignalR connected. ConnectionId: {_hubConnection.ConnectionId}");
             await JSRuntime.InvokeVoidAsync("console.log", $"[VIIDII] SignalR connected. ConnectionId={_hubConnection.ConnectionId}, session={SessionId}, lecturer={State.IsLecturer}");
 

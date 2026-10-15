@@ -220,7 +220,7 @@
         }
 
         <!-- Composer Actions & Input Bar -->
-        <form class="composer-row" @onsubmit="SubmitMessage" @onsubmit:preventDefault="true">
+        <div class="composer-row">
             <!-- Hidden InputFile -->
             <InputFile id="messagingFileInput" 
                        @ref="_fileInput" 
@@ -257,8 +257,9 @@
                    disabled="@IsUploadingFile" />
 
             <!-- Send Button -->
-            <button type="submit" 
+            <button type="button" 
                     class="btn-send @(CanSend ? "ready" : "")" 
+                    @onclick="SubmitMessage" 
                     disabled="@(!CanSend || IsUploadingFile)"
                     title="Send message">
                 @if (IsUploadingFile)
@@ -270,7 +271,7 @@
                     <i class="fas fa-paper-plane"></i>
                 }
             </button>
-        </form>
+        </div>
 
         <!-- Upload Progress Bar -->
         @if (IsUploadingFile)
@@ -324,9 +325,23 @@
 
     private bool CanSend => !string.IsNullOrWhiteSpace(ComposerText) || SelectedFile != null;
 
+    private bool _isSubscribed = false;
+
     protected override async Task OnInitializedAsync()
     {
-        if (HubConnection == null) return;
+        await TrySubscribeAndLoadMessagesAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await TrySubscribeAndLoadMessagesAsync();
+    }
+
+    private async Task TrySubscribeAndLoadMessagesAsync()
+    {
+        if (HubConnection == null || _isSubscribed) return;
+
+        _isSubscribed = true;
 
         // Register SignalR handlers
         HubConnection.On<VIIDII.Services.Message>("ReceivePost", HandleReceivePost);
@@ -335,11 +350,15 @@
         HubConnection.On<string, string, string, bool>("ReceiveReaction", HandleReceiveReaction);
         HubConnection.On<string, bool>("ReceiveQuestionAnswered", HandleReceiveQuestionAnswered);
         HubConnection.On<string>("PostCreated", HandlePostCreated);
+        HubConnection.On<string>("Error", HandleHubError);
 
-        // Load existing session messages
+        // Load existing session messages if connected
         try
         {
-            await HubConnection.SendAsync("GetMessages", SessionId);
+            if (HubConnection.State == HubConnectionState.Connected)
+            {
+                await HubConnection.SendAsync("GetMessages", SessionId);
+            }
         }
         catch (Exception ex)
         {
@@ -483,22 +502,38 @@
     // Message Sending
     private async Task SubmitMessage()
     {
-        if (!CanSend || HubConnection == null) return;
+        if (!CanSend)
+        {
+            return;
+        }
+
+        if (HubConnection == null || HubConnection.State != HubConnectionState.Connected)
+        {
+            ErrorMessage = "Chat connection is still connecting. Please wait a moment...";
+            StateHasChanged();
+            return;
+        }
 
         ErrorMessage = null;
 
         // If in reply mode, send as comment
         if (!string.IsNullOrEmpty(ReplyingToMessageId))
         {
+            var commentText = ComposerText;
+            var replyTargetId = ReplyingToMessageId;
+            ComposerText = "";
+            CancelReply();
+            StateHasChanged();
+
             try
             {
-                await HubConnection.SendAsync("CreateComment", SessionId, ReplyingToMessageId, ComposerText);
-                CancelReply();
-                ComposerText = "";
+                await HubConnection.SendAsync("CreateComment", SessionId, replyTargetId, commentText, CurrentUserId);
             }
             catch (Exception ex)
             {
                 ErrorMessage = $"Failed to send reply: {ex.Message}";
+                ComposerText = commentText;
+                StateHasChanged();
             }
             return;
         }
@@ -517,12 +552,24 @@
             UploadProgress = 100;
         }
 
+        var contentToSend = string.IsNullOrWhiteSpace(ComposerText) 
+            ? (isFile ? $"Shared file: {fileName}" : "") 
+            : ComposerText;
+
+        var isQuestion = IsComposingQuestion;
+        var backupText = ComposerText;
+
+        if (!isFile)
+        {
+            // Reset text and question toggle immediately for snappy UI feel
+            ComposerText = "";
+            IsComposingQuestion = false;
+        }
+
+        StateHasChanged();
+
         try
         {
-            var contentToSend = string.IsNullOrWhiteSpace(ComposerText) 
-                ? (isFile ? $"Shared file: {fileName}" : "") 
-                : ComposerText;
-
             await HubConnection.SendAsync(
                 "SendRoomMessage",
                 SessionId,
@@ -531,17 +578,31 @@
                 null,
                 fileName,
                 fileSizeBytes,
-                IsComposingQuestion);
+                isQuestion,
+                CurrentUserId);
         }
         catch (Exception ex)
         {
             ErrorMessage = $"Error sending message: {ex.Message}";
             IsUploadingFile = false;
+            if (!isFile && string.IsNullOrEmpty(ComposerText))
+            {
+                ComposerText = backupText;
+            }
         }
         finally
         {
             StateHasChanged();
         }
+    }
+
+    private Task HandleHubError(string error)
+    {
+        return InvokeAsync(() =>
+        {
+            ErrorMessage = error;
+            StateHasChanged();
+        });
     }
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
