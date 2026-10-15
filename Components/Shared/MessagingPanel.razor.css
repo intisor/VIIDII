@@ -109,9 +109,9 @@
 }
 .message-card:hover { border-color: var(--border-mid); }
 
-.lecturer-post { border-left: 3px solid var(--accent); }
-.question-post { border-left: 3px solid #f5a623; }
-.lecturer-post.question-post { border-left: 3px solid var(--accent); }
+.lecturer-post { border-color: rgba(110, 86, 207, 0.25); }
+.question-post { border-color: rgba(245, 166, 35, 0.25); }
+.lecturer-post.question-post { border-color: rgba(110, 86, 207, 0.35); }
 
 /* ── Message Header ──────────────────────────────── */
 .message-header {
@@ -361,7 +361,7 @@
     padding: 0.5rem 0.75rem;
 }
 .comment-card.lecturer-comment {
-    border-left: 2px solid var(--accent);
+    border-color: rgba(110, 86, 207, 0.25);
 }
 
 .comment-header {

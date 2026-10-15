@@ -768,8 +768,12 @@
     private string GetInitials(string name)
     {
         if (string.IsNullOrWhiteSpace(name)) return "?";
-        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length == 1) return parts[0].Substring(0, Math.Min(2, parts[0].Length)).ToUpper();
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Select(p => p.Trim('(', ')', '[', ']', '{', '}', '<', '>', '"', '\''))
+            .Where(p => !string.IsNullOrWhiteSpace(p))
+            .ToList();
+        if (!parts.Any()) return "?";
+        if (parts.Count == 1) return parts[0].Substring(0, Math.Min(2, parts[0].Length)).ToUpper();
         return (parts[0][0].ToString() + parts[^1][0].ToString()).ToUpper();
     }
 
