@@ -4,34 +4,101 @@
 @using VIIDII.Models
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 
-<PageTitle>VIIDII — Live Classroom Platform</PageTitle>
+<PageTitle>VIIDII — Rentable Virtual Workspaces & Verified Cohorts</PageTitle>
 
 <div class="hero-wrap">
     <div class="hero-content">
-        <div class="hero-eyebrow">Live Classroom Platform</div>
+        
+        <div class="hero-badge">
+            <span class="badge-dot"></span>
+            <span>Virtual Workspaces & Verified Cohorts</span>
+        </div>
+
         <h1 class="hero-title">VIIDII</h1>
+        
         <p class="hero-desc">
-            Real-time video sessions, engagement tracking, and classroom tools
-            for lecturers and students.
+            Low-bandwidth live workspaces, roster-authenticated attendance, and adaptive streaming
+            built for training bootcamps, university classrooms, and distributed teams.
         </p>
 
+        <!-- Natural Glass Quick Join Card -->
+        <div class="quick-join-card">
+            <div class="quick-join-title">Join with Space or Class Code</div>
+            <div class="quick-join-row">
+                <input type="text" 
+                       class="quick-join-input" 
+                       placeholder="e.g. CSC101 or Room Code" 
+                       @bind="JoinCodeInput" 
+                       @bind:event="oninput"
+                       @onkeydown="HandleKeyDown" />
+                <button class="btn-quick-join" @onclick="SubmitQuickJoin" disabled="@string.IsNullOrWhiteSpace(JoinCodeInput)">
+                    Join Space
+                </button>
+            </div>
+            @if (!string.IsNullOrEmpty(JoinError))
+            {
+                <div class="quick-join-error">@JoinError</div>
+            }
+        </div>
+
+        <!-- Natural Action Buttons (No bounce/move) -->
         <div class="hero-actions">
             @if (IsAuthenticated)
             {
-                <button id="go-dashboard" class="btn-hero-primary" @onclick="GoDashboard">Go to my classes</button>
+                <button id="go-dashboard" class="btn-action-primary" @onclick="GoDashboard">
+                    Go to Workspace
+                </button>
+                <button class="btn-action-secondary" @onclick="GoNewSession">
+                    New Session
+                </button>
             }
             else
             {
-                <button id="go-signup" class="btn-hero-primary"   @onclick="GoSignUp">Create an account</button>
-                <button id="go-login"  class="btn-hero-secondary" @onclick="GoLogin">Sign in</button>
+                <button id="go-signup" class="btn-action-primary" @onclick="GoSignUp">
+                    Create Account
+                </button>
+                <button id="go-login" class="btn-action-secondary" @onclick="GoLogin">
+                    Sign In
+                </button>
+                <a href="/auth/google" class="btn-action-google">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" fill="#FBBC05"/>
+                        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" fill="#EA4335"/>
+                    </svg>
+                    <span>Sign in with Google</span>
+                </a>
             }
         </div>
 
-        <div class="hero-features">
-            <div class="feature-pill"><i class="fas fa-video"></i> Live video</div>
-            <div class="feature-pill"><i class="fas fa-chart-bar"></i> Engagement tracking</div>
-            <div class="feature-pill"><i class="fas fa-comments"></i> Real-time chat</div>
+        <!-- Natural Glass Capabilities Grid -->
+        <div class="capabilities-grid">
+            <div class="cap-card">
+                <div class="cap-title">Roster-Gated Access</div>
+                <div class="cap-desc">Import student/member lists via CSV. Verified attendees enter without password friction.</div>
+            </div>
+
+            <div class="cap-card">
+                <div class="cap-title">Low-Bandwidth Mode</div>
+                <div class="cap-desc">LiveKit SFU adaptive audio & video with 5-minute reconnect grace for network drops.</div>
+            </div>
+
+            <div class="cap-card">
+                <div class="cap-title">Audited Attendance</div>
+                <div class="cap-desc">Accurate duration, presence tracking, and verified attendance records ready for export.</div>
+            </div>
         </div>
+
+        <!-- Space Presets Line -->
+        <div class="presets-banner">
+            <span class="presets-label">Workspaces:</span>
+            <span class="preset-tag">Cohort Bootcamp</span>
+            <span class="preset-tag">University Lecture</span>
+            <span class="preset-tag">Executive Workshop</span>
+            <span class="preset-tag">Exam & Accreditation</span>
+        </div>
+
     </div>
 </div>
 
@@ -40,102 +107,382 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        min-height: calc(100vh - 52px); /* minus nav */
-        padding: 3rem 1.5rem;
+        min-height: calc(100vh - 52px);
+        padding: clamp(2rem, 5vw, 3.5rem) 1rem clamp(2.5rem, 6vw, 4rem);
         background: var(--bg);
+        width: 100%;
+        max-width: 100vw;
+        box-sizing: border-box;
+        overflow-x: hidden;
     }
 
     .hero-content {
-        max-width: 540px;
+        max-width: 760px;
+        width: 100%;
         text-align: center;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        box-sizing: border-box;
     }
 
-    .hero-eyebrow {
-        font-size: 0.75rem;
-        font-weight: 600;
-        color: var(--accent);
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        margin-bottom: 1rem;
+    /* Natural subtle badge — no neon glow */
+    .hero-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        gap: 0.5rem;
+        padding: 0.35rem 0.85rem;
+        border-radius: 9999px;
+        background: var(--surface);
+        border: 1px solid var(--border-mid);
+        color: var(--text-mid);
+        font-size: clamp(0.6875rem, 2vw, 0.75rem);
+        font-weight: 500;
+        margin-bottom: 1.5rem;
+        max-width: 100%;
+        line-height: 1.4;
+        box-sizing: border-box;
+        word-break: break-word;
     }
 
+    .badge-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--accent);
+        flex-shrink: 0;
+    }
+
+    /* Solid typography with fluid scaling */
     .hero-title {
-        font-size: 4rem;
+        font-size: clamp(2.1rem, 7vw, 3.75rem);
         font-weight: 700;
-        letter-spacing: -0.04em;
+        letter-spacing: -0.03em;
         color: var(--text);
         margin-bottom: 1rem;
-        line-height: 1;
+        line-height: 1.08;
+        word-break: break-word;
+        max-width: 100%;
     }
 
     .hero-desc {
-        font-size: 1rem;
+        font-size: clamp(0.875rem, 2.5vw, 1.0625rem);
         color: var(--text-mid);
         line-height: 1.6;
         margin-bottom: 2rem;
+        max-width: 600px;
+        width: 100%;
+        padding: 0 0.5rem;
+        box-sizing: border-box;
     }
 
+    /* Natural Glass Card */
+    .quick-join-card {
+        width: 100%;
+        max-width: 500px;
+        background: rgba(18, 18, 24, 0.75);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: var(--r-lg);
+        padding: clamp(1rem, 3.5vw, 1.25rem) clamp(1rem, 4vw, 1.5rem);
+        margin-bottom: 2rem;
+        text-align: left;
+        box-sizing: border-box;
+    }
+
+    .quick-join-title {
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: var(--text-mid);
+        margin-bottom: 0.65rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+
+    .quick-join-row {
+        display: flex;
+        gap: 0.5rem;
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    .quick-join-input {
+        flex: 1;
+        min-width: 0;
+        width: 100%;
+        background: rgba(12, 12, 15, 0.85);
+        border: 1px solid var(--border);
+        border-radius: var(--r);
+        padding: 0.65rem 0.9rem;
+        color: var(--text);
+        font-size: 0.9375rem;
+        font-family: inherit;
+        outline: none;
+        transition: border-color var(--t);
+        box-sizing: border-box;
+    }
+
+    .quick-join-input:focus {
+        border-color: var(--accent);
+    }
+
+    .btn-quick-join {
+        background: var(--accent);
+        color: #ffffff;
+        border: none;
+        border-radius: var(--r);
+        padding: 0.65rem 1.25rem;
+        font-size: 0.875rem;
+        font-weight: 600;
+        cursor: pointer;
+        font-family: inherit;
+        transition: background-color var(--t);
+        white-space: nowrap;
+        flex-shrink: 0;
+        box-sizing: border-box;
+    }
+
+    .btn-quick-join:hover:not(:disabled) {
+        background: var(--accent-hover);
+    }
+
+    .btn-quick-join:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+    }
+
+    .quick-join-error {
+        margin-top: 0.5rem;
+        font-size: 0.8125rem;
+        color: var(--danger);
+    }
+
+    /* Actions */
     .hero-actions {
         display: flex;
         gap: 0.75rem;
         justify-content: center;
+        align-items: center;
         flex-wrap: wrap;
-        margin-bottom: 2.5rem;
+        margin-bottom: 3rem;
+        width: 100%;
+        box-sizing: border-box;
     }
 
-    .btn-hero-primary {
+    .btn-action-primary {
         background: var(--accent);
-        color: white;
-        border: none;
-        padding: 0.7rem 1.75rem;
+        color: #ffffff;
+        border: 1px solid var(--accent);
+        padding: 0.65rem 1.4rem;
         border-radius: var(--r);
         font-size: 0.9375rem;
         font-weight: 600;
         cursor: pointer;
-        transition: background var(--t);
         font-family: inherit;
+        transition: background-color var(--t);
+        white-space: nowrap;
+        box-sizing: border-box;
     }
-    .btn-hero-primary:hover { background: var(--accent-hover); }
 
-    .btn-hero-secondary {
-        background: transparent;
-        color: var(--text-mid);
-        border: 1px solid var(--border-mid);
-        padding: 0.7rem 1.75rem;
+    .btn-action-primary:hover {
+        background: var(--accent-hover);
+    }
+
+    .btn-action-secondary {
+        background: rgba(18, 18, 24, 0.75);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        color: var(--text);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        padding: 0.65rem 1.4rem;
         border-radius: var(--r);
         font-size: 0.9375rem;
         font-weight: 500;
         cursor: pointer;
-        transition: all var(--t);
         font-family: inherit;
-    }
-    .btn-hero-secondary:hover { color: var(--text); border-color: var(--border-strong); background: var(--surface-up); }
-
-    .hero-features {
-        display: flex;
-        gap: 0.5rem;
-        justify-content: center;
-        flex-wrap: wrap;
+        transition: background-color var(--t), border-color var(--t);
+        white-space: nowrap;
+        box-sizing: border-box;
     }
 
-    .feature-pill {
+    .btn-action-secondary:hover {
+        background: var(--surface-up);
+        border-color: rgba(255, 255, 255, 0.18);
+    }
+
+    .btn-action-google {
         display: inline-flex;
         align-items: center;
-        gap: 0.4rem;
-        background: var(--surface);
-        border: 1px solid var(--border);
-        color: var(--text-mid);
-        padding: 0.35rem 0.875rem;
-        border-radius: 100px;
-        font-size: 0.8125rem;
+        justify-content: center;
+        gap: 0.5rem;
+        background: rgba(18, 18, 24, 0.75);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        color: var(--text);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        padding: 0.65rem 1.25rem;
+        border-radius: var(--r);
+        font-size: 0.875rem;
         font-weight: 500;
+        text-decoration: none;
+        transition: background-color var(--t), border-color var(--t);
+        white-space: nowrap;
+        box-sizing: border-box;
     }
 
-    .feature-pill i { color: var(--accent); font-size: 0.75rem; }
+    .btn-action-google:hover {
+        background: var(--surface-up);
+        border-color: rgba(255, 255, 255, 0.18);
+        color: var(--text);
+    }
+
+    /* Capabilities Grid */
+    .capabilities-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 1.25rem;
+        width: 100%;
+        margin-bottom: 2.5rem;
+        text-align: left;
+        box-sizing: border-box;
+    }
+
+    .cap-card {
+        background: rgba(18, 18, 24, 0.65);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid rgba(255, 255, 255, 0.07);
+        border-radius: var(--r-lg);
+        padding: 1.35rem 1.5rem;
+        transition: border-color var(--t), background-color var(--t);
+        box-sizing: border-box;
+    }
+
+    .cap-card:hover {
+        border-color: rgba(255, 255, 255, 0.14);
+        background: rgba(23, 23, 30, 0.75);
+    }
+
+    .cap-title {
+        font-size: 0.9375rem;
+        font-weight: 600;
+        color: var(--text);
+        margin-bottom: 0.45rem;
+    }
+
+    .cap-desc {
+        font-size: 0.8125rem;
+        color: var(--text-mid);
+        line-height: 1.55;
+    }
+
+    /* Presets Bar */
+    .presets-banner {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        justify-content: center;
+        padding-top: 1.25rem;
+        border-top: 1px solid rgba(255, 255, 255, 0.06);
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    .presets-label {
+        font-size: 0.75rem;
+        font-weight: 500;
+        color: var(--text-faint);
+    }
+
+    .preset-tag {
+        display: inline-block;
+        padding: 0.2rem 0.6rem;
+        border-radius: var(--r-sm);
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        color: var(--text-mid);
+        font-size: 0.75rem;
+    }
+
+    /* Mobile Responsive Breakpoints */
+    @@media (max-width: 840px) {
+        .capabilities-grid {
+            grid-template-columns: 1fr;
+            gap: 0.85rem;
+        }
+
+        .cap-card {
+            padding: 1.15rem 1.25rem;
+        }
+    }
+
+    @@media (max-width: 640px) {
+        .hero-wrap {
+            padding: 2rem 0.85rem 2.75rem;
+        }
+
+        .quick-join-card {
+            padding: 1.1rem 1rem;
+            border-radius: var(--r);
+            margin-bottom: 1.75rem;
+        }
+
+        .quick-join-row {
+            flex-direction: column;
+            gap: 0.55rem;
+        }
+
+        .btn-quick-join {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            font-size: 0.9375rem;
+        }
+
+        .hero-actions {
+            flex-direction: column;
+            width: 100%;
+            max-width: 320px;
+            gap: 0.65rem;
+            margin-bottom: 2.25rem;
+        }
+
+        .btn-action-primary,
+        .btn-action-secondary,
+        .btn-action-google {
+            width: 100%;
+            justify-content: center;
+            text-align: center;
+            padding: 0.75rem 1rem;
+            font-size: 0.9rem;
+            box-sizing: border-box;
+        }
+
+        .presets-banner {
+            gap: 0.35rem;
+            padding-top: 1rem;
+        }
+
+        .presets-label {
+            width: 100%;
+            text-align: center;
+            margin-bottom: 0.25rem;
+        }
+
+        .preset-tag {
+            font-size: 0.72rem;
+            padding: 0.25rem 0.55rem;
+        }
+    }
 </style>
 
 @code {
     private bool IsAuthenticated { get; set; }
+    private string JoinCodeInput { get; set; } = string.Empty;
+    private string? JoinError { get; set; }
 
     protected override async Task OnInitializedAsync()
     {
@@ -143,8 +490,33 @@
         IsAuthenticated = user != null;
     }
 
-    // The landing page has always sent signed in users to "/dashboard", which is
-    // not a route anybody is routed to. Roles each have their own home.
+    private void SubmitQuickJoin()
+    {
+        if (string.IsNullOrWhiteSpace(JoinCodeInput)) return;
+
+        var clean = JoinCodeInput.Trim();
+        if (clean.Contains("/join/"))
+        {
+            clean = clean.Substring(clean.LastIndexOf("/join/") + 6);
+        }
+        else if (clean.Contains("/session/"))
+        {
+            clean = clean.Substring(clean.LastIndexOf("/session/") + 9);
+            Navigation.NavigateTo($"/session/{clean}");
+            return;
+        }
+
+        Navigation.NavigateTo($"/join/{clean}");
+    }
+
+    private void HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            SubmitQuickJoin();
+        }
+    }
+
     private void GoDashboard()
     {
         var role = AuthService.CurrentRole();
@@ -153,12 +525,13 @@
         {
             Role.Admin    => "/admin",
             Role.Student  => "/student/home",
-            _             => "/lecturer/home",
+            _             => "/classes",
         };
 
         Navigation.NavigateTo(target);
     }
 
-    private void GoSignUp() => Navigation.NavigateTo("/signup");
-    private void GoLogin()  => Navigation.NavigateTo("/login");
+    private void GoNewSession() => Navigation.NavigateTo("/create-session");
+    private void GoSignUp()     => Navigation.NavigateTo("/signup");
+    private void GoLogin()      => Navigation.NavigateTo("/login");
 }

@@ -7,9 +7,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <base href="/" />
     <link rel="stylesheet" href="lib/bootstrap/dist/css/bootstrap.min.css" />
-    <link rel="stylesheet" href="css/site.css" />
-    <link rel="stylesheet" href="css/auth.css" />
-    <link rel="stylesheet" href="VIIDII.styles.css" />
+    <link rel="stylesheet" href="css/site.css?v=20261015f" />
+    <link rel="stylesheet" href="css/auth.css?v=20261015f" />
+    <link rel="stylesheet" href="VIIDII.styles.css?v=20261015f" />
     <link rel="icon" type="image/x-icon" href="favicon.ico" />
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
@@ -39,12 +39,13 @@
     <script src="lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
     <script src="_framework/blazor.web.js"></script>
     <script src="lib/signalr/signalr.min.js"></script>
-    <script src="js/sessionInterop.js?v=20261013d"></script>
+    <script src="js/sessionInterop.js?v=20261015e"></script>
 @* PeerJS is no longer loaded. The peer-to-peer mesh it provided required the free
    public 0.peerjs.com cloud for signalling, had no relay fallback, and the code had
    no way to point it anywhere else. It failed on every real phone. LiveKit replaces
    it and brings its own signalling and relays. *@
-    <script src="js/livekitInterop.js?v=20261013d"></script>
+    <script src="js/livekitInterop.js?v=20261015e"></script>
+    <script src="js/captionInterop.js?v=20261015e"></script>
     <script src="js/viidii-ui.js?v=20261013d"></script>
 
 

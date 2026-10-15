@@ -1,0 +1,21 @@
+/* SessionLayout.razor.css — Full bleed dynamic viewport wrapper */
+
+.session-page {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh;
+    max-height: 100dvh;
+    width: 100%;
+    overflow: hidden;
+    background: var(--bg);
+}
+
+.session-page > main {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
+}
