@@ -4,128 +4,361 @@
 @inject AuthService AuthService
 @inject SessionService SessionService
 @inject NavigationManager Navigation
+@inject Microsoft.JSInterop.IJSRuntime JSRuntime
+@using Microsoft.JSInterop
 @using VIIDII.Models
 @using VIIDII.Services
 
-<PageTitle>Session Recap - @SessionId</PageTitle>
+<PageTitle>Session Recap - @(Session?.Title ?? SessionId)</PageTitle>
 
-@if (CurrentUser is null)
-{
-    <div class="alert alert-warning" style="margin:2rem auto;max-width:640px;">Please log in first.</div>
-}
-else if (Session is null)
-{
-    <div class="alert alert-danger" style="margin:2rem auto;max-width:640px;">Session not found.</div>
-}
-else if (!CanViewRecap)
-{
-    <div class="alert alert-warning" style="margin:2rem auto;max-width:640px;">Access denied.</div>
-}
-else
-{
-    <div class="session-recap container py-4">
-        <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
-            <div>
-                <h1 class="mb-1">@Session.Title</h1>
-                <div class="text-muted">Session ended @Session.EndTime?.ToString("g")</div>
-            </div>
-            <div class="d-flex align-items-center gap-2">
-                <a href="/api/session/@SessionId/attendance/csv" download class="btn btn-outline-secondary btn-sm">
-                    <i class="fas fa-file-csv me-1"></i> Export Attendance CSV
-                </a>
-                <div class="badge bg-secondary">@Session.Status</div>
-                <div class="text-muted small font-monospace">@Session.SessionId</div>
-            </div>
-        </div>
-
-        <div class="row g-3 mb-4">
-            <div class="col-md-4">
-                <div class="card h-100">
-                    <div class="card-body">
-                        <div class="text-muted small text-uppercase">Average Attendance Score</div>
-                        <div class="display-6">@AverageAttendanceScore.ToString("F1")%</div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card h-100">
-                    <div class="card-body">
-                        <div class="text-muted small text-uppercase">Participants Above 70%</div>
-                        <div class="display-6">@ParticipantsAbove70Percent</div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card h-100">
-                    <div class="card-body">
-                        <div class="text-muted small text-uppercase">Most Common Penalty</div>
-                        <div class="display-6 fs-4">@MostCommonPenaltyReason</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        @if (Scores.Count == 0)
+<div class="session-recap-wrap">
+    <div class="recap-container">
+        @if (CurrentUser is null)
         {
-            <div class="alert alert-info">No attendance data available for this session.</div>
+            <div class="recap-alert">
+                <h3><i class="fas fa-lock me-2 text-warning"></i> Please Log In</h3>
+                <p>You need to be logged in to view session recap details.</p>
+                <a href="/login" class="btn btn-primary mt-2">Log In</a>
+            </div>
+        }
+        else if (Session is null && !_isLoaded)
+        {
+            <div class="recap-alert">
+                <div class="spinner mb-3"></div>
+                <h3>Loading Session Summary...</h3>
+                <p>Fetching attendance records and duration logs.</p>
+            </div>
+        }
+        else if (Session is null)
+        {
+            <div class="recap-alert">
+                <h3><i class="fas fa-exclamation-triangle me-2 text-danger"></i> Session Not Found</h3>
+                <p>The requested session ID <code>@SessionId</code> was not found.</p>
+                <button class="btn btn-secondary mt-2" @onclick="GoBack">Back to Dashboard</button>
+            </div>
+        }
+        else if (!CanViewRecap)
+        {
+            <div class="recap-alert">
+                <h3><i class="fas fa-shield-alt me-2 text-warning"></i> Access Denied</h3>
+                <p>Only the lecturer who hosted this session can view the attendance recap.</p>
+                <button class="btn btn-secondary mt-2" @onclick="GoBack">Back to Dashboard</button>
+            </div>
         }
         else
         {
-            <div class="card">
-                <div class="card-header">
-                    Attendance Breakdown
+            <!-- Back navigation link -->
+            <a href="/dashboard" class="recap-back">
+                <i class="fas fa-arrow-left"></i> Back to Dashboard
+            </a>
+
+            <!-- Header Section -->
+            <div class="recap-header">
+                <div class="recap-title-area">
+                    <h1>@Session.Title</h1>
+                    <div class="recap-meta">
+                        <span class="recap-meta-item">
+                            <i class="far fa-clock"></i>
+                            @(Session.StartTime.ToString("MMM d, yyyy · h:mm tt"))
+                        </span>
+                        <span class="recap-meta-item">
+                            <i class="fas fa-stopwatch"></i>
+                            @(Session.EndTime.HasValue ? $"Ended {Session.EndTime.Value:h:mm tt} ({TotalDurationText})" : "Active / Live")
+                        </span>
+                        @if (Session.ClassId is int cid && cid > 0)
+                        {
+                            <span class="recap-meta-item">
+                                <i class="fas fa-chalkboard"></i>
+                                Class Session
+                            </span>
+                        }
+                    </div>
                 </div>
-                <div class="table-responsive">
-                    <table class="table table-striped table-hover mb-0">
-                        <thead>
-                            <tr>
-                                <th>Participant</th>
-                                <th>Score (%)</th>
-                                <th>Status / Grace</th>
-                                <th>Active (min)</th>
-                                <th>Inactive (min)</th>
-                                <th>Battery Low (min)</th>
-                                <th>Data Finished (min)</th>
-                                <th>Disconnected (min)</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var scoreEntry in Scores.OrderByDescending(s => s.Value.FinalScorePercentage))
-                            {
-                                var details = scoreEntry.Value;
-                                <tr>
-                                    <td>@details.ParticipantName (@details.ParticipantId)</td>
-                                    <td>@details.FinalScorePercentage.ToString("F1")</td>
-                                    <td>
-                                        @if (!string.IsNullOrWhiteSpace(details.GraceReason))
-                                        {
-                                            <span class="badge @(details.GraceReason.StartsWith("Excused") ? "badge-warning" : "badge-success")">
-                                                @details.GraceReason
-                                            </span>
-                                        }
-                                        else
-                                        {
-                                            <span class="text-muted">-</span>
-                                        }
-                                    </td>
-                                    <td>@details.TimeActiveMinutes.ToString("F1")</td>
-                                    <td>@details.TimeInactiveMinutes.ToString("F1")</td>
-                                    <td>@details.TimeBatteryLowMinutes.ToString("F1")</td>
-                                    <td>@details.TimeDataFinishedMinutes.ToString("F1")</td>
-                                    <td>@details.TimeDisconnectedMinutes.ToString("F1")</td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
+
+                <div class="recap-actions">
+                    <button class="btn-export-csv" @onclick="ExportCsv" title="Export complete audit CSV to your device">
+                        <i class="fas fa-file-csv"></i>
+                        <span>Export CSV</span>
+                    </button>
+                    <span class="status-pill @(Session.Status == SessionStatus.Ended ? "status-ended" : "status-active")">
+                        @(Session.Status)
+                    </span>
+                    <span class="session-code-chip" title="Session Code">
+                        <i class="fas fa-hashtag"></i>
+                        @Session.SessionId
+                    </span>
                 </div>
             </div>
-        }
 
-        <div class="mt-4">
-            <button class="btn btn-primary" @onclick="GoBack">Back to dashboard</button>
-        </div>
+            <!-- KPI Summary Cards -->
+            <div class="kpi-grid">
+                <!-- 1. Average Attendance Score -->
+                <div class="kpi-card @GetAverageKpiAccentClass()">
+                    <div class="kpi-label">
+                        <i class="fas fa-chart-line"></i> Average Attendance
+                    </div>
+                    <div class="kpi-value @GetAverageScoreColorClass()">
+                        @AverageAttendanceScore.ToString("F1")%
+                    </div>
+                    <div class="kpi-sub">
+                        @GetAverageAttendanceDescription()
+                    </div>
+                </div>
+
+                <!-- 2. Qualified Attendees (>= 70%) -->
+                <div class="kpi-card accent-emerald">
+                    <div class="kpi-label">
+                        <i class="fas fa-user-check"></i> Qualified (Score &ge; 70%)
+                    </div>
+                    <div class="kpi-value">
+                        @ParticipantsAbove70Percent
+                        <span class="kpi-total-denom">/ @Scores.Count</span>
+                    </div>
+                    <div class="kpi-sub">
+                        @(Scores.Count > 0 ? $"{(ParticipantsAbove70Percent * 100 / Scores.Count)}% of attendees passed threshold" : "0 attendees recorded")
+                    </div>
+                </div>
+
+                <!-- 3. Total Session Duration -->
+                <div class="kpi-card accent-blue">
+                    <div class="kpi-label">
+                        <i class="fas fa-hourglass-half"></i> Total Duration
+                    </div>
+                    <div class="kpi-value">
+                        @TotalDurationText
+                    </div>
+                    <div class="kpi-sub">
+                        Live stream and participant window
+                    </div>
+                </div>
+
+                <!-- 4. Most Common Penalty Flag -->
+                <div class="kpi-card @(MostCommonPenaltyReason == "None" ? "accent-emerald" : "accent-amber")">
+                    <div class="kpi-label">
+                        <i class="fas fa-exclamation-circle"></i> Primary Issue Flag
+                    </div>
+                    <div class="kpi-value fs-4" style="font-size: 1.4rem;">
+                        @MostCommonPenaltyReason
+                    </div>
+                    <div class="kpi-sub">
+                        @MostCommonPenaltyDetail
+                    </div>
+                </div>
+            </div>
+
+            @if (Scores.Count == 0)
+            {
+                <div class="breakdown-card">
+                    <div class="recap-empty">
+                        <i class="fas fa-users-slash"></i>
+                        <h3>No Attendance Records Found</h3>
+                        <p>No participant interactions or presence ticks were recorded for this session.</p>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <!-- Search & Filters -->
+                <div class="table-controls">
+                    <div class="search-box">
+                        <i class="fas fa-search"></i>
+                        <input type="text"
+                               class="search-input"
+                               placeholder="Search attendee by name or matric number..."
+                               @bind="_searchTerm"
+                               @bind:event="oninput" />
+                    </div>
+
+                    <div class="filter-pills">
+                        <button type="button"
+                                class="filter-pill @(_activeFilter == "all" ? "active" : "")"
+                                @onclick='() => _activeFilter = "all"'>
+                            All (@Scores.Count)
+                        </button>
+                        <button type="button"
+                                class="filter-pill @(_activeFilter == "qualified" ? "active" : "")"
+                                @onclick='() => _activeFilter = "qualified"'>
+                            Qualified (@ParticipantsAbove70Percent)
+                        </button>
+                        <button type="button"
+                                class="filter-pill @(_activeFilter == "at-risk" ? "active" : "")"
+                                @onclick='() => _activeFilter = "at-risk"'>
+                            At Risk (@(Scores.Count - ParticipantsAbove70Percent))
+                        </button>
+                        <button type="button"
+                                class="filter-pill @(_activeFilter == "issues" ? "active" : "")"
+                                @onclick='() => _activeFilter = "issues"'>
+                            Issues / Excused (@PenalizedOrExcusedCount)
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Attendance Breakdown Table -->
+                <div class="breakdown-card">
+                    <div class="breakdown-header">
+                        <h2>
+                            <i class="fas fa-list-check"></i>
+                            Attendance & Engagement Breakdown
+                        </h2>
+                        <span class="breakdown-count">
+                            Showing @FilteredScores.Count() of @Scores.Count attendees
+                        </span>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="recap-table">
+                            <thead>
+                                <tr>
+                                    <th>Participant</th>
+                                    <th>Score</th>
+                                    <th>Status / Grace</th>
+                                    <th>Active</th>
+                                    <th>Inactive</th>
+                                    <th>Battery Low</th>
+                                    <th>Poor Network</th>
+                                    <th>Disconnected</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (!FilteredScores.Any())
+                                {
+                                    <tr>
+                                        <td colspan="8" class="text-center py-4" style="color: #94A3B8;">
+                                            No attendees match your search filter "@_searchTerm".
+                                        </td>
+                                    </tr>
+                                }
+                                else
+                                {
+                                    @foreach (var entry in FilteredScores)
+                                    {
+                                        var details = entry.Value;
+                                        <tr>
+                                            <!-- Participant Name & ID -->
+                                            <td>
+                                                <div class="participant-cell">
+                                                    <div class="participant-avatar">
+                                                        @GetInitials(details.ParticipantName)
+                                                    </div>
+                                                    <div class="participant-meta">
+                                                        <span class="participant-name">@details.ParticipantName</span>
+                                                        <span class="participant-id">@details.ParticipantId</span>
+                                                    </div>
+                                                </div>
+                                            </td>
+
+                                            <!-- Final Score Badge -->
+                                            <td>
+                                                <span class="score-pill @GetScoreBadgeClass(details.FinalScorePercentage)">
+                                                    <i class="fas fa-@(details.FinalScorePercentage >= 70 ? "check" : details.FinalScorePercentage >= 50 ? "exclamation" : "times")"></i>
+                                                    @details.FinalScorePercentage.ToString("F1")%
+                                                </span>
+                                            </td>
+
+                                            <!-- Status / Grace Reason -->
+                                            <td>
+                                                @if (!string.IsNullOrWhiteSpace(details.GraceReason))
+                                                {
+                                                    <span class="grace-pill excused" title="@details.GraceReason">
+                                                        <i class="fas fa-shield-heart"></i>
+                                                        @details.GraceReason
+                                                    </span>
+                                                }
+                                                else if (details.FinalScorePercentage >= 70)
+                                                {
+                                                    <span class="grace-pill regular">
+                                                        <i class="fas fa-check-circle"></i> Full Presence
+                                                    </span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="grace-dash">—</span>
+                                                }
+                                            </td>
+
+                                            <!-- Active Minutes -->
+                                            <td>
+                                                <span class="time-val active-time">
+                                                    @details.TimeActiveMinutes.ToString("F1")m
+                                                </span>
+                                            </td>
+
+                                            <!-- Inactive Minutes -->
+                                            <td>
+                                                @if (details.TimeInactiveMinutes > 0)
+                                                {
+                                                    <span class="time-val penalty-time" title="Tab was minimized or lost focus">
+                                                        @details.TimeInactiveMinutes.ToString("F1")m
+                                                    </span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="time-val zero-time">0.0m</span>
+                                                }
+                                            </td>
+
+                                            <!-- Battery Low Minutes -->
+                                            <td>
+                                                @if (details.TimeBatteryLowMinutes > 0)
+                                                {
+                                                    <span class="time-val penalty-time" title="Device reported battery under 15%">
+                                                        @details.TimeBatteryLowMinutes.ToString("F1")m
+                                                    </span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="time-val zero-time">0.0m</span>
+                                                }
+                                            </td>
+
+                                            <!-- Poor Network / Data Finished Minutes -->
+                                            <td>
+                                                @if (details.TimeDataFinishedMinutes > 0)
+                                                {
+                                                    <span class="time-val danger-time" title="Network was slow-2g or RTT &gt; 2000ms">
+                                                        @details.TimeDataFinishedMinutes.ToString("F1")m
+                                                    </span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="time-val zero-time">0.0m</span>
+                                                }
+                                            </td>
+
+                                            <!-- Disconnected Minutes -->
+                                            <td>
+                                                @if (details.TimeDisconnectedMinutes > 0)
+                                                {
+                                                    <span class="time-val danger-time" title="Connection was severed">
+                                                        @details.TimeDisconnectedMinutes.ToString("F1")m
+                                                    </span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="time-val zero-time">0.0m</span>
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            }
+
+            <!-- Bottom Dashboard Action -->
+            <div class="recap-footer-actions">
+                <button type="button" class="btn-back-dashboard" @onclick="GoBack">
+                    <i class="fas fa-th-large"></i> Back to Dashboard
+                </button>
+                <button type="button" class="btn-export-csv" @onclick="ExportCsv">
+                    <i class="fas fa-download"></i> Download Audit CSV
+                </button>
+            </div>
+        }
     </div>
-}
+</div>
 
 @code {
     [Parameter] public string SessionId { get; set; } = string.Empty;
@@ -134,43 +367,196 @@ else
     private Session? Session;
     private Dictionary<string, SessionService.ParticipantScoreDetails> Scores = new();
     private double AverageAttendanceScore;
-    private string MostCommonPenaltyReason = "N/A";
+    private string MostCommonPenaltyReason = "None";
+    private string MostCommonPenaltyDetail = "Zero penalties detected";
     private int ParticipantsAbove70Percent;
+    private int PenalizedOrExcusedCount;
     private bool CanViewRecap;
+    private bool _isLoaded;
+    private string _searchTerm = "";
+    private string _activeFilter = "all";
 
     protected override async Task OnInitializedAsync()
     {
-        CurrentUser = await AuthService.GetCurrentUserAsync();
-        if (CurrentUser is null)
+        try
         {
-            Navigation.NavigateTo("/login");
-            return;
-        }
-
-        Session = await SessionService.GetSessionByIdAsync(SessionId);
-        CanViewRecap = Session is not null && CurrentUser.Role == Role.Lecturer && Session.LecturerMatricNo == CurrentUser.MatricNo;
-        if (!CanViewRecap || Session is null)
-        {
-            return;
-        }
-
-        Scores = await SessionService.CalculateAttendanceScoreFromPersistenceAsync(SessionId);
-        if (Scores.Count > 0)
-        {
-            AverageAttendanceScore = Scores.Values.Average(s => s.FinalScorePercentage);
-            ParticipantsAbove70Percent = Scores.Values.Count(s => s.FinalScorePercentage >= 70);
-            var penaltyCounts = new Dictionary<string, int>();
-            foreach (var scoreDetail in Scores.Values)
+            CurrentUser = await AuthService.GetCurrentUserAsync();
+            if (CurrentUser is null)
             {
-                if (scoreDetail.TimeInactiveMinutes > 0) penaltyCounts["Inactive"] = penaltyCounts.GetValueOrDefault("Inactive") + 1;
-                if (scoreDetail.TimeBatteryLowMinutes > 0) penaltyCounts["Battery Low"] = penaltyCounts.GetValueOrDefault("Battery Low") + 1;
-                if (scoreDetail.TimeDataFinishedMinutes > 0) penaltyCounts["Data Finished"] = penaltyCounts.GetValueOrDefault("Data Finished") + 1;
-                if (scoreDetail.TimeDisconnectedMinutes > 0) penaltyCounts["Disconnected"] = penaltyCounts.GetValueOrDefault("Disconnected") + 1;
+                Navigation.NavigateTo("/login");
+                return;
             }
 
-            MostCommonPenaltyReason = penaltyCounts.Count > 0
-                ? penaltyCounts.OrderByDescending(kvp => kvp.Value).First().Key
-                : "N/A";
+            Session = await SessionService.GetSessionByIdAsync(SessionId);
+            CanViewRecap = Session is not null && CurrentUser.Role == Role.Lecturer && Session.LecturerMatricNo == CurrentUser.MatricNo;
+            if (!CanViewRecap || Session is null)
+            {
+                _isLoaded = true;
+                return;
+            }
+
+            // Load persisted scores first, with fallback to in-memory scores if session ended recently
+            Scores = await SessionService.CalculateAttendanceScoreFromPersistenceAsync(SessionId);
+            if (Scores.Count == 0)
+            {
+                Scores = SessionService.CalculateAttendanceScore(SessionId);
+            }
+
+            if (Scores.Count > 0)
+            {
+                AverageAttendanceScore = Scores.Values.Average(s => s.FinalScorePercentage);
+                ParticipantsAbove70Percent = Scores.Values.Count(s => s.FinalScorePercentage >= 70);
+
+                PenalizedOrExcusedCount = Scores.Values.Count(s =>
+                    !string.IsNullOrWhiteSpace(s.GraceReason) ||
+                    s.TimeBatteryLowMinutes > 0 ||
+                    s.TimeDataFinishedMinutes > 0 ||
+                    s.TimeDisconnectedMinutes > 0 ||
+                    s.TimeInactiveMinutes > 0);
+
+                var penaltyCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                foreach (var scoreDetail in Scores.Values)
+                {
+                    if (scoreDetail.TimeInactiveMinutes > 0) 
+                        penaltyCounts["Background Tab"] = penaltyCounts.GetValueOrDefault("Background Tab") + 1;
+                    if (scoreDetail.TimeBatteryLowMinutes > 0) 
+                        penaltyCounts["Low Battery"] = penaltyCounts.GetValueOrDefault("Low Battery") + 1;
+                    if (scoreDetail.TimeDataFinishedMinutes > 0) 
+                        penaltyCounts["Poor Network"] = penaltyCounts.GetValueOrDefault("Poor Network") + 1;
+                    if (scoreDetail.TimeDisconnectedMinutes > 0) 
+                        penaltyCounts["Disconnected"] = penaltyCounts.GetValueOrDefault("Disconnected") + 1;
+                }
+
+                if (penaltyCounts.Count > 0)
+                {
+                    var top = penaltyCounts.OrderByDescending(kvp => kvp.Value).First();
+                    MostCommonPenaltyReason = top.Key;
+                    MostCommonPenaltyDetail = $"{top.Value} attendee(s) affected";
+                }
+                else
+                {
+                    MostCommonPenaltyReason = "None";
+                    MostCommonPenaltyDetail = "All attendees maintained normal presence";
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SessionRecap] Error loading summary: {ex.Message}");
+        }
+        finally
+        {
+            _isLoaded = true;
+        }
+    }
+
+    private IEnumerable<KeyValuePair<string, SessionService.ParticipantScoreDetails>> FilteredScores
+    {
+        get
+        {
+            var list = Scores.AsEnumerable();
+
+            if (!string.IsNullOrWhiteSpace(_searchTerm))
+            {
+                var term = _searchTerm.Trim();
+                list = list.Where(s =>
+                    (s.Value.ParticipantName != null && s.Value.ParticipantName.Contains(term, StringComparison.OrdinalIgnoreCase)) ||
+                    (s.Value.ParticipantId != null && s.Value.ParticipantId.Contains(term, StringComparison.OrdinalIgnoreCase)));
+            }
+
+            list = _activeFilter switch
+            {
+                "qualified" => list.Where(s => s.Value.FinalScorePercentage >= 70),
+                "at-risk" => list.Where(s => s.Value.FinalScorePercentage < 70),
+                "issues" => list.Where(s =>
+                    !string.IsNullOrWhiteSpace(s.Value.GraceReason) ||
+                    s.Value.TimeBatteryLowMinutes > 0 ||
+                    s.Value.TimeDataFinishedMinutes > 0 ||
+                    s.Value.TimeDisconnectedMinutes > 0 ||
+                    s.Value.TimeInactiveMinutes > 0),
+                _ => list
+            };
+
+            return list.OrderByDescending(s => s.Value.FinalScorePercentage);
+        }
+    }
+
+    private string TotalDurationText
+    {
+        get
+        {
+            if (Session == null) return "—";
+            var end = Session.EndTime ?? DateTime.UtcNow;
+            var start = Session.StartTime;
+            var duration = end - start;
+            if (duration.TotalMinutes < 1) return "< 1 min";
+            if (duration.TotalHours < 1) return $"{(int)duration.TotalMinutes} mins";
+            return $"{(int)duration.TotalHours}h {duration.Minutes}m";
+        }
+    }
+
+    private string GetAverageKpiAccentClass()
+    {
+        if (AverageAttendanceScore >= 70) return "accent-emerald";
+        if (AverageAttendanceScore >= 50) return "accent-amber";
+        return "accent-purple";
+    }
+
+    private string GetAverageScoreColorClass()
+    {
+        if (AverageAttendanceScore >= 70) return "val-emerald";
+        if (AverageAttendanceScore >= 50) return "val-amber";
+        return "val-rose";
+    }
+
+    private string GetAverageAttendanceDescription()
+    {
+        if (Scores.Count == 0) return "No attendance recorded";
+        if (AverageAttendanceScore >= 80) return "High overall engagement across lecture";
+        if (AverageAttendanceScore >= 70) return "Good engagement meeting lecture goals";
+        if (AverageAttendanceScore >= 50) return "Moderate engagement with drop-offs";
+        return "Low engagement - review issue flags";
+    }
+
+    private string GetScoreBadgeClass(double score)
+    {
+        if (score >= 70) return "score-high";
+        if (score >= 50) return "score-mid";
+        return "score-low";
+    }
+
+    private string GetInitials(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "?";
+        var clean = System.Text.RegularExpressions.Regex.Replace(name, @"[^\w\s]", "").Trim();
+        var parts = clean.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0) return "?";
+        if (parts.Length == 1) return parts[0].Substring(0, Math.Min(2, parts[0].Length)).ToUpper();
+        return (parts[0][0].ToString() + parts[^1][0].ToString()).ToUpper();
+    }
+
+    private async Task ExportCsv()
+    {
+        if (Scores.Count == 0) return;
+
+        try
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("Participant Name,Matric / ID,Score (%),Status / Grace,Active (min),Inactive (min),Battery Low (min),Poor Network (min),Disconnected (min)");
+            foreach (var entry in Scores.OrderByDescending(s => s.Value.FinalScorePercentage))
+            {
+                var d = entry.Value;
+                sb.AppendLine($"\"{d.ParticipantName.Replace("\"", "\"\"")}\",\"{d.ParticipantId}\",{d.FinalScorePercentage:F1},\"{d.GraceReason?.Replace("\"", "\"\"") ?? "Normal"}\",{d.TimeActiveMinutes:F1},{d.TimeInactiveMinutes:F1},{d.TimeBatteryLowMinutes:F1},{d.TimeDataFinishedMinutes:F1},{d.TimeDisconnectedMinutes:F1}");
+            }
+
+            var fileName = $"{SessionId}_attendance_recap.csv";
+            await JSRuntime.InvokeVoidAsync("downloadTextFile", fileName, sb.ToString(), "text/csv");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SessionRecap] Error exporting CSV: {ex.Message}");
+            // Fallback: navigate to server endpoint
+            Navigation.NavigateTo($"/api/session/{SessionId}/attendance/csv", forceLoad: true);
         }
     }
 

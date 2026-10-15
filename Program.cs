@@ -529,6 +529,36 @@ app.MapLiveKitEndpoints();
 app.MapAttendeeEndpoints();
 app.MapPaymentWebhookEndpoints();
 
+app.MapGet("/api/session/{sessionId}/attendance/csv", async (
+    string sessionId,
+    SessionService sessionService,
+    AuthService authService) =>
+{
+    var user = await authService.GetCurrentUserAsync();
+    var session = await sessionService.GetSessionByIdAsync(sessionId);
+    if (session == null) return Results.NotFound("Session not found");
+    if (user == null || user.Role != Role.Lecturer || session.LecturerMatricNo != user.MatricNo)
+    {
+        return Results.Forbid();
+    }
+
+    var scores = await sessionService.CalculateAttendanceScoreFromPersistenceAsync(sessionId);
+    if (scores.Count == 0)
+    {
+        scores = sessionService.CalculateAttendanceScore(sessionId);
+    }
+
+    var sb = new System.Text.StringBuilder();
+    sb.AppendLine("Participant Name,Matric / ID,Score (%),Status / Grace,Active (min),Inactive (min),Battery Low (min),Poor Network (min),Disconnected (min)");
+    foreach (var score in scores.Values.OrderByDescending(s => s.FinalScorePercentage))
+    {
+        sb.AppendLine($"\"{score.ParticipantName.Replace("\"", "\"\"")}\",\"{score.ParticipantId}\",{score.FinalScorePercentage:F1},\"{score.GraceReason?.Replace("\"", "\"\"") ?? "Normal"}\",{score.TimeActiveMinutes:F1},{score.TimeInactiveMinutes:F1},{score.TimeBatteryLowMinutes:F1},{score.TimeDataFinishedMinutes:F1},{score.TimeDisconnectedMinutes:F1}");
+    }
+
+    var bytes = System.Text.Encoding.UTF8.GetBytes(sb.ToString());
+    return Results.File(bytes, "text/csv", $"{sessionId}_attendance_{DateTime.UtcNow:yyyyMMdd_HHmm}.csv");
+});
+
 // ---------------------------------------------------------------------------
 // ICE / TURN configuration for the browser.
 //
