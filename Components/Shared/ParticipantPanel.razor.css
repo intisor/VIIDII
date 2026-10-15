@@ -433,32 +433,11 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    border-left: 3px solid var(--border-mid);
     transition: all var(--t);
 }
 
 .participant-item:hover {
     border-color: var(--border-strong);
-}
-
-.participant-item.status-active {
-    border-left-color: var(--success);
-}
-
-.participant-item.status-inactive {
-    border-left-color: var(--warning);
-}
-
-.participant-item.status-batterylow {
-    border-left-color: var(--warning);
-}
-
-.participant-item.status-datafinished {
-    border-left-color: var(--danger);
-}
-
-.participant-item.status-disconnected {
-    border-left-color: var(--text-faint);
 }
 
 .participant-info {

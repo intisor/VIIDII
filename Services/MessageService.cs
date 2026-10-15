@@ -50,6 +50,12 @@ namespace VIIDII.Services
     {
         private static readonly ConcurrentDictionary<string, List<Message>> _sessionMessages = new(StringComparer.OrdinalIgnoreCase);
         private static readonly object _lock = new();
+        private readonly TimeProvider _clock;
+
+        public MessageService(TimeProvider? clock = null)
+        {
+            _clock = clock ?? TimeProvider.System;
+        }
 
         public Task<Message> CreatePostAsync(
             string sessionId,
@@ -73,7 +79,7 @@ namespace VIIDII.Services
                 isLecturerPost = isLecturer,
                 isComment = false,
                 messageType = isFile ? MessageType.File : MessageType.Text,
-                createdAt = DateTime.UtcNow,
+                createdAt = _clock.GetUtcNow().UtcDateTime,
                 fileName = fileName,
                 fileUrl = fileUrl,
                 fileSizeBytes = fileSizeBytes,
@@ -105,7 +111,7 @@ namespace VIIDII.Services
                 isLecturerPost = isLecturer,
                 isComment = true,
                 messageType = MessageType.Text,
-                createdAt = DateTime.UtcNow
+                createdAt = _clock.GetUtcNow().UtcDateTime
             };
 
             lock (_lock)
@@ -142,7 +148,7 @@ namespace VIIDII.Services
                         {
                             UserId = userId,
                             Emoji = emoji,
-                            Timestamp = DateTime.UtcNow
+                            Timestamp = _clock.GetUtcNow().UtcDateTime
                         });
                         return Task.FromResult(true);
                     }

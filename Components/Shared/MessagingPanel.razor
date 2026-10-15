@@ -3,6 +3,7 @@
 @using Microsoft.JSInterop
 @using Microsoft.AspNetCore.Components.Forms
 @inject IJSRuntime JSRuntime
+@inject TimeProvider TimeProvider
 
 <div class="messaging-panel">
     <!-- Tab Filter Bar -->
@@ -779,10 +780,13 @@
 
     private string FormatTimestamp(DateTime timestamp)
     {
-        var now = DateTime.UtcNow.AddHours(1);
-        var diff = now - timestamp;
+        var now = TimeProvider.GetUtcNow().UtcDateTime;
+        var utcTimestamp = timestamp.Kind == DateTimeKind.Utc 
+            ? timestamp 
+            : DateTime.SpecifyKind(timestamp, DateTimeKind.Utc);
+        var diff = now - utcTimestamp;
 
-        if (diff.TotalMinutes < 1) return "Just now";
+        if (diff.TotalSeconds < 60) return "Just now";
         if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes}m ago";
         if (diff.TotalHours < 24) return $"{(int)diff.TotalHours}h ago";
         return timestamp.ToString("MMM d, h:mm tt");

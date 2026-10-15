@@ -523,9 +523,9 @@ h1, h2, h3, h4 { font-weight: 600; line-height: 1.25; color: var(--text); }
 /* ── List Groups ─────────────────────────────────────── */
 .list-group-item          { background: var(--surface-up); border: 1px solid var(--border); color: var(--text); padding: 0.7rem 1rem; border-radius: var(--r-sm); }
 .list-group-item i        { margin-right: 0.5rem; }
-.list-group-item-success  { border-left: 3px solid var(--success) !important; }
-.list-group-item-warning  { border-left: 3px solid var(--warning) !important; }
-.list-group-item-danger   { border-left: 3px solid var(--danger) !important; }
+.list-group-item-success  { border-color: rgba(34, 197, 94, 0.35) !important; }
+.list-group-item-warning  { border-color: rgba(245, 158, 11, 0.35) !important; }
+.list-group-item-danger   { border-color: rgba(239, 68, 68, 0.35) !important; }
 .list-group-item-secondary{ opacity: 0.55; }
 
 /* ── Footer ──────────────────────────────────────────── */
