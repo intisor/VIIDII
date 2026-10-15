@@ -381,23 +381,26 @@ else
                 {
                     <div class="side-panel">
                         <div class="tab-section">
-                            <!-- Tab Headers -->
-                            <div class="tab-headers">
-                                <button class="tab-header @(State.ActiveTab == "messages" ? "active" : "")" 
-                                        @onclick='() => State.SetTab("messages")'>
-                                    <i class="fas fa-comments"></i>
-                                    <span>Messages</span>
-                                </button>
-                                <button class="tab-header @(State.ActiveTab == "participants" ? "active" : "")" 
-                                        @onclick='() => State.SetTab("participants")'>
-                                    <i class="fas fa-users"></i>
-                                    <span>Participants (@State.ParticipantCount)</span>
-                                </button>
-                            </div>
+                            <!-- Tab Headers (Lecturer Only) -->
+                            @if (State.IsLecturer)
+                            {
+                                <div class="tab-headers">
+                                    <button class="tab-header @(State.ActiveTab == "messages" ? "active" : "")" 
+                                            @onclick='() => State.SetTab("messages")'>
+                                        <i class="fas fa-comments"></i>
+                                        <span>Messages</span>
+                                    </button>
+                                    <button class="tab-header @(State.ActiveTab == "participants" ? "active" : "")" 
+                                            @onclick='() => State.SetTab("participants")'>
+                                        <i class="fas fa-users"></i>
+                                        <span>Participants (@State.ParticipantCount)</span>
+                                    </button>
+                                </div>
+                            }
 
                             <!-- Tab Content -->
                             <div class="tab-content">
-                                @if (State.ActiveTab == "messages")
+                                @if (!State.IsLecturer || State.ActiveTab == "messages")
                                 {
                                     <MessagingPanel SessionId="@SessionId"
                                                    IsLecturer="@State.IsLecturer"
