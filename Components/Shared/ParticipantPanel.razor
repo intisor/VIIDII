@@ -12,7 +12,7 @@
                 : $"Participants ({ParticipantCount})")
         </h3>
         
-        @if (IsLecturer && ParticipantCount > 0)
+        @if (IsLecturer)
         {
             <div class="prompt-actions">
                 <button class="btn-prompt btn-quiz" @onclick="PrepareCaptionQuiz" title="Extract smart attention check question from live captions">
@@ -228,6 +228,7 @@
     [Parameter] public string SessionId { get; set; } = string.Empty;
     [Parameter] public string SessionTitle { get; set; } = string.Empty;
     [Parameter] public bool IsLecturer { get; set; }
+    [Parameter] public string LecturerMatricNo { get; set; } = string.Empty;
 
     [Parameter] public IReadOnlyList<ExpectedStudent> ExpectedStudents { get; set; } = [];
 
@@ -269,11 +270,23 @@
     private int _quizTotalEligible;
     private int _quizResponses;
     private int _quizCorrect;
+    private bool _isLiveStatsRegistered;
 
     protected override void OnInitialized()
     {
-        if (HubConnection != null && IsLecturer)
+        RegisterLiveStatsHandler();
+    }
+
+    protected override void OnParametersSet()
+    {
+        RegisterLiveStatsHandler();
+    }
+
+    private void RegisterLiveStatsHandler()
+    {
+        if (HubConnection != null && IsLecturer && !_isLiveStatsRegistered)
         {
+            _isLiveStatsRegistered = true;
             HubConnection.On<string, int, int, int>("ReceiveQuizLiveStats", (quizId, totalEligible, totalResponses, correctCount) =>
             {
                 _hasLiveQuizStats = true;
@@ -329,14 +342,15 @@
                 _quizOptions.ToArray(), 
                 _quizCorrectIndex, 
                 _quizTimeout, 
-                _quizSourceQuote);
+                _quizSourceQuote,
+                LecturerMatricNo);
 
             _showQuizModal = false;
             _hasLiveQuizStats = true;
             _quizTotalEligible = ParticipantCount;
             _quizResponses = 0;
             _quizCorrect = 0;
-            Console.WriteLine($"[ParticipantPanel] Broadcast caption quiz to session {SessionId}");
+            Console.WriteLine($"[ParticipantPanel] Broadcast caption quiz to session {SessionId} by {LecturerMatricNo}");
         }
         catch (Exception ex)
         {
@@ -354,9 +368,9 @@
 
         try
         {
-            await JSRuntime.InvokeVoidAsync("console.log", $"[VIIDII] Lecturer Prompt All clicked. session={SessionId}, participants={ParticipantCount}");
-            await HubConnection.SendAsync("PromptEngagement", SessionId);
-            Console.WriteLine("Engagement prompt sent to all students");
+            await JSRuntime.InvokeVoidAsync("console.log", $"[VIIDII] Lecturer Prompt All clicked. session={SessionId}, lecturer={LecturerMatricNo}, participants={ParticipantCount}");
+            await HubConnection.SendAsync("PromptEngagement", SessionId, LecturerMatricNo);
+            Console.WriteLine($"Engagement prompt sent to all students by {LecturerMatricNo}");
         }
         catch (Exception ex)
         {

@@ -414,7 +414,8 @@ else
                                                       HubConnection="@_hubConnection"
                                                       SessionId="@SessionId"
                                                       SessionTitle="@State.SessionTitle"
-                                                      IsLecturer="@State.IsLecturer" />
+                                                      IsLecturer="@State.IsLecturer"
+                                                      LecturerMatricNo="@(Identity?.MatricNo ?? State.CurrentUser?.MatricNo ?? CurrentSession?.LecturerMatricNo ?? "")" />
                                 }
                             </div>
                         </div>
@@ -442,6 +443,7 @@ else
                          Options="@_currentQuizOptions"
                          SourceQuote="@_currentQuizSourceQuote"
                          InitialTimeoutSeconds="@_currentQuizTimeout"
+                         StudentMatricNo="@(Identity?.MatricNo ?? State.CurrentUser?.MatricNo ?? "")"
                          OnHidden="@HideEngagementModal" />
     }
 }

@@ -124,6 +124,7 @@
     [Parameter] public bool IsStudent { get; set; }
     [Parameter] public bool ShouldShow { get; set; }
     [Parameter] public EventCallback OnHidden { get; set; }
+    [Parameter] public string StudentMatricNo { get; set; } = string.Empty;
 
     [Parameter] public string? QuizId { get; set; }
     [Parameter] public string? QuestionText { get; set; }
@@ -141,9 +142,17 @@
     private bool _isSubmitting;
     private bool _submitted;
     private bool _isCorrect;
+    private IDisposable? _quizFeedbackHandler;
+
+    protected override void OnInitialized()
+    {
+        RegisterFeedbackHandler();
+    }
 
     protected override async Task OnParametersSetAsync()
     {
+        RegisterFeedbackHandler();
+
         if (ShouldShow && IsStudent && !IsShown)
         {
             await Show();
@@ -153,6 +162,18 @@
         if (!ShouldShow && IsShown)
         {
             await Hide();
+        }
+    }
+
+    private void RegisterFeedbackHandler()
+    {
+        if (HubConnection != null && IsStudent && _quizFeedbackHandler == null)
+        {
+            _quizFeedbackHandler = HubConnection.On<bool, int>("ReceiveQuizFeedback", (isCorrect, correctIndex) =>
+            {
+                _isCorrect = isCorrect;
+                InvokeAsync(StateHasChanged);
+            });
         }
     }
 
@@ -171,7 +192,7 @@
         _selectedOptionIndex = -1;
         TimeRemaining = InitialTimeoutSeconds > 0 ? InitialTimeoutSeconds : 30;
 
-        await JSRuntime.InvokeVoidAsync("console.log", $"[VIIDII] Engagement prompt shown. QuizMode={IsQuizMode}, TimeRemaining={TimeRemaining}");
+        await JSRuntime.InvokeVoidAsync("console.log", $"[VIIDII] Engagement prompt shown for {StudentMatricNo}. QuizMode={IsQuizMode}, TimeRemaining={TimeRemaining}");
 
         _timer?.Dispose();
         _timer = new System.Threading.Timer(async _ =>
@@ -204,8 +225,8 @@
         _isSubmitting = true;
         try
         {
-            await JSRuntime.InvokeVoidAsync("console.log", $"[VIIDII] Submitting quiz answer: index={_selectedOptionIndex}, quizId={QuizId}");
-            await HubConnection.SendAsync("SubmitQuizResponse", SessionId, QuizId ?? "", _selectedOptionIndex);
+            await JSRuntime.InvokeVoidAsync("console.log", $"[VIIDII] Submitting quiz answer: index={_selectedOptionIndex}, quizId={QuizId}, student={StudentMatricNo}");
+            await HubConnection.SendAsync("SubmitQuizResponse", SessionId, QuizId ?? "", _selectedOptionIndex, StudentMatricNo);
             
             _submitted = true;
             _isCorrect = true;
@@ -237,8 +258,8 @@
 
         try
         {
-            await JSRuntime.InvokeVoidAsync("console.log", "[VIIDII] Engagement prompt confirmed by student.");
-            await HubConnection.SendAsync("ConfirmActive");
+            await JSRuntime.InvokeVoidAsync("console.log", $"[VIIDII] Engagement prompt confirmed by student: {StudentMatricNo}");
+            await HubConnection.SendAsync("ConfirmActive", StudentMatricNo, SessionId);
             _submitted = true;
             _isCorrect = true;
             _timer?.Dispose();
@@ -290,6 +311,8 @@
     {
         _timer?.Dispose();
         _timer = null;
+        _quizFeedbackHandler?.Dispose();
+        _quizFeedbackHandler = null;
         await Task.CompletedTask;
     }
 }

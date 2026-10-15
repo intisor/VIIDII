@@ -567,19 +567,34 @@ namespace VIIDII.Hubs
         public async Task UpdateTabStatus(bool isActive)
         {
             var matricNo = CurrentMatricNo();
-            var session = await _sessionService.GetSessionByParticipantAsync(matricNo);
-            if (session is not null && !await IsSessionLecturerAsync(session.SessionId, matricNo) && session.IsSessionStarted)
+            Session? session = null;
+            if (!string.IsNullOrEmpty(matricNo))
+            {
+                session = await _sessionService.GetSessionByParticipantAsync(matricNo);
+            }
+            if (session == null)
+            {
+                session = _sessionService.GetAllSessions().FirstOrDefault(s => s.ParticipantConnectionIds.Values.Contains(Context.ConnectionId));
+                if (session != null && string.IsNullOrEmpty(matricNo))
+                {
+                    matricNo = session.ParticipantConnectionIds.FirstOrDefault(kv => kv.Value == Context.ConnectionId).Key;
+                }
+            }
+
+            if (session is not null && !string.IsNullOrEmpty(matricNo) && !await IsSessionLecturerAsync(session.SessionId, matricNo) && session.IsSessionStarted)
             {
                 var status = isActive ? Session.StudentStatus.Active : Session.StudentStatus.InActive;
                 if (_sessionService.UpdateParticipantStatus(session.SessionId, matricNo, status))
                 {
+                    var statuses = _sessionService.GetParticipantStatus(session.SessionId);
+                    var scores = _sessionService.CalculateAttendanceScore(session.SessionId);
+
+                    await Clients.Group($"{session.SessionId}-lecturers").SendAsync("ReceiveParticipantStatuses", statuses);
+                    await Clients.Group($"{session.SessionId}-lecturers").SendAsync("ReceiveParticipantScoreDetails", scores);
+
                     if (!string.IsNullOrEmpty(session.LecturerConnectionId))
                     {
-                        var statuses = _sessionService.GetParticipantStatus(session.SessionId);
                         await Clients.Client(session.LecturerConnectionId).SendAsync("ReceiveParticipantStatuses", statuses);
-
-                        // Also send updated scores
-                        var scores = _sessionService.CalculateAttendanceScore(session.SessionId);
                         await Clients.Client(session.LecturerConnectionId).SendAsync("ReceiveParticipantScoreDetails", scores);
                         Console.WriteLine($"Sent updated scores to lecturer after {matricNo} status changed to {status}");
                     }
@@ -590,19 +605,34 @@ namespace VIIDII.Hubs
         public async Task FlagIssue(string issue)
         {
             var matricNo = CurrentMatricNo();
-            var session = await _sessionService.GetSessionByParticipantAsync(matricNo);
-            if (session is not null && !await IsSessionLecturerAsync(session.SessionId, matricNo) && session.IsSessionStarted)
+            Session? session = null;
+            if (!string.IsNullOrEmpty(matricNo))
+            {
+                session = await _sessionService.GetSessionByParticipantAsync(matricNo);
+            }
+            if (session == null)
+            {
+                session = _sessionService.GetAllSessions().FirstOrDefault(s => s.ParticipantConnectionIds.Values.Contains(Context.ConnectionId));
+                if (session != null && string.IsNullOrEmpty(matricNo))
+                {
+                    matricNo = session.ParticipantConnectionIds.FirstOrDefault(kv => kv.Value == Context.ConnectionId).Key;
+                }
+            }
+
+            if (session is not null && !string.IsNullOrEmpty(matricNo) && !await IsSessionLecturerAsync(session.SessionId, matricNo) && session.IsSessionStarted)
             {
                 var status = issue == "BatteryLow" ? Session.StudentStatus.BatteryLow : Session.StudentStatus.DataFinished;
                 if (_sessionService.UpdateParticipantStatus(session.SessionId, matricNo, status))
                 {
+                    var statuses = _sessionService.GetParticipantStatus(session.SessionId);
+                    var scores = _sessionService.CalculateAttendanceScore(session.SessionId);
+
+                    await Clients.Group($"{session.SessionId}-lecturers").SendAsync("ReceiveParticipantStatuses", statuses);
+                    await Clients.Group($"{session.SessionId}-lecturers").SendAsync("ReceiveParticipantScoreDetails", scores);
+
                     if (!string.IsNullOrEmpty(session.LecturerConnectionId))
                     {
-                        var statuses = _sessionService.GetParticipantStatus(session.SessionId);
                         await Clients.Client(session.LecturerConnectionId).SendAsync("ReceiveParticipantStatuses", statuses);
-
-                        // Also send updated scores
-                        var scores = _sessionService.CalculateAttendanceScore(session.SessionId);
                         await Clients.Client(session.LecturerConnectionId).SendAsync("ReceiveParticipantScoreDetails", scores);
                         Console.WriteLine($"Sent updated scores to lecturer after {matricNo} flagged {issue}");
                     }
@@ -610,34 +640,59 @@ namespace VIIDII.Hubs
             }
         }
 
-        public async Task ConfirmActive()
+        public async Task ConfirmActive(string? claimedMatricNo = null, string? sessionId = null)
         {
             var matricNo = CurrentMatricNo();
-
-            // _lastSeen is keyed by this below.
-            if (string.IsNullOrWhiteSpace(matricNo))
+            if (string.IsNullOrEmpty(matricNo) && !string.IsNullOrWhiteSpace(claimedMatricNo))
             {
+                matricNo = claimedMatricNo.Trim();
+            }
+
+            Session? session = null;
+            if (!string.IsNullOrEmpty(sessionId))
+            {
+                session = await _sessionService.GetSessionByIdAsync(sessionId);
+            }
+            if (session == null && !string.IsNullOrEmpty(matricNo))
+            {
+                session = await _sessionService.GetSessionByParticipantAsync(matricNo);
+            }
+            if (session == null)
+            {
+                session = _sessionService.GetAllSessions().FirstOrDefault(s => s.ParticipantConnectionIds.Values.Contains(Context.ConnectionId));
+            }
+
+            if (string.IsNullOrEmpty(matricNo) && session != null)
+            {
+                matricNo = session.ParticipantConnectionIds.FirstOrDefault(kv => kv.Value == Context.ConnectionId).Key;
+            }
+
+            if (string.IsNullOrWhiteSpace(matricNo) || session == null)
+            {
+                Console.WriteLine($"[SessionHub] ConfirmActive rejected: unable to resolve matricNo or session for connection {Context.ConnectionId}");
                 return;
             }
 
-            var session = await _sessionService.GetSessionByParticipantAsync(matricNo);
-            if (session is not null && !await IsSessionLecturerAsync(session.SessionId, matricNo) && session.IsSessionStarted)
+            if (!await IsSessionLecturerAsync(session.SessionId, matricNo) && session.IsSessionStarted)
             {
                 _pendingEngagementPrompts.TryRemove(matricNo, out _);
                 _lastSeen[matricNo] = DateTime.UtcNow;
                 if (_sessionService.UpdateParticipantStatus(session.SessionId, matricNo, Session.StudentStatus.Active))
                 {
-                    _lastSeen[matricNo] = DateTime.UtcNow; // Keep this logic for ConfirmActive
+                    _lastSeen[matricNo] = DateTime.UtcNow;
+
+                    var statuses = _sessionService.GetParticipantStatus(session.SessionId);
+                    var scores = _sessionService.CalculateAttendanceScore(session.SessionId);
+
+                    await Clients.Group($"{session.SessionId}-lecturers").SendAsync("ReceiveParticipantStatuses", statuses);
+                    await Clients.Group($"{session.SessionId}-lecturers").SendAsync("ReceiveParticipantScoreDetails", scores);
+
                     if (!string.IsNullOrEmpty(session.LecturerConnectionId))
                     {
-                        var statuses = _sessionService.GetParticipantStatus(session.SessionId);
                         await Clients.Client(session.LecturerConnectionId).SendAsync("ReceiveParticipantStatuses", statuses);
-
-                        // Also send updated scores
-                        var scores = _sessionService.CalculateAttendanceScore(session.SessionId);
                         await Clients.Client(session.LecturerConnectionId).SendAsync("ReceiveParticipantScoreDetails", scores);
-                        Console.WriteLine($"Sent updated scores to lecturer after {matricNo} confirmed active");
                     }
+                    Console.WriteLine($"[SessionHub] Sent updated scores/statuses to lecturer after {matricNo} confirmed active in session {session.SessionId}");
                 }
             }
         }
@@ -743,41 +798,58 @@ namespace VIIDII.Hubs
         }
 
         // Engagement - Prompt Methods
-        public async Task PromptEngagement(string sessionId)
+        public async Task PromptEngagement(string sessionId, string? claimedMatricNo = null)
         {
-            var matricNo = CurrentMatricNo();
             var session = await _sessionService.GetSessionByIdAsync(sessionId);
-
-            // Only lecturer can prompt engagement
-            if (session != null && await IsSessionLecturerAsync(sessionId, matricNo))
+            if (session == null)
             {
-                var promptedConnectionIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                Console.WriteLine($"[SessionHub] Lecturer {matricNo} manually prompted engagement for session {sessionId}");
-
-                foreach (var participantId in session.ParticipantIds)
-                {
-                    if (await _sessionService.IsLecturerAsync(participantId))
-                    {
-                        continue;
-                    }
-
-                    if (session.ParticipantConnectionIds.TryGetValue(participantId, out var connectionId) &&
-                        !string.IsNullOrWhiteSpace(connectionId))
-                    {
-                        RegisterEngagementPrompt(participantId, DateTime.UtcNow);
-                        promptedConnectionIds.Add(connectionId);
-                        await Clients.Client(connectionId).SendAsync("AreYouThere");
-                        Console.WriteLine($"[SessionHub] Sent direct AreYouThere to participant {participantId} via connection {connectionId}");
-                    }
-                    else
-                    {
-                        Console.WriteLine($"[SessionHub] No direct connection for participant {participantId}; fallback broadcast will be used");
-                    }
-                }
-
-                await Clients.GroupExcept(sessionId, promptedConnectionIds.ToArray()).SendAsync("AreYouThere");
-                Console.WriteLine($"[SessionHub] Fallback broadcast sent to session {sessionId} for {promptedConnectionIds.Count} direct recipient(s)");
+                Console.WriteLine($"[SessionHub] PromptEngagement rejected: session {sessionId} not found");
+                return;
             }
+
+            var matricNo = await ResolveVerifiedIdentityAsync(sessionId, claimedMatricNo);
+            if (string.IsNullOrEmpty(matricNo))
+            {
+                if (session.LecturerConnectionId == Context.ConnectionId)
+                    matricNo = session.LecturerMatricNo;
+                else
+                    matricNo = CurrentMatricNo();
+            }
+            if (string.IsNullOrEmpty(matricNo) && !string.IsNullOrWhiteSpace(claimedMatricNo))
+            {
+                matricNo = claimedMatricNo.Trim();
+            }
+
+            bool isLecturer = Context.ConnectionId == session.LecturerConnectionId ||
+                              (!string.IsNullOrEmpty(matricNo) && await IsSessionLecturerAsync(sessionId, matricNo)) ||
+                              (!string.IsNullOrWhiteSpace(session.LecturerMatricNo) && string.Equals(session.LecturerMatricNo, claimedMatricNo?.Trim(), StringComparison.OrdinalIgnoreCase));
+
+            if (!isLecturer)
+            {
+                Console.WriteLine($"[SessionHub] PromptEngagement rejected: caller {Context.ConnectionId} / {matricNo} is not the lecturer of session {sessionId}");
+                return;
+            }
+
+            Console.WriteLine($"[SessionHub] Lecturer {matricNo} manually prompted engagement for session {sessionId}");
+
+            // Register engagement prompt for all student participants
+            foreach (var participantId in session.ParticipantIds)
+            {
+                if (!await _sessionService.IsLecturerAsync(participantId))
+                {
+                    RegisterEngagementPrompt(participantId, DateTime.UtcNow);
+                }
+            }
+
+            // Exclude lecturer connection IDs from receiving "AreYouThere"
+            var exclude = new List<string>();
+            if (!string.IsNullOrEmpty(Context.ConnectionId)) exclude.Add(Context.ConnectionId);
+            if (!string.IsNullOrEmpty(session.LecturerConnectionId) && !exclude.Contains(session.LecturerConnectionId))
+                exclude.Add(session.LecturerConnectionId);
+
+            // Broadcast to all active students in the session group
+            await Clients.GroupExcept(sessionId, exclude).SendAsync("AreYouThere");
+            Console.WriteLine($"[SessionHub] AreYouThere broadcast sent to session {sessionId} (excluded {exclude.Count} lecturer connection(s))");
         }
 
         public record ActiveSessionQuiz(
@@ -799,53 +871,93 @@ namespace VIIDII.Hubs
             string[] options, 
             int correctIndex, 
             int timeoutSeconds, 
-            string? sourceQuote = null)
+            string? sourceQuote = null,
+            string? claimedMatricNo = null)
         {
-            var matricNo = CurrentMatricNo();
             var session = await _sessionService.GetSessionByIdAsync(sessionId);
-
-            if (session != null && await IsSessionLecturerAsync(sessionId, matricNo))
+            if (session == null)
             {
-                var quizId = Guid.NewGuid().ToString("N");
-                var activeQuiz = new ActiveSessionQuiz(
-                    quizId,
-                    question,
-                    options,
-                    correctIndex,
-                    sourceQuote ?? "",
-                    timeoutSeconds > 0 ? timeoutSeconds : 30,
-                    DateTime.UtcNow,
-                    new ConcurrentDictionary<string, int>(StringComparer.OrdinalIgnoreCase)
-                );
-
-                _activeQuizzes[sessionId] = activeQuiz;
-
-                // Also register engagement prompt for all participants
-                foreach (var participantId in session.ParticipantIds)
-                {
-                    if (!await _sessionService.IsLecturerAsync(participantId))
-                    {
-                        RegisterEngagementPrompt(participantId, DateTime.UtcNow);
-                    }
-                }
-
-                // Broadcast quiz to all attendees in session
-                await Clients.Group(sessionId).SendAsync(
-                    "ReceiveEngagementQuiz", 
-                    quizId, 
-                    question, 
-                    options, 
-                    activeQuiz.TimeoutSeconds, 
-                    activeQuiz.SourceQuote);
-
-                Console.WriteLine($"[SessionHub] Quiz {quizId} sent to session {sessionId}: {question}");
+                Console.WriteLine($"[SessionHub] PromptEngagementWithQuiz rejected: session {sessionId} not found");
+                return;
             }
+
+            var matricNo = await ResolveVerifiedIdentityAsync(sessionId, claimedMatricNo);
+            if (string.IsNullOrEmpty(matricNo))
+            {
+                if (session.LecturerConnectionId == Context.ConnectionId)
+                    matricNo = session.LecturerMatricNo;
+                else
+                    matricNo = CurrentMatricNo();
+            }
+            if (string.IsNullOrEmpty(matricNo) && !string.IsNullOrWhiteSpace(claimedMatricNo))
+            {
+                matricNo = claimedMatricNo.Trim();
+            }
+
+            bool isLecturer = Context.ConnectionId == session.LecturerConnectionId ||
+                              (!string.IsNullOrEmpty(matricNo) && await IsSessionLecturerAsync(sessionId, matricNo)) ||
+                              (!string.IsNullOrWhiteSpace(session.LecturerMatricNo) && string.Equals(session.LecturerMatricNo, claimedMatricNo?.Trim(), StringComparison.OrdinalIgnoreCase));
+
+            if (!isLecturer)
+            {
+                Console.WriteLine($"[SessionHub] PromptEngagementWithQuiz rejected: caller {Context.ConnectionId} / {matricNo} is not the lecturer of session {sessionId}");
+                return;
+            }
+
+            var quizId = Guid.NewGuid().ToString("N");
+            var activeQuiz = new ActiveSessionQuiz(
+                quizId,
+                question,
+                options,
+                correctIndex,
+                sourceQuote ?? "",
+                timeoutSeconds > 0 ? timeoutSeconds : 30,
+                DateTime.UtcNow,
+                new ConcurrentDictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+            );
+
+            _activeQuizzes[sessionId] = activeQuiz;
+
+            // Also register engagement prompt for all student participants
+            foreach (var participantId in session.ParticipantIds)
+            {
+                if (!await _sessionService.IsLecturerAsync(participantId))
+                {
+                    RegisterEngagementPrompt(participantId, DateTime.UtcNow);
+                }
+            }
+
+            // Broadcast quiz to all attendees in session
+            await Clients.Group(sessionId).SendAsync(
+                "ReceiveEngagementQuiz", 
+                quizId, 
+                question, 
+                options, 
+                activeQuiz.TimeoutSeconds, 
+                activeQuiz.SourceQuote);
+
+            Console.WriteLine($"[SessionHub] Quiz {quizId} sent to session {sessionId}: {question}");
         }
 
-        public async Task SubmitQuizResponse(string sessionId, string quizId, int selectedIndex)
+        public async Task SubmitQuizResponse(string sessionId, string quizId, int selectedIndex, string? claimedMatricNo = null)
         {
-            var matricNo = CurrentMatricNo();
-            if (string.IsNullOrWhiteSpace(matricNo)) return;
+            var matricNo = await ResolveVerifiedIdentityAsync(sessionId, claimedMatricNo);
+            if (string.IsNullOrEmpty(matricNo))
+            {
+                var sessionObj = await _sessionService.GetSessionByIdAsync(sessionId);
+                if (sessionObj != null)
+                {
+                    matricNo = sessionObj.ParticipantConnectionIds.FirstOrDefault(kv => kv.Value == Context.ConnectionId).Key;
+                }
+            }
+            if (string.IsNullOrEmpty(matricNo)) matricNo = CurrentMatricNo();
+            if (string.IsNullOrEmpty(matricNo) && !string.IsNullOrWhiteSpace(claimedMatricNo)) matricNo = claimedMatricNo.Trim();
+
+            if (string.IsNullOrWhiteSpace(matricNo))
+            {
+                Console.WriteLine($"[SessionHub] SubmitQuizResponse rejected: unable to resolve identity for connection {Context.ConnectionId}");
+                return;
+            }
 
             var session = await _sessionService.GetSessionByIdAsync(sessionId);
             if (session == null || !session.IsSessionStarted) return;
@@ -866,12 +978,20 @@ namespace VIIDII.Hubs
                 await Clients.Caller.SendAsync("ReceiveQuizFeedback", isCorrect, activeQuiz.CorrectIndex);
 
                 // Notify lecturer of live updated quiz stats
+                int totalResponses = activeQuiz.Responses.Count;
+                int correctCount = activeQuiz.Responses.Values.Count(v => v == activeQuiz.CorrectIndex);
+                int totalEligible = session.ParticipantIds.Count(p => p != session.LecturerMatricNo);
+
+                await Clients.Group($"{sessionId}-lecturers").SendAsync(
+                    "ReceiveQuizLiveStats",
+                    quizId,
+                    totalEligible,
+                    totalResponses,
+                    correctCount
+                );
+
                 if (!string.IsNullOrEmpty(session.LecturerConnectionId))
                 {
-                    int totalResponses = activeQuiz.Responses.Count;
-                    int correctCount = activeQuiz.Responses.Values.Count(v => v == activeQuiz.CorrectIndex);
-                    int totalEligible = session.ParticipantIds.Count(p => p != session.LecturerMatricNo);
-
                     await Clients.Client(session.LecturerConnectionId).SendAsync(
                         "ReceiveQuizLiveStats",
                         quizId,
@@ -893,7 +1013,7 @@ namespace VIIDII.Hubs
             else
             {
                 // Fallback: regular confirm active
-                await ConfirmActive();
+                await ConfirmActive(claimedMatricNo, sessionId);
             }
         }
     }
