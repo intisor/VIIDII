@@ -57,13 +57,16 @@
                 <div class="recap-title-area">
                     <h1>@Session.Title</h1>
                     <div class="recap-meta">
-                        <span class="recap-meta-item">
-                            <i class="far fa-clock"></i>
-                            @(Session.StartTime.ToString("MMM d, yyyy · h:mm tt"))
-                        </span>
+                        @if (Session.StartTime != default)
+                        {
+                            <span class="recap-meta-item">
+                                <i class="far fa-clock"></i>
+                                @(ToUserTime(Session.StartTime).ToString("MMM d, yyyy · h:mm tt"))
+                            </span>
+                        }
                         <span class="recap-meta-item">
                             <i class="fas fa-stopwatch"></i>
-                            @(Session.EndTime.HasValue ? $"Ended {Session.EndTime.Value:h:mm tt} ({TotalDurationText})" : "Active / Live")
+                            @(Session.EndTime.HasValue ? $"Ended {ToUserTime(Session.EndTime.Value):h:mm tt} ({TotalDurationText})" : "Active / Live")
                         </span>
                         @if (Session.ClassId is int cid && cid > 0)
                         {
@@ -481,16 +484,49 @@
         }
     }
 
+    private TimeSpan? _clientTimezoneOffset;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                var offsetMinutes = await JSRuntime.InvokeAsync<int>("eval", "new Date().getTimezoneOffset()");
+                _clientTimezoneOffset = TimeSpan.FromMinutes(-offsetMinutes);
+                StateHasChanged();
+            }
+            catch
+            {
+                // Fallback to local server timezone
+            }
+        }
+    }
+
+    private DateTime ToUserTime(DateTime dt)
+    {
+        if (dt == default) return dt;
+        var utc = dt.Kind == DateTimeKind.Utc ? dt : DateTime.SpecifyKind(dt, DateTimeKind.Utc);
+        if (_clientTimezoneOffset.HasValue)
+        {
+            return utc.Add(_clientTimezoneOffset.Value);
+        }
+        return TimeZoneInfo.ConvertTimeFromUtc(utc, TimeZoneInfo.Local);
+    }
+
     private string TotalDurationText
     {
         get
         {
-            if (Session == null) return "—";
-            var end = Session.EndTime ?? DateTime.UtcNow;
-            var start = Session.StartTime;
-            var duration = end - start;
-            if (duration.TotalMinutes < 1) return "< 1 min";
-            if (duration.TotalHours < 1) return $"{(int)duration.TotalMinutes} mins";
+            if (Session == null || Session.StartTime == default) return "—";
+            var endUtc = DateTime.SpecifyKind(Session.EndTime ?? DateTime.UtcNow, DateTimeKind.Utc);
+            var startUtc = DateTime.SpecifyKind(Session.StartTime, DateTimeKind.Utc);
+            var duration = endUtc - startUtc;
+            if (duration < TimeSpan.Zero) duration = TimeSpan.Zero;
+            
+            var totalMinutes = (int)Math.Round(duration.TotalMinutes);
+            if (totalMinutes <= 1) return totalMinutes == 1 ? "1 min" : "< 1 min";
+            if (duration.TotalHours < 1) return $"{totalMinutes} mins";
             return $"{(int)duration.TotalHours}h {duration.Minutes}m";
         }
     }
