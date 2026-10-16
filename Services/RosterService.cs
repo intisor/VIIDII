@@ -254,28 +254,29 @@ public partial class RosterService
             .ToListAsync();
 
     /// <summary>
-    /// Marks a seat as claimed. Returns false when the seat is already held from a
-    /// different device, so one student cannot occupy two seats and inflate their
-    /// own attendance percentage.
-    ///
-    /// Note this is NOT identity proof. A student who knows another student's
-    /// matric number and name can still join as them — see <see cref="ResolveAttendee"/>.
+    /// Marks a seat as claimed. If <paramref name="takeOver"/> is true, or the seat has
+    /// not been claimed yet, or the claim is already ours, or the previous claim has expired
+    /// (older than the seat cookie lifetime of 12 hours), the claim is updated to the
+    /// current claimToken and returns true.
+    /// Returns false only when the seat is actively held from another device and takeOver is false.
     /// </summary>
-    public async Task<bool> ClaimSeatAsync(int rosterEntryId, string? claimToken)
+    public async Task<bool> ClaimSeatAsync(int rosterEntryId, string? claimToken, bool takeOver = false)
     {
         var entry = await _context.RosterEntries.FindAsync(rosterEntryId);
         if (entry is null) return false;
 
-        if (entry.HasClaimed)
+        var isExpired = entry.ClaimedAtUtc.HasValue && (DateTime.UtcNow - entry.ClaimedAtUtc.Value > TimeSpan.FromHours(12));
+
+        if (!entry.HasClaimed || takeOver || isExpired || string.Equals(entry.ClaimToken, claimToken, StringComparison.Ordinal))
         {
-            return string.Equals(entry.ClaimToken, claimToken, StringComparison.Ordinal);
+            entry.HasClaimed = true;
+            entry.ClaimedAtUtc = DateTime.UtcNow;
+            entry.ClaimToken = claimToken;
+            await _context.SaveChangesAsync();
+            return true;
         }
 
-        entry.HasClaimed = true;
-        entry.ClaimedAtUtc = DateTime.UtcNow;
-        entry.ClaimToken = claimToken;
-        await _context.SaveChangesAsync();
-        return true;
+        return false;
     }
 
     /// <summary>

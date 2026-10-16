@@ -77,6 +77,8 @@ public static class JoinEndpoints
             var form = await http.Request.ReadFormAsync();
             var identifier = form["identifier"].ToString().Trim();
             var name = form["name"].ToString().Trim();
+            var isTakeover = string.Equals(form["takeover"], "1", StringComparison.OrdinalIgnoreCase)
+                             || string.Equals(form["takeover"], "true", StringComparison.OrdinalIgnoreCase);
 
             var target = await classService.GetByCodeAsync(code);
             if (target is null)
@@ -100,13 +102,6 @@ public static class JoinEndpoints
 
             // Already holding this exact seat on this device. Re-issuing lets a student
             // who refreshed, or whose first response was lost, back in.
-            //
-            // This check was missing and that made claims a one-way door. A fresh
-            // random token is generated per request and compared against the stored
-            // one, so it could never match: once a row was claimed, every later claim
-            // was refused, on every device including the one that had just claimed it.
-            // If the response was lost in between, the row stayed held by a token
-            // nobody had and the student was locked out with no way back.
             var held = seats.Read(http);
             var alreadyOurs = held is not null
                               && held.ClassId == target.Id
@@ -123,14 +118,20 @@ public static class JoinEndpoints
             else
             {
                 claimToken = Guid.NewGuid().ToString("N");
-                var claimed = await rosterService.ClaimSeatAsync(entry.Id, claimToken);
+
+                // Check whether there is an ongoing live session for this class.
+                var liveList = await sessionService.GetLiveSessionsForClassAsync(target.Id);
+                var noLiveSession = !liveList.Any();
+
+                // If no live session is active, or if takeover is explicitly requested, allow claiming immediately.
+                var claimed = await rosterService.ClaimSeatAsync(entry.Id, claimToken, takeOver: isTakeover || noLiveSession);
 
                 if (!claimed)
                 {
-                    // Held from a different device. Refusing stops one person being
-                    // counted twice. The lecturer can free it from the class page.
+                    // Held from a different device during an active lecture.
+                    // Retain identifier and name so the student can one-click transfer the seat to this device.
                     return Results.Redirect(
-                        $"/join/{Uri.EscapeDataString(code)}?error=already-claimed&identifier={Uri.EscapeDataString(identifier)}");
+                        $"/join/{Uri.EscapeDataString(code)}?error=already-claimed&identifier={Uri.EscapeDataString(identifier)}&name={Uri.EscapeDataString(name)}");
                 }
             }
 
@@ -190,7 +191,7 @@ public static class JoinEndpoints
 
             // Claim the seat so the same class list row cannot be held from two devices.
             var claimToken = Guid.NewGuid().ToString("N");
-            var claimed = await rosterService.ClaimSeatAsync(entry.Id, claimToken);
+            var claimed = await rosterService.ClaimSeatAsync(entry.Id, claimToken, takeOver: request.Takeover);
 
             return Results.Ok(new
             {
@@ -208,5 +209,6 @@ public static class JoinEndpoints
     {
         public string? Identifier { get; set; }
         public string? Name { get; set; }
+        public bool Takeover { get; set; }
     }
 }

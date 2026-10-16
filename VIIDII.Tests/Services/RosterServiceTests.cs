@@ -267,8 +267,52 @@ public class RosterServiceTests : IDisposable
         // Same device reconnecting is fine.
         Assert.True(await service.ClaimSeatAsync(entry.Id, "device-token-a"));
 
-        // A different device holding the same seat is refused.
+        // A different device holding the same seat is refused when takeOver is false.
         Assert.False(await service.ClaimSeatAsync(entry.Id, "device-token-b"));
+    }
+
+    [Fact]
+    public async Task ClaimSeat_WithTakeOver_TransfersSeatFromPreviousDevice()
+    {
+        var seededClass = await SeedClassAsync();
+        using var context = _factory.CreateDbContext();
+        var service = CreateService(context);
+
+        await service.ImportAsync(seededClass.Id, "Matric Number,Full Name\nCSC/001,Aisha Bello");
+        var entry = (await service.GetForClassAsync(seededClass.Id)).Single();
+
+        // Device A claims.
+        Assert.True(await service.ClaimSeatAsync(entry.Id, "device-token-a"));
+
+        // Device B transfers seat to itself.
+        Assert.True(await service.ClaimSeatAsync(entry.Id, "device-token-b", takeOver: true));
+
+        // Device B is now the active claim token holder.
+        Assert.True(await service.ClaimSeatAsync(entry.Id, "device-token-b"));
+
+        // Device A is no longer recognized without takeover.
+        Assert.False(await service.ClaimSeatAsync(entry.Id, "device-token-a"));
+    }
+
+    [Fact]
+    public async Task ClaimSeat_ExpiredClaim_AllowsNewDeviceToClaim()
+    {
+        var seededClass = await SeedClassAsync();
+        using var context = _factory.CreateDbContext();
+        var service = CreateService(context);
+
+        await service.ImportAsync(seededClass.Id, "Matric Number,Full Name\nCSC/001,Aisha Bello");
+        var entry = (await service.GetForClassAsync(seededClass.Id)).Single();
+
+        // Device A claims.
+        Assert.True(await service.ClaimSeatAsync(entry.Id, "device-token-a"));
+
+        // Simulate 13 hours passing (past the 12-hour cookie lifetime).
+        entry.ClaimedAtUtc = DateTime.UtcNow.AddHours(-13);
+        await context.SaveChangesAsync();
+
+        // Device B can now claim without explicit takeover because the previous claim expired.
+        Assert.True(await service.ClaimSeatAsync(entry.Id, "device-token-b"));
     }
 
     [Fact]

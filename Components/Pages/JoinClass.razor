@@ -88,6 +88,19 @@ else
                     <i class="fas fa-exclamation-circle"></i>
                     <span>@Error</span>
                 </div>
+
+                @if (ErrorCode == "already-claimed")
+                {
+                    <form method="post" action="@ClaimUrl">
+                        <AntiforgeryToken />
+                        <input type="hidden" name="identifier" value="@Identifier" />
+                        <input type="hidden" name="name" value="@Name" />
+                        <input type="hidden" name="takeover" value="1" />
+                        <button id="takeover-submit" type="submit" class="auth-btn" style="background: linear-gradient(135deg, #4f46e5, #06b6d4); display: flex; align-items: center; justify-content: center; gap: 0.5rem; margin-top: -0.25rem; margin-bottom: 1.25rem;">
+                            <i class="fas fa-mobile-alt"></i> Transfer &amp; Join On This Device
+                        </button>
+                    </form>
+                }
             }
 
             @* Server rendered: one request on a slow network, and the seat cookie is
@@ -281,7 +294,7 @@ else
     {
         "not-found" => $"Those details were not on the list for {Target?.Name ?? "this space"}. Check them and try again.",
         "no-list" => $"Your {HostTitle.ToLowerInvariant()} has not added an attendee list yet. Try again once they have.",
-        "already-claimed" => $"This place is held from another device. Ask your {HostTitle.ToLowerInvariant()} to release it for you, then try again here.",
+        "already-claimed" => $"This place is currently registered to another device. If you switched devices or browser, click below to transfer it here.",
         _ => null
     };
 
