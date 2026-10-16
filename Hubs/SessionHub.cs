@@ -865,6 +865,19 @@ namespace VIIDII.Hubs
 
         private static readonly ConcurrentDictionary<string, ActiveSessionQuiz> _activeQuizzes = new();
 
+        public static bool HasActiveQuiz(string sessionId)
+        {
+            if (_activeQuizzes.TryGetValue(sessionId, out var activeQuiz))
+            {
+                if (DateTime.UtcNow - activeQuiz.StartedAt < TimeSpan.FromSeconds(activeQuiz.TimeoutSeconds + 15))
+                {
+                    return true;
+                }
+                _activeQuizzes.TryRemove(sessionId, out _);
+            }
+            return false;
+        }
+
         public async Task PromptEngagementWithQuiz(
             string sessionId, 
             string question, 

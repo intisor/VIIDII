@@ -1608,6 +1608,13 @@ else
         {
             if (!State.IsLecturer)
             {
+                // If a quiz check is already active on screen, don't overwrite it with a simple ping!
+                if (_showEngagementModal && !string.IsNullOrEmpty(_currentQuizId))
+                {
+                    Console.WriteLine($"[SessionView C#] Ignoring AreYouThere because student is currently answering quiz {_currentQuizId}");
+                    return;
+                }
+
                 _currentQuizId = null;
                 _currentQuizQuestion = null;
                 _currentQuizOptions = null;
